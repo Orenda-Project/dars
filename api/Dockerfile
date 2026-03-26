@@ -5,12 +5,12 @@ WORKDIR /app
 # Install uv
 RUN pip install uv
 
-# Copy dependency files
+# Install dependencies first (cached layer — only invalidated when pyproject.toml changes)
 COPY pyproject.toml .
-COPY src/ src/
-
-# Install dependencies (no dev deps in production image)
 RUN uv sync --no-dev
+
+# Copy app source (invalidates cache only on code changes, not dep changes)
+COPY src/ src/
 
 # Run the app
 CMD ["uv", "run", "uvicorn", "dars.main:app", "--host", "0.0.0.0", "--port", "8000"]
