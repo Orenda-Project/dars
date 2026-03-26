@@ -70,6 +70,7 @@ async def http_client():
 @pytest.fixture
 def mock_client_obj():
     return Client(
+        id=uuid.uuid4(),
         name="Test Team",
         api_key_hash="abc123",
         is_active=True,
