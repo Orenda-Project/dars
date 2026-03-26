@@ -29,7 +29,6 @@ docs/
 - Python 3.12+
 - uv (install via `curl -LsSf https://astral.sh/uv/install.sh | sh` or `pip install uv`)
 - Supabase CLI (`brew install supabase/tap/supabase` or see supabase.com/docs/guides/cli)
-- Docker (for running the API in a container)
 
 ### 1. Configure credentials
 
