@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from dars.clients.router import client_router, internal_router
 from dars.config import settings
 
 app = FastAPI(
@@ -9,6 +10,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+app.include_router(internal_router)
+app.include_router(client_router)
 
 
 @app.get("/health")
