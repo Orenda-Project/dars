@@ -46,3 +46,18 @@ cd packages/dars-react && pnpm build
 - UUIDs everywhere for IDs
 - Migrations go in `supabase/migrations/` as plain SQL files named `YYYYMMDDHHMMSS_description.sql`
 - Tests use an in-memory SQLite via `aiosqlite` — no real Supabase connection needed for tests
+
+## Gotchas
+- Use `sqlalchemy.types.Uuid` NOT `sqlalchemy.dialects.postgresql.UUID` — the PG dialect breaks SQLite tests
+- Install deps with `uv sync --extra dev` (not plain `uv sync`) to include pytest and dev tools
+- Always use `hmac.compare_digest` for secret/token string comparison — plain `!=` is timing-attackable
+- `settings` is a module-level singleton instantiated at import time — tests cannot override env vars after first import
+- Test DB fixtures must declare `scope="function"` explicitly to prevent data bleed if scope is changed later
+- `*.db` files are gitignored — SQLite test.db is created by the default `database_url` config
+
+## What's built (Plan A complete)
+- `POST /internal/clients` — create B2B client, returns one-time API key
+- `GET /api/v1/me` — verify API key
+- `GET /health` — health check
+- DB schema: clients, lesson_plans, lesson_plan_edits (Supabase migration applied separately)
+- Lesson plan endpoints (generate, list, get, edit, complete) — NOT YET BUILT (Plan B)
