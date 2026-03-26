@@ -1,6 +1,5 @@
 import hashlib
 import secrets
-import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +19,6 @@ async def create_client(db: AsyncSession, name: str) -> tuple[Client, str]:
     """Create a new client. Returns (client, raw_api_key). Raw key shown once — not stored."""
     raw_key = _generate_api_key()
     client = Client(
-        id=uuid.uuid4(),
         name=name,
         api_key_hash=_hash_key(raw_key),
     )

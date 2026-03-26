@@ -6,7 +6,7 @@ from dars.clients.models import Client
 from dars.clients.service import create_client, get_client_by_api_key
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def db():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
