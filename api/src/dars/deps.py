@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,5 +24,5 @@ async def get_current_client(
 async def require_internal_secret(
     x_internal_secret: str | None = Header(default=None, alias="X-Internal-Secret"),
 ) -> None:
-    if x_internal_secret != settings.internal_api_secret:
+    if not x_internal_secret or not hmac.compare_digest(x_internal_secret, settings.internal_api_secret):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
