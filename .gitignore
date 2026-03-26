@@ -21,6 +21,9 @@ packages/*/dist/
 packages/*/.turbo/
 *.tsbuildinfo
 
+# SQLite (local dev fallback)
+*.db
+
 # Supabase
 supabase/.temp/
 
