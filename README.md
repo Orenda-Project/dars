@@ -17,14 +17,17 @@ packages/
   dars-client/   TypeScript API client (@dars/client)
   dars-react/    React components (@dars/react)
 supabase/     Database migrations (Supabase CLI)
-docs/         Design specs, ADRs, API reference
+docs/
+  superpowers/specs/   Design specs
+  superpowers/plans/   Implementation plans
+  adr/                 Architecture Decision Records
 ```
 
 ## Local dev setup
 
 ### Prerequisites
 - Python 3.12+
-- uv (`pip install uv`)
+- uv (install via `curl -LsSf https://astral.sh/uv/install.sh | sh` or `pip install uv`)
 - Supabase CLI (`brew install supabase/tap/supabase` or see supabase.com/docs/guides/cli)
 - Docker (for running the API in a container)
 
@@ -58,6 +61,18 @@ Swagger docs at http://localhost:8000/docs
 ```bash
 cd api
 uv run pytest
+```
+
+### 5. Build frontend packages (optional)
+
+Requires Node.js 18+ and pnpm (`npm install -g pnpm`).
+
+```bash
+# Build TypeScript API client
+cd packages/dars-client && pnpm install && pnpm build
+
+# Build React components
+cd packages/dars-react && pnpm install && pnpm build
 ```
 
 ## Creating a B2B client
