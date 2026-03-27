@@ -1,0 +1,20 @@
+meta {
+  name: List Lesson Plans Endpoint
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base-url}}/api/v1/lesson-plans
+  body: none
+  auth: none
+}
+
+headers {
+  X-API-Key: {{api-key}}
+}
+
+query {
+  limit: 20
+  offset: 0
+}

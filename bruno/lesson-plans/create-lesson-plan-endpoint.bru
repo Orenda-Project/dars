@@ -1,0 +1,29 @@
+meta {
+  name: Create Lesson Plan Endpoint
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base-url}}/api/v1/lesson-plans
+  body: json
+  auth: none
+}
+
+headers {
+  X-API-Key: {{api-key}}
+}
+
+body:json {
+  "grade": "1",
+  "subject": "English",
+  "page_number": "1-10",
+  "curriculum": "ICT",
+  "class_strength": null,
+  "topic": null,
+  "external_ref": null,
+  "exercise_page_number": "",
+  "custom_prompt": "",
+  "generate_bilingual": false,
+  "reasoning_enabled": true
+}

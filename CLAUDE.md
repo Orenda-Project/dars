@@ -29,13 +29,22 @@ Dars (درس, "lesson") is a standalone B2B service that provides lesson plan (L
 cd api && uv sync --extra dev
 
 # Run API (dev) — requires api/.env to exist
-cd api && uv run uvicorn dars.main:app --reload
+make dev
 
 # Run tests
-cd api && uv run pytest
+make test
 
 # Apply DB migrations
-supabase db push
+make db-push
+
+# Check migration status
+make db-status
+
+# Pull schema changes from remote (if you edited via Supabase dashboard)
+make db-pull
+
+# Create a new migration file (prompts for name)
+make db-new
 
 # Build client package
 cd packages/dars-client && pnpm build
@@ -45,7 +54,14 @@ cd packages/dars-react && pnpm build
 ```
 
 ## Environment
-Copy `api/.env.example` to `api/.env` and fill in values before running. Required vars: `DATABASE_URL`, `INTERNAL_API_SECRET`.
+Copy `api/.env.example` to `api/.env` and fill in values before running. Required vars: `DATABASE_URL`, `ADMIN_SECRET`.
+
+### Supabase environments
+- **dars-dev** — remote Supabase project, used for active development (currently the only one)
+- **dars-prod** — not yet created; will be a separate Supabase project for production
+- **dars-local** — not yet set up; will use `supabase start` (Docker) for offline dev
+
+Switch environments: `supabase link --project-ref <ref>` then `supabase db push`. Each env gets its own `DATABASE_URL`.
 
 ## Keeping docs current
 - When new or corrected information about Taleemabad (teams, services, vocabulary) comes up in conversation, update `docs/context/taleemabad.md` immediately — don't wait to be asked.
@@ -54,7 +70,7 @@ Copy `api/.env.example` to `api/.env` and fill in values before running. Require
 ## Conventions
 - All DB models in `models.py`, Pydantic schemas in `schemas.py`, business logic in `service.py`
 - Every public endpoint requires `X-API-Key` header — enforced in `deps.py:get_current_client`
-- Internal endpoints (client management) require `X-Internal-Secret` header
+- Admin endpoints (client management) require `X-Admin-Secret` header
 - All DB queries must filter by `client_id` — never query without it on data tables
 - UUIDs everywhere for IDs
 - Migrations go in `supabase/migrations/` as plain SQL files named `YYYYMMDDHHMMSS_description.sql`

@@ -21,8 +21,8 @@ async def get_current_client(
     return client
 
 
-async def require_internal_secret(
-    x_internal_secret: str | None = Header(default=None, alias="X-Internal-Secret"),
+async def require_admin_secret(
+    x_admin_secret: str | None = Header(default=None, alias="X-Admin-Secret"),
 ) -> None:
-    if not x_internal_secret or not hmac.compare_digest(x_internal_secret, settings.internal_api_secret):
+    if not x_admin_secret or not hmac.compare_digest(x_admin_secret, settings.admin_secret):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")

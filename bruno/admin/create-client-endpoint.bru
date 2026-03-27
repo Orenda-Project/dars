@@ -1,0 +1,19 @@
+meta {
+  name: Create Client Endpoint
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base-url}}/admin/clients
+  body: json
+  auth: none
+}
+
+headers {
+  X-Admin-Secret: {{admin-secret}}
+}
+
+body:json {
+  "name": ""
+}

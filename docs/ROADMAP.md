@@ -69,6 +69,32 @@ Don't over-plan ahead. The value is in the reflection loop, not the upfront deta
 
 ---
 
+## Phase 2.5 — Web App: Landing Page + Client Analytics Dashboard
+**Status: NOT STARTED**
+
+**Goal:** Ship a web app (`/webapp`) that gives clients a real UI — login, usage analytics, and account management. Also serves as the public-facing landing page for Dars. This is a high-leverage milestone that makes Dars feel like a product, not just an API.
+
+**Repo layout:** `webapp/` at the repo root (same level as `api/`). Not a package — a standalone frontend app (React + Vite or Next.js, TBD).
+
+**Scope:**
+- Public landing page (what is Dars, who it's for, CTA)
+- Login with client credentials (maps to existing client API key mechanism — backend may need a session/token auth layer on top)
+- Client analytics dashboard:
+  - LP generation count over time
+  - Breakdown by subject, grade, language
+  - Recent LP history
+- Super-admin panel (you): create and manage clients, view all usage
+- Client self-service (later, within this phase or next): clients manage their own users
+
+**Depends on:** Phase 1 complete — needs LP data to show analytics against.
+
+**Open questions (revisit when we get here):**
+- Session auth: JWT issued by FastAPI, or lean on Supabase Auth?
+- Framework: Next.js (SSR, easier auth) vs Vite + React SPA?
+- Do clients have sub-users at this point, or is it one login per client?
+
+---
+
 ## Phase 3 — User & Class Model
 **Status: NOT STARTED**
 

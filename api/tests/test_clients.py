@@ -78,9 +78,9 @@ def mock_client_obj():
     )
 
 
-async def test_create_client_endpoint_requires_internal_secret(http_client):
+async def test_create_client_endpoint_requires_admin_secret(http_client):
     response = await http_client.post(
-        "/internal/clients",
+        "/admin/clients",
         json={"name": "Punjab Team"},
     )
     assert response.status_code == 403
@@ -90,8 +90,8 @@ async def test_create_client_endpoint_success(http_client, mock_client_obj):
     with patch("dars.clients.router.create_client", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = (mock_client_obj, "dars_fake_raw_key")
         response = await http_client.post(
-            "/internal/clients",
-            headers={"X-Internal-Secret": "dev-secret"},
+            "/admin/clients",
+            headers={"X-Admin-Secret": "dev-secret"},
             json={"name": "Punjab Team"},
         )
     assert response.status_code == 201

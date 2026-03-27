@@ -5,17 +5,17 @@ from dars.clients.models import Client
 from dars.clients.schemas import ClientCreateRequest, ClientCreateResponse, ClientPublicResponse
 from dars.clients.service import create_client
 from dars.database import get_db
-from dars.deps import get_current_client, require_internal_secret
+from dars.deps import get_current_client, require_admin_secret
 
-internal_router = APIRouter(prefix="/internal", tags=["internal"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
 client_router = APIRouter(prefix="/api/v1", tags=["clients"])
 
 
-@internal_router.post(
+@admin_router.post(
     "/clients",
     status_code=status.HTTP_201_CREATED,
     response_model=ClientCreateResponse,
-    dependencies=[Depends(require_internal_secret)],
+    dependencies=[Depends(require_admin_secret)],
 )
 async def create_client_endpoint(
     body: ClientCreateRequest,

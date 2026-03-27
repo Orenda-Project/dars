@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./test.db"
     debug: bool = False
-    internal_api_secret: str = "dev-secret"
+    admin_secret: str = "dev-secret"
     lp_assistant_url: str = "https://lp-assistant.taleemabad.com"
     lp_assistant_api_key: str = ""
 

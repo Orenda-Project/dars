@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 
-from dars.clients.router import client_router, internal_router
+from dars.clients.router import admin_router, client_router
 from dars.config import settings
+from dars.lesson_plans.router import router as lesson_plans_router
 
 app = FastAPI(
     title="Dars API",
@@ -11,8 +12,9 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-app.include_router(internal_router)
+app.include_router(admin_router)
 app.include_router(client_router)
+app.include_router(lesson_plans_router)
 
 
 @app.get("/health")
