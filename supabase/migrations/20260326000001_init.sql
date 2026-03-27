@@ -18,7 +18,7 @@ create table if not exists lesson_plans (
     grade text not null,
     subject text not null,
     topic text,
-    page_number integer,
+    page_number text,
     class_strength integer,
     content text,
     content_bilingual text,
@@ -32,19 +32,6 @@ create table if not exists lesson_plans (
 create index if not exists lesson_plans_client_id_idx on lesson_plans(client_id);
 create index if not exists lesson_plans_status_idx on lesson_plans(status);
 create index if not exists lesson_plans_created_at_idx on lesson_plans(created_at desc);
-
--- Lesson plan edits table
-create table if not exists lesson_plan_edits (
-    id uuid primary key default gen_random_uuid(),
-    lesson_plan_id uuid not null references lesson_plans(id) on delete cascade,
-    content text not null,
-    edit_source text not null check (edit_source in ('USER', 'AI', 'GENERATED')),
-    edit_instruction text,
-    metadata jsonb not null default '{}',
-    created_at timestamptz not null default now()
-);
-
-create index if not exists lesson_plan_edits_lp_id_idx on lesson_plan_edits(lesson_plan_id);
 
 -- Auto-update updated_at on lesson_plans
 create or replace function update_updated_at()

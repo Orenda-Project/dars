@@ -8,6 +8,9 @@ Dars (درس, "lesson") is a standalone B2B service that provides lesson plan (L
 - `packages/dars-client/` — TypeScript API client (`@dars/client`)
 - `packages/dars-react/` — React components (`@dars/react`)
 - `supabase/` — Database migrations managed by Supabase CLI
+- `docs/ROADMAP.md` — Phased roadmap; re-read after each phase to reflect and adjust
+- `docs/context/` — Stable background: company context, LP assistant API, vocabulary
+- `docs/WRITING_DOCS.md` — Conventions for writing docs in this repo
 - `docs/superpowers/specs/` — Design specs
 - `docs/superpowers/plans/` — Implementation plans
 - `docs/adr/` — Architecture Decision Records
@@ -22,7 +25,10 @@ Dars (درس, "lesson") is a standalone B2B service that provides lesson plan (L
 
 ## Commands
 ```bash
-# Run API (dev)
+# First-time setup
+cd api && uv sync --extra dev
+
+# Run API (dev) — requires api/.env to exist
 cd api && uv run uvicorn dars.main:app --reload
 
 # Run tests
@@ -38,6 +44,13 @@ cd packages/dars-client && pnpm build
 cd packages/dars-react && pnpm build
 ```
 
+## Environment
+Copy `api/.env.example` to `api/.env` and fill in values before running. Required vars: `DATABASE_URL`, `INTERNAL_API_SECRET`.
+
+## Keeping docs current
+- When new or corrected information about Taleemabad (teams, services, vocabulary) comes up in conversation, update `docs/context/taleemabad.md` immediately — don't wait to be asked.
+- When a roadmap phase completes, update `docs/ROADMAP.md` status and reflect before proceeding.
+
 ## Conventions
 - All DB models in `models.py`, Pydantic schemas in `schemas.py`, business logic in `service.py`
 - Every public endpoint requires `X-API-Key` header — enforced in `deps.py:get_current_client`
@@ -49,15 +62,9 @@ cd packages/dars-react && pnpm build
 
 ## Gotchas
 - Use `sqlalchemy.types.Uuid` NOT `sqlalchemy.dialects.postgresql.UUID` — the PG dialect breaks SQLite tests
-- Install deps with `uv sync --extra dev` (not plain `uv sync`) to include pytest and dev tools
 - Always use `hmac.compare_digest` for secret/token string comparison — plain `!=` is timing-attackable
 - `settings` is a module-level singleton instantiated at import time — tests cannot override env vars after first import
 - Test DB fixtures must declare `scope="function"` explicitly to prevent data bleed if scope is changed later
 - `*.db` files are gitignored — SQLite test.db is created by the default `database_url` config
 
-## What's built (Plan A complete)
-- `POST /internal/clients` — create B2B client, returns one-time API key
-- `GET /api/v1/me` — verify API key
-- `GET /health` — health check
-- DB schema: clients, lesson_plans, lesson_plan_edits (Supabase migration applied separately)
-- Lesson plan endpoints (generate, list, get, edit, complete) — NOT YET BUILT (Plan B)
+See `docs/ROADMAP.md` for current status and what's next.
