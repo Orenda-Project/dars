@@ -30,3 +30,6 @@ supabase/.temp/
 # OS
 .DS_Store
 *.swp
+
+# Docs
+docs/personal/
