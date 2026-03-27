@@ -85,6 +85,7 @@ Don't over-plan ahead. The value is in the reflection loop, not the upfront deta
   - Recent LP history
 - Super-admin panel (you): create and manage clients, view all usage
 - Client self-service (later, within this phase or next): clients manage their own users
+- Coverage map: show which regions of Pakistan are supported (by province/board), and which books and languages are available for LP generation
 
 **Depends on:** Phase 1 complete — needs LP data to show analytics against.
 
@@ -136,6 +137,7 @@ Don't over-plan ahead. The value is in the reflection loop, not the upfront deta
 - Curriculum breakdown: year → terms → units → lessons
 - LP continuity: each LP knows what came before
 - Coverage tracking: what has been taught vs. planned
+- **Bring-your-own-book (BYOB):** user scans or uploads their own textbook; Dars parses and makes sense of the content (OCR + structure extraction), user picks chapters/topics, Dars generates LPs from that content — unlocks support for books and regions we don't have in our dataset yet
 
 *Scope TBD. Phases 4a and 4b may run in parallel.*
 

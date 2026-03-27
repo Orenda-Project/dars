@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: dev test db-push db-pull db-status db-new db-link bruno-sync
+.PHONY: dev test db-push db-pull db-status db-new db-link bruno-sync webapp
 
 dev:
 	cd api && uv run uvicorn dars.main:app --reload
@@ -27,3 +27,6 @@ db-link:
 
 bruno-sync:
 	cd api && uv run python ../scripts/sync_bruno.py
+
+webapp:
+	cd webapp && npm run dev
