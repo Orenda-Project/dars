@@ -4,7 +4,7 @@
 Dars (درس, "lesson") is a standalone B2B service that provides lesson plan (LP) creation and rendering infrastructure for Taleemabad internal teams. It is NOT a monolith — it is a focused service with a documented API and reusable npm packages.
 
 ## Repo layout
-- `api/` — FastAPI backend (Python 3.12, SQLAlchemy async, asyncpg)
+- `server/` — FastAPI backend (Python 3.12, SQLAlchemy async, asyncpg)
 - `packages/dars-client/` — TypeScript API client (`@dars/client`)
 - `packages/dars-react/` — React components (`@dars/react`)
 - `supabase/` — Database migrations managed by Supabase CLI
@@ -28,7 +28,7 @@ Dars (درس, "lesson") is a standalone B2B service that provides lesson plan (L
 # First-time setup
 cd api && uv sync --extra dev
 
-# Run API (dev) — requires api/.env to exist
+# Run API (dev) — requires server/.env to exist
 make dev
 
 # Run tests
@@ -54,7 +54,7 @@ cd packages/dars-react && pnpm build
 ```
 
 ## Environment
-Copy `api/.env.example` to `api/.env` and fill in values before running. Required vars: `DATABASE_URL`, `ADMIN_SECRET`.
+Copy `server/.env.example` to `server/.env` and fill in values before running. Required vars: `DATABASE_URL`, `ADMIN_SECRET`.
 
 ### Supabase environments
 - **dars-dev** — remote Supabase project, used for active development (currently the only one)

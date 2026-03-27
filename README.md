@@ -12,7 +12,7 @@ Dars exposes lesson plan creation and rendering as a service. Teams building app
 ## Repo structure
 
 ```
-api/          FastAPI backend service
+server/          FastAPI backend service
 packages/
   dars-client/   TypeScript API client (@dars/client)
   dars-react/    React components (@dars/react)
