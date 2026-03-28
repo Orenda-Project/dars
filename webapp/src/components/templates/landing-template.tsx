@@ -134,8 +134,7 @@ export function LandingTemplate() {
       {/* How it works */}
       <section
         id="how"
-        className="bg-dars-parchment-mid px-14 py-24 border-b border-dars-rule-light grid gap-20 items-start sm:px-6 sm:py-16 sm:grid-cols-1 sm:gap-10"
-        style={{ gridTemplateColumns: "1fr 2fr" }}
+        className="bg-dars-parchment-mid px-14 py-24 border-b border-dars-rule-light grid grid-cols-[1fr_2fr] gap-20 items-start sm:px-6 sm:py-16 sm:grid-cols-1 sm:gap-10"
       >
         <div className="sticky top-[100px] sm:static">
           <span className="block font-serif text-[13px] text-dars-terra italic mb-2">II.</span>
