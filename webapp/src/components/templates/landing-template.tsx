@@ -115,7 +115,7 @@ export function LandingTemplate() {
             Everything a curriculum product needs.
           </h2>
         </div>
-        <div className="grid grid-cols-2 gap-x-14 sm:grid-cols-1 sm:gap-x-0">
+        <div className="grid grid-cols-2 gap-x-14 max-[480px]:grid-cols-1 max-[480px]:gap-x-0">
           {FEATURES.map(({ num, chapterLabel, title, desc, annotation, Illus }, idx) => (
             <FeatureCard
               key={num}
@@ -125,7 +125,7 @@ export function LandingTemplate() {
               desc={desc}
               annotation={annotation}
               Illus={Illus}
-              hasBorderBottom={idx < 4}
+              hasBorderBottom={idx < 5}
             />
           ))}
         </div>

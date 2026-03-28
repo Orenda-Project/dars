@@ -14,7 +14,7 @@ export function StepItem({ num, title, desc, code, isFirst = false }: StepItemPr
       <span className="font-serif text-2xl font-bold text-dars-terra italic mt-0.5">
         {num}
       </span>
-      <div>
+      <div className="min-w-0">
         <h3 className="font-serif text-lg font-bold text-dars-ink mb-2">{title}</h3>
         <p className="text-[13px] text-dars-muted leading-relaxed">{desc}</p>
         {code && (
