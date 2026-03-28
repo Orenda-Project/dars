@@ -6,16 +6,18 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "engines": { "node": ">=18" },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
     "./middleware": {
+      "types": "./dist/middleware.d.ts",
       "import": "./dist/middleware.js",
-      "require": "./dist/middleware.cjs",
-      "types": "./dist/middleware.d.ts"
+      "require": "./dist/middleware.cjs"
     }
   },
   "scripts": {
