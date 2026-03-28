@@ -27,8 +27,7 @@ export function FeatureCard({
 }: FeatureCardProps) {
   return (
     <div
-      className={`grid gap-5 py-7 ${hasBorderBottom ? "border-b border-dars-rule-light" : ""}`}
-      style={{ gridTemplateColumns: "52px 1fr" }}
+      className={`grid grid-cols-[52px_1fr] gap-5 py-7 ${hasBorderBottom ? "border-b border-dars-rule-light" : ""}`}
     >
       <div className="flex flex-col items-center gap-2.5 pt-0.5">
         <span className="font-serif text-xl font-bold text-dars-terra italic leading-none">

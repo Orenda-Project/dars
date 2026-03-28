@@ -218,7 +218,7 @@ export function LandingTemplate() {
             </a>
           ))}
         </div>
-        <div>© 2025 Taleemabad</div>
+        <div>© 2026 Taleemabad</div>
       </footer>
 
     </main>

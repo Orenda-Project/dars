@@ -9,8 +9,7 @@ interface StepItemProps {
 export function StepItem({ num, title, desc, code, isFirst = false }: StepItemProps) {
   return (
     <div
-      className={`grid gap-5 py-8 border-b border-dars-rule-light ${isFirst ? "border-t border-dars-rule-light" : ""} items-start`}
-      style={{ gridTemplateColumns: "40px 1fr" }}
+      className={`grid grid-cols-[40px_1fr] gap-5 py-8 border-b border-dars-rule-light ${isFirst ? "border-t border-dars-rule-light" : ""} items-start`}
     >
       <span className="font-serif text-2xl font-bold text-dars-terra italic mt-0.5">
         {num}
