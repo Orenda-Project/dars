@@ -25,7 +25,7 @@ export function PlanWindow() {
       </div>
 
       {/* Window body */}
-      <div className="grid" style={{ gridTemplateColumns: "200px 1fr" }}>
+      <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr]">
         {/* Sidebar — hidden on mobile */}
         <div
           className="border-r p-5 hidden sm:block"

@@ -111,7 +111,7 @@ export function LandingTemplate() {
       <section className="bg-dars-parchment px-14 py-24 border-b border-dars-rule-light sm:px-6 sm:py-16">
         <div className="flex items-baseline gap-4 mb-13">
           <span className="font-serif text-[13px] text-dars-terra italic">I.</span>
-          <h2 className="font-serif text-[30px] font-bold text-dars-ink tracking-[-0.5px]">
+          <h2 className="font-serif text-[30px] sm:text-2xl font-bold text-dars-ink tracking-[-0.5px]">
             Everything a curriculum product needs.
           </h2>
         </div>
@@ -138,7 +138,7 @@ export function LandingTemplate() {
       >
         <div className="sticky top-[100px] sm:static">
           <span className="block font-serif text-[13px] text-dars-terra italic mb-2">II.</span>
-          <h2 className="font-serif text-[30px] font-bold text-dars-ink tracking-[-0.5px]">
+          <h2 className="font-serif text-[30px] sm:text-2xl font-bold text-dars-ink tracking-[-0.5px]">
             From request to classroom.
           </h2>
           <p className="text-sm text-dars-muted mt-3 leading-[1.7]">
