@@ -159,16 +159,16 @@ export function LandingTemplate() {
       </section>
 
       {/* Quote */}
-      <blockquote className="bg-dars-ink-soft px-14 py-20 border-b border-dars-rule-dark flex gap-10 items-center sm:px-6 sm:py-14 sm:gap-6 sm:flex-col sm:items-start">
+      <blockquote className="bg-dars-ink-soft px-6 py-14 border-b border-dars-rule-dark flex flex-col items-start gap-6 md:px-14 md:py-20 md:flex-row md:items-center md:gap-10">
         <span
-          className="font-serif text-[120px] sm:text-[80px] text-dars-terra flex-shrink-0 leading-none -mt-2.5"
+          className="font-serif text-[80px] md:text-[120px] text-dars-terra flex-shrink-0 leading-none -mt-2.5"
           style={{ opacity: 0.25 }}
           aria-hidden="true"
         >
           &ldquo;
         </span>
         <div>
-          <p className="font-serif text-2xl sm:text-xl italic text-dars-parchment leading-[1.55] tracking-[-0.3px]">
+          <p className="font-serif text-xl md:text-2xl italic text-dars-parchment leading-[1.55] tracking-[-0.3px]">
             A good lesson plan is not a script.<br />
             It is a{" "}
             <em className="text-dars-terra not-italic">map</em>
