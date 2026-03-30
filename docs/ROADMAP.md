@@ -70,11 +70,17 @@ Don't over-plan ahead. The value is in the reflection loop, not the upfront deta
 ---
 
 ## Phase 2.5 — Web App: Landing Page + Client Analytics Dashboard
-**Status: NOT STARTED**
+**Status: IN PROGRESS — landing page shipped**
 
 **Goal:** Ship a web app (`/webapp`) that gives clients a real UI — login, usage analytics, and account management. Also serves as the public-facing landing page for Dars. This is a high-leverage milestone that makes Dars feel like a product, not just an API.
 
-**Repo layout:** `webapp/` at the repo root (same level as `api/`). Not a package — a standalone frontend app (React + Vite or Next.js, TBD).
+**Repo layout:** `webapp/` at the repo root. Standalone Next.js 16 app (TypeScript, Tailwind v4, App Router). Not a monorepo package — uses npm with no workspace config. **Do not add a `pnpm-workspace.yaml` or root `package.json`** — this caused a Turbopack module resolution bug that required a full scaffold rebuild. Run `make webapp` to start the dev server.
+
+**Landing page: DONE**
+- Public landing page with all sections live (Hero, PlanWindow, Features, How It Works, Quote, CTA, Footer)
+- Dars design system: ink/parchment/terracotta palette, Lora serif + Geist Mono, CSS tokens via `@theme` in `globals.css`
+- Component architecture: atoms → molecules → templates → page (documented in `webapp/CLAUDE.md`)
+- Mobile responsive throughout
 
 **Scope:**
 - Public landing page (what is Dars, who it's for, CTA)
