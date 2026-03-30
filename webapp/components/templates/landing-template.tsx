@@ -133,11 +133,11 @@ export function LandingTemplate() {
       {/* How it works */}
       <section
         id="how"
-        className="bg-dars-parchment-mid px-14 py-24 border-b border-dars-rule-light grid grid-cols-[1fr_2fr] gap-20 items-start sm:px-6 sm:py-16 sm:grid-cols-1 sm:gap-10"
+        className="bg-dars-parchment-mid px-6 py-16 border-b border-dars-rule-light grid grid-cols-1 gap-10 items-start lg:px-14 lg:py-24 lg:grid-cols-[1fr_2fr] lg:gap-20"
       >
-        <div className="sticky top-[100px] sm:static">
+        <div className="lg:sticky lg:top-[100px]">
           <span className="block font-serif text-[13px] text-dars-terra italic mb-2">II.</span>
-          <h2 className="font-serif text-[30px] sm:text-2xl font-bold text-dars-ink tracking-[-0.5px]">
+          <h2 className="font-serif text-2xl lg:text-[30px] font-bold text-dars-ink tracking-[-0.5px]">
             From request to classroom.
           </h2>
           <p className="text-sm text-dars-muted mt-3 leading-[1.7]">
