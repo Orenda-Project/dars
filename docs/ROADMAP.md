@@ -86,6 +86,7 @@ Don't over-plan ahead. The value is in the reflection loop, not the upfront deta
 - Super-admin panel (you): create and manage clients, view all usage
 - Client self-service (later, within this phase or next): clients manage their own users
 - Coverage map: show which regions of Pakistan are supported (by province/board), and which books and languages are available for LP generation
+- LP parameter configuration UI: clients set their default LP generation parameters (province/board, grade range, subjects, language, output format preferences) through the web app rather than hardcoding them in API calls — stored per-client, applied automatically on generation
 
 **Depends on:** Phase 1 complete — needs LP data to show analytics against.
 
@@ -162,3 +163,4 @@ Ideas raised but not placed in a phase yet:
 - Student-aware LP generation (LP knows class composition)
 - Teacher priorities and trends as LP context
 - Multi-language support beyond bilingual
+- BYOB
