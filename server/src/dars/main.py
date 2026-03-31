@@ -10,6 +10,7 @@ handler.setFormatter(colorlog.ColoredFormatter(
 logging.basicConfig(level=logging.INFO, handlers=[handler])
 
 
+import dars.webhooks.models  # noqa: F401 — registers WebhookDelivery with SQLAlchemy Base
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
 from dars.lesson_plans.router import router as lesson_plans_router
