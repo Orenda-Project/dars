@@ -7,10 +7,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.config import settings
-
-logger = logging.getLogger(__name__)
 from dars.lesson_plans.models import LessonPlan
 from dars.lesson_plans.schemas import LessonPlanCreateRequest
+
+logger = logging.getLogger(__name__)
 
 
 async def _call_lp_assistant(request: LessonPlanCreateRequest) -> dict:
@@ -62,93 +62,57 @@ async def generate_lesson_plan_task(
     client_id: uuid.UUID,
     webhook_url: str | None,
     request: LessonPlanCreateRequest,
-    db: AsyncSession,
 ) -> None:
-    """Background task: generate LP via assistant, update status, fire webhook."""
-    result = await db.execute(
-        select(LessonPlan).where(LessonPlan.id == lp_id, LessonPlan.client_id == client_id)
-    )
-    lp = result.scalar_one_or_none()
-    if lp is None:
-        logger.error("generate_lesson_plan_task: LP not found lp_id=%s", lp_id)
-        return
+    """Background task: opens its own DB session, generates LP, fires webhook."""
+    from dars.database import AsyncSessionLocal
 
-    try:
-        logger.info(
-            "Calling LP assistant for lp_id=%s grade=%s subject=%s page=%s",
-            lp.id, request.grade, request.subject, request.page_number,
+    event: str = "lesson_plan.error"
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(LessonPlan).where(LessonPlan.id == lp_id, LessonPlan.client_id == client_id)
         )
-        result_data = await _call_lp_assistant(request)
-        logger.info("LP assistant responded for lp_id=%s status=%s", lp.id, result_data.get("status"))
-        lp.content = result_data.get("lesson_plan")
-        lp.content_bilingual = result_data.get("lesson_plan_bilingual")
-        lp.tags = result_data.get("tags") or {}
-        lp.metadata_ = result_data.get("metadata") or {}
-        lp.status = "READY"
-        event = "lesson_plan.ready"
-    except Exception as e:
-        logger.error("LP assistant failed for lp_id=%s: %s", lp.id, e)
-        lp.status = "ERROR"
-        event = "lesson_plan.error"
+        lp = result.scalar_one_or_none()
+        if lp is None:
+            logger.error("generate_lesson_plan_task: LP not found lp_id=%s", lp_id)
+            return
 
-    lp.updated_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(lp)
+        try:
+            logger.info(
+                "Calling LP assistant for lp_id=%s grade=%s subject=%s page=%s",
+                lp.id, request.grade, request.subject, request.page_number,
+            )
+            result_data = await _call_lp_assistant(request)
+            logger.info("LP assistant responded for lp_id=%s status=%s", lp.id, result_data.get("status"))
+            lp.content = result_data.get("lesson_plan")
+            lp.content_bilingual = result_data.get("lesson_plan_bilingual")
+            lp.tags = result_data.get("tags") or {}
+            lp.metadata_ = result_data.get("metadata") or {}
+            lp.status = "READY"
+            event = "lesson_plan.ready"
+        except Exception as e:
+            logger.error("LP assistant failed for lp_id=%s: %s", lp.id, e)
+            lp.status = "ERROR"
 
-    if webhook_url:
-        from dars.lesson_plans.schemas import LessonPlanResponse
-        from dars.webhooks.service import deliver_webhook
-        payload = {
-            "event": event,
-            "lesson_plan": LessonPlanResponse.model_validate(lp).model_dump(mode="json"),
-        }
-        await deliver_webhook(
-            db=db,
-            client_id=client_id,
-            lesson_plan_id=lp.id,
-            webhook_url=webhook_url,
-            event=event,
-            payload=payload,
-        )
+        lp.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(lp)
 
-
-# Keep create_lesson_plan for backward compatibility with existing tests
-async def create_lesson_plan(
-    db: AsyncSession,
-    client_id: uuid.UUID,
-    request: LessonPlanCreateRequest,
-) -> LessonPlan:
-    lp = LessonPlan(
-        client_id=client_id,
-        external_ref=request.external_ref,
-        grade=request.grade,
-        subject=request.subject,
-        topic=request.topic,
-        page_number=request.page_number,
-        class_strength=request.class_strength,
-        status="PENDING",
-    )
-    db.add(lp)
-    await db.commit()
-    await db.refresh(lp)
-
-    try:
-        logger.info("Calling LP assistant for lp_id=%s grade=%s subject=%s page=%s", lp.id, request.grade, request.subject, request.page_number)
-        result = await _call_lp_assistant(request)
-        logger.info("LP assistant responded for lp_id=%s status=%s", lp.id, result.get("status"))
-        lp.content = result.get("lesson_plan")
-        lp.content_bilingual = result.get("lesson_plan_bilingual")
-        lp.tags = result.get("tags") or {}
-        lp.metadata_ = result.get("metadata") or {}
-        lp.status = "READY"
-    except Exception as e:
-        logger.error("LP assistant failed for lp_id=%s: %s", lp.id, e)
-        lp.status = "ERROR"
-
-    lp.updated_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(lp)
-    return lp
+        if webhook_url:
+            from dars.lesson_plans.schemas import LessonPlanResponse
+            from dars.webhooks.service import deliver_webhook
+            payload = {
+                "event": event,
+                "lesson_plan": LessonPlanResponse.model_validate(lp).model_dump(mode="json"),
+            }
+            await deliver_webhook(
+                db=db,
+                client_id=client_id,
+                lesson_plan_id=lp.id,
+                webhook_url=webhook_url,
+                event=event,
+                payload=payload,
+            )
 
 
 async def list_lesson_plans(

@@ -35,7 +35,6 @@ async def create_lesson_plan_endpoint(
         client_id=current_client.id,
         webhook_url=current_client.webhook_url,
         request=body,
-        db=db,
     )
     return LessonPlanResponse.model_validate(lp)
 
