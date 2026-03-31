@@ -156,3 +156,21 @@ async def test_patch_client_clears_webhook_url(http_client, db_session):
     )
     assert response.status_code == 200
     assert response.json()["webhook_url"] is None
+
+
+async def test_patch_client_not_found(http_client):
+    response = await http_client.patch(
+        f"/admin/clients/{uuid.uuid4()}",
+        json={"webhook_url": "https://example.com/webhook"},
+        headers={"X-Admin-Secret": "dev-secret"},
+    )
+    assert response.status_code == 404
+
+
+async def test_patch_client_requires_admin_secret(http_client, db_session):
+    client, _ = await create_client(db_session, name="Test Client")
+    response = await http_client.patch(
+        f"/admin/clients/{client.id}",
+        json={"webhook_url": "https://example.com/webhook"},
+    )
+    assert response.status_code == 403
