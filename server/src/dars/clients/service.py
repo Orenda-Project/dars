@@ -28,6 +28,17 @@ async def create_client(db: AsyncSession, name: str) -> tuple[Client, str]:
     return client, raw_key
 
 
+async def update_client(
+    db: AsyncSession,
+    client: Client,
+    webhook_url: str | None,
+) -> Client:
+    client.webhook_url = webhook_url
+    await db.commit()
+    await db.refresh(client)
+    return client
+
+
 async def get_client_by_api_key(db: AsyncSession, raw_key: str) -> Client | None:
     """Look up active client by raw API key. Returns None if not found or inactive."""
     key_hash = _hash_key(raw_key)

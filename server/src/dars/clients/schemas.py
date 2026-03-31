@@ -22,6 +22,11 @@ class ClientPublicResponse(BaseModel):
     id: uuid.UUID
     name: str
     is_active: bool
+    webhook_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ClientUpdateRequest(BaseModel):
+    webhook_url: str | None = None
