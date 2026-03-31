@@ -3,13 +3,21 @@
 ## What Taleemabad does
 Taleemabad is an edtech company that provides AI-powered teaching tools to schools in Pakistan. Core product is a curriculum-aligned lesson plan generator and related classroom tools.
 
+## Who Dars serves
+
+Dars has two audiences:
+1. **Teachers directly** — via WhatsApp, the Dars web app, or direct access. This is the product vision; teacher value leads the story.
+2. **FDS-style edtech teams** — integrate via the Dars API to deliver LPs to their own teachers at scale. These are the primary customers for Phase 1.
+
+The webapp copy and product narrative lead with teacher value. FDS/API teams get their own dedicated section, not the headline.
+
 ## Teams relevant to Dars
 
 ### FDS (Forward Deployed Specialists) teams
 - Go into regions (cities, districts) and work directly with teachers
 - Goal: find product-market fit for Taleemabad tools in different contexts
 - Often request lesson plans customized for their teachers — this is the primary demand driver for Dars
-- They are the **B2B clients** that Dars serves
+- They are the **B2B clients** that Dars serves in Phase 1
 
 ### Core / Platform team
 - Maintains `taleemabad-core` (Django monolith) — the main product
@@ -82,9 +90,19 @@ All of these follow a similar pattern: curriculum metadata in → AI-generated c
 - LP generation must remain usable without any teacher/student/class context — these are additive enrichments, not requirements
 - Teacher priorities, trends, performance data (from Digital Coach) will eventually feed into LP personalization
 
+## Curriculum coverage
+Dars covers Pakistan curriculum boards across core subjects from KG through Class 10:
+- **Punjab Board** — provincial curriculum, Punjab province
+- **Sindh Board** — provincial curriculum, Sindh province
+- **AKU-EB** (Aga Khan University Examination Board) — private board
+- **ICT** — Islamabad Capital Territory (national/federal curriculum)
+
+## Product attribution
+The official copyright/brand line for Dars output is: **Taleemabad | LP Team**
+
 ## Vocabulary
 - **LP** — Lesson Plan
 - **FDS** — Forward Deployed Specialists (regional B2B clients)
-- **ICT / Punjab** — curriculum types (ICT = national, Punjab = provincial)
+- **ICT / Punjab / Sindh / AKU-EB** — curriculum/board types
 - **Bilingual** — English + Urdu version of the lesson plan
 - **Digital Coach** — lecture recording + feedback service

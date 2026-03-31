@@ -63,6 +63,30 @@ Copy `server/.env.example` to `server/.env` and fill in values before running. R
 
 Switch environments: `supabase link --project-ref <ref>` then `supabase db push`. Each env gets its own `DATABASE_URL`.
 
+## Design system
+The Dars design system lives in `webapp-archive/pen/theme.pen`. It is the source of truth for colors, typography, and layout rhythm.
+
+**To read it:** use the pencil MCP `batch_get` tool — never use `Read` or `Grep` on `.pen` files, the contents are encrypted and only accessible via pencil MCP tools.
+
+Key tokens (read theme.pen for full detail):
+- **Ink** `#1c1410` — dark bg, hero, nav
+- **Ink Soft** `#2c2420` — quote section bg
+- **Terracotta** `#bf4e30` — CTAs, numbers, accents (primary brand color)
+- **Terra Light** `#e8a07a` — code keys, badges
+- **Parchment** `#faf7f2` — light section bg
+- **Parchment Mid** `#f0ebe3` — alternating sections
+- **Muted** `#7a6b62` — body text on light
+- **Muted Light** `#a89890` — body text on dark
+
+Typography:
+- **Display / headings** — Georgia or Lora serif, tight tracking
+- **UI / body** — Inter, 13px, line-height 1.75
+- **Eyebrow / labels** — Inter, 11px, weight 700, ALL CAPS, tracking 2px, terracotta
+
+Visual language: manuscript + parchment. Sections alternate dark (Ink) / light (Parchment) from top to bottom. Terracotta is the only accent color — no teal, no blue, no gradients.
+
+When doing any design, branding, or frontend work, read theme.pen first via the pencil MCP before making color or typography decisions.
+
 ## Keeping docs current
 - When new or corrected information about Taleemabad (teams, services, vocabulary) comes up in conversation, update `docs/context/taleemabad.md` immediately — don't wait to be asked.
 - When a roadmap phase completes, update `docs/ROADMAP.md` status and reflect before proceeding.
@@ -75,6 +99,8 @@ Switch environments: `supabase link --project-ref <ref>` then `supabase db push`
 - UUIDs everywhere for IDs
 - Migrations go in `supabase/migrations/` as plain SQL files named `YYYYMMDDHHMMSS_description.sql`
 - Tests use an in-memory SQLite via `aiosqlite` — no real Supabase connection needed for tests
+- **API key format:** `dars_<urlsafe-base64>` — the prefix is `dars_`, not `drs_live_` or any other variant
+- **Webapp copy voice:** leads with teacher value first; FDS/API teams get a dedicated heavy section but are not the headline audience
 
 ## Gotchas
 - Use `sqlalchemy.types.Uuid` NOT `sqlalchemy.dialects.postgresql.UUID` — the PG dialect breaks SQLite tests

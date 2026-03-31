@@ -23,7 +23,6 @@ async def _call_lp_assistant(request: LessonPlanCreateRequest) -> dict:
         "exercise_page_number": request.exercise_page_number,
         "custom_prompt": request.custom_prompt,
         "generate_bilingual": request.generate_bilingual,
-        "reasoning_enabled": request.reasoning_enabled,
     }
     async with httpx.AsyncClient(timeout=300.0) as http:
         response = await http.post(
@@ -70,7 +69,9 @@ async def generate_lesson_plan_task(
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(LessonPlan).where(LessonPlan.id == lp_id, LessonPlan.client_id == client_id)
+            select(LessonPlan).where(
+                LessonPlan.id == lp_id, LessonPlan.client_id == client_id
+            )
         )
         lp = result.scalar_one_or_none()
         if lp is None:
@@ -80,10 +81,17 @@ async def generate_lesson_plan_task(
         try:
             logger.info(
                 "Calling LP assistant for lp_id=%s grade=%s subject=%s page=%s",
-                lp.id, request.grade, request.subject, request.page_number,
+                lp.id,
+                request.grade,
+                request.subject,
+                request.page_number,
             )
             result_data = await _call_lp_assistant(request)
-            logger.info("LP assistant responded for lp_id=%s status=%s", lp.id, result_data.get("status"))
+            logger.info(
+                "LP assistant responded for lp_id=%s status=%s",
+                lp.id,
+                result_data.get("status"),
+            )
             lp.content = result_data.get("lesson_plan")
             lp.content_bilingual = result_data.get("lesson_plan_bilingual")
             lp.tags = result_data.get("tags") or {}
@@ -101,9 +109,12 @@ async def generate_lesson_plan_task(
         if webhook_url:
             from dars.lesson_plans.schemas import LessonPlanResponse
             from dars.webhooks.service import deliver_webhook
+
             payload = {
                 "event": event,
-                "lesson_plan": LessonPlanResponse.model_validate(lp).model_dump(mode="json"),
+                "lesson_plan": LessonPlanResponse.model_validate(lp).model_dump(
+                    mode="json"
+                ),
             }
             await deliver_webhook(
                 db=db,
@@ -122,7 +133,9 @@ async def list_lesson_plans(
     offset: int = 0,
 ) -> tuple[list[LessonPlan], int]:
     count_result = await db.execute(
-        select(func.count()).select_from(LessonPlan).where(LessonPlan.client_id == client_id)
+        select(func.count())
+        .select_from(LessonPlan)
+        .where(LessonPlan.client_id == client_id)
     )
     total = count_result.scalar_one()
 

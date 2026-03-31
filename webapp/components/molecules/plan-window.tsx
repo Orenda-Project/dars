@@ -37,9 +37,9 @@ export function PlanWindow() {
           {[
             { label: "The Water Cycle", active: true },
             { label: "Fractions — Grade 5", active: false },
-            { label: "Urdu Comprehension", active: false },
+            { label: "Urdu Reading — KG", active: false },
             { label: "Forces & Motion", active: false },
-            { label: "Poetry Analysis", active: false },
+            { label: "Poetry — Class 7", active: false },
           ].map(({ label, active }) => (
             <div
               key={label}
@@ -73,7 +73,7 @@ export function PlanWindow() {
               className="text-[10px] font-semibold px-2 py-[3px] rounded-full whitespace-nowrap"
               style={{ background: "rgba(191,78,48,0.15)", color: "#e8a07a" }}
             >
-              AI Generated
+              Ready
             </div>
           </div>
 
@@ -81,9 +81,9 @@ export function PlanWindow() {
             Learning Objectives
           </div>
           {[
-            "Identify and describe the stages of the water cycle",
-            "Explain evaporation and condensation using examples",
-            "Describe how precipitation forms and its effects",
+            "Identify and explain the three stages of the water cycle",
+            "Connect evaporation and condensation to daily weather",
+            "Describe how precipitation forms and reaches the ground",
           ].map((obj) => (
             <div key={obj} className="flex items-center gap-2 text-[12px] mb-1.5" style={{ color: "#8a7a72" }}>
               <div className="w-[5px] h-[5px] rounded-full flex-shrink-0 bg-dars-terra opacity-60" />
@@ -95,10 +95,10 @@ export function PlanWindow() {
             Activities
           </div>
           {[
-            { num: "i.", text: "Warm-up discussion — \"Where does rain come from?\"", dur: "5 min" },
-            { num: "ii.", text: "Diagram labelling exercise", dur: "10 min" },
-            { num: "iii.", text: "Group experiment — evaporation in a bag", dur: "20 min" },
-            { num: "iv.", text: "Exit ticket — 3 facts learned today", dur: "5 min" },
+            { num: "i.", text: "Opening — Where does rain come from?", dur: "5 min" },
+            { num: "ii.", text: "Diagram labelling — complete the water cycle", dur: "10 min" },
+            { num: "iii.", text: "Experiment — evaporation in a sealed bag", dur: "20 min" },
+            { num: "iv.", text: "Exit ticket — three things I learned today", dur: "5 min" },
           ].map(({ num, text, dur }) => (
             <div
               key={num}
