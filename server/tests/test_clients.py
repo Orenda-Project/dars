@@ -30,10 +30,15 @@ async def db_session():
 
 @pytest.fixture(scope="function")
 async def http_client(db_session):
+    import dars.config as _cfg
+
+    original = _cfg.settings.admin_secret
+    _cfg.settings.admin_secret = "dev-secret"
     app.dependency_overrides[get_db] = lambda: db_session
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+    _cfg.settings.admin_secret = original
 
 
 @pytest.fixture(scope="function")
