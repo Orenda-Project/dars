@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.clients.models import Client
@@ -11,18 +11,32 @@ from dars.lesson_plans.schemas import (
     LessonPlanListResponse,
     LessonPlanResponse,
 )
-from dars.lesson_plans.service import create_lesson_plan, get_lesson_plan, list_lesson_plans
+from dars.lesson_plans.service import (
+    generate_lesson_plan_task,
+    get_lesson_plan,
+    list_lesson_plans,
+    queue_lesson_plan,
+)
 
 router = APIRouter(prefix="/api/v1/lesson-plans", tags=["lesson-plans"])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=LessonPlanResponse)
+@router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=LessonPlanResponse)
 async def create_lesson_plan_endpoint(
     body: LessonPlanCreateRequest,
+    background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:
-    lp = await create_lesson_plan(db, client_id=current_client.id, request=body)
+    lp = await queue_lesson_plan(db, client_id=current_client.id, request=body)
+    background_tasks.add_task(
+        generate_lesson_plan_task,
+        lp_id=lp.id,
+        client_id=current_client.id,
+        webhook_url=current_client.webhook_url,
+        request=body,
+        db=db,
+    )
     return LessonPlanResponse.model_validate(lp)
 
 

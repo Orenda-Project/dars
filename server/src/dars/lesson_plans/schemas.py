@@ -16,7 +16,6 @@ class LessonPlanCreateRequest(BaseModel):
     exercise_page_number: str = ""
     custom_prompt: str = ""
     generate_bilingual: bool = False
-    reasoning_enabled: bool = True
 
 
 class LessonPlanResponse(BaseModel):
