@@ -1,4 +1,14 @@
+import logging
+
+import colorlog
 from fastapi import FastAPI
+
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter(
+    "%(log_color)s%(asctime)s %(levelname)s%(reset)s %(name)s — %(message)s"
+))
+logging.basicConfig(level=logging.INFO, handlers=[handler])
+
 
 from dars.clients.router import admin_router, client_router
 from dars.config import settings

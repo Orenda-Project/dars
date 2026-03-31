@@ -35,12 +35,22 @@ docs/
 | Feature design / requirements | `docs/superpowers/specs/` |
 | Step-by-step implementation plans | `docs/superpowers/plans/` |
 | Project-wide conventions, gotchas | `CLAUDE.md` |
+| Personal notes, cheat sheets, decisions | `docs/personal/` |
 | Memory index | `~/.claude/projects/.../MEMORY.md` |
 
 ## When to read a doc
 Don't load context docs preemptively. Load them when:
 - The task touches the domain the doc covers
 - A memory index entry says "see docs/context/X.md for details"
+
+## Personal notes (`docs/personal/`)
+
+For human reading only — not referenced by CLAUDE.md or memory. Use judgment on placement:
+
+- **Dedicated file** (`docs/personal/<topic>.md`) — when the topic is substantial enough to stand on its own (e.g. a full primer, a detailed cheat sheet, a significant decision with context). If in doubt, dedicated file.
+- **Append to `notes.md`** — for short, miscellaneous items that don't warrant their own file (a quick decision, a one-liner reminder, a small table).
+
+If the topic size is ambiguous, ask before creating.
 
 ## Keeping docs current
 - Update a doc when facts in it change — don't leave stale content.

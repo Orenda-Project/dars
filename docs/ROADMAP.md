@@ -171,3 +171,5 @@ Ideas raised but not placed in a phase yet:
 - Multi-language support beyond bilingual
 - BYOB
 - **MCP server** — expose Dars as an MCP server so AI tools (Claude, Cursor, etc.) can generate and retrieve lesson plans natively. Placement TBD.
+- Bring LP Reviewer into Dars
+

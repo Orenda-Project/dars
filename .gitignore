@@ -1,6 +1,9 @@
 # Brainstorm sessions
 .superpowers/
 
+# Claude Code local state (memory lives in ~/.claude, not in repo)
+.claude/projects/
+
 # Environment
 .env
 *.env.local
