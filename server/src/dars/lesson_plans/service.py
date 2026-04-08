@@ -30,6 +30,17 @@ async def _call_lp_assistant(request: LessonPlanCreateRequest) -> dict:
             json=payload,
             headers={"api-key": settings.lp_assistant_api_key},
         )
+        logger.info(
+            "LP assistant HTTP response: status=%s url=%s",
+            response.status_code,
+            response.url,
+        )
+        if response.is_error:
+            logger.error(
+                "LP assistant error response body: %s", response.text
+            )
+        else:
+            logger.debug("LP assistant response body (first 500 chars): %.500s", response.text)
         response.raise_for_status()
         return response.json()
 
@@ -98,6 +109,9 @@ async def generate_lesson_plan_task(
             lp.metadata_ = result_data.get("metadata") or {}
             lp.status = "READY"
             event = "lesson_plan.ready"
+        except httpx.HTTPStatusError:
+            # response body already logged inside _call_lp_assistant
+            lp.status = "ERROR"
         except Exception as e:
             logger.error("LP assistant failed for lp_id=%s: %s", lp.id, e)
             lp.status = "ERROR"

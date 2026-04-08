@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 handler = colorlog.StreamHandler()
 handler.setFormatter(colorlog.ColoredFormatter(
-    "%(log_color)s%(asctime)s %(levelname)s%(reset)s %(name)s — %(message)s"
+    "%(log_color)s%(asctime)s %(levelname)s%(reset)s %(blue)s%(name)s%(reset)s — %(message)s"
 ))
 logging.basicConfig(level=logging.INFO, handlers=[handler])
 
