@@ -11,6 +11,16 @@ Dars has two audiences:
 
 The webapp copy and product narrative lead with teacher value. FDS/API teams get their own dedicated section, not the headline.
 
+## Client account model (evolving)
+
+Currently a `Client` is just a name, API key, and optional webhook URL — created by an admin.
+
+The direction is **self-serve client accounts**:
+- Clients sign up with email + password from the webapp
+- Client config stored on the account: default curriculum board (e.g. Punjab, ICT), grade range, subjects, language preferences
+- Account is the foundation for: feature toggles (which Dars features the client has access to), analytics dashboard, LP parameter defaults, billing (future)
+- API key auth remains for programmatic access; session auth (email/password → token) is for webapp login
+
 ## Teams relevant to Dars
 
 ### FDS (Forward Deployed Specialists) teams

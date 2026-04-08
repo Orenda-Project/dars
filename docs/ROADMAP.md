@@ -21,8 +21,9 @@ Ordered roughly by priority. No phases — just work. Move things up or down as 
 
 ## Soon
 
+- **Client accounts** — self-serve signup (email + password) from the webapp; `Client` model gets `email`, `password_hash`, and `config` (curriculum board, default params, etc.); login returns a session token; foundation for feature toggles, analytics, and settings UI
 - **Client analytics dashboard** — LP generation count over time, breakdown by subject/grade/language, recent LP history
-- **Client login** — session auth for the webapp (JWT from FastAPI or Supabase Auth)
+- **EG integration — Phase 1 (independent)** — exam generation as a standalone feature in dars: `POST /exam-generations` (async, 202), webhook receiver from `UG_EG`, `GET /exam-generations/{id}`, dars fires client webhook on completion, webapp UI (grade/subject/curriculum/page ranges/question types). Mirrors LP async flow.
 - **`@dars/mcp` server** — wraps `@dars/node` as MCP tools so AI agents can generate LPs natively; depends on `@dars/node` being published
 - **`@dars/react` components** — `<LPCreationForm />` and `<LPRenderer />`; depends on `@dars/node` middleware
 - **Store `curriculum` on LP** — currently hardcoded to `"ICT"` in edit flow; should be persisted at creation time
@@ -31,6 +32,7 @@ Ordered roughly by priority. No phases — just work. Move things up or down as 
 
 ## Later
 
+- **EG integration — Phase 2 (LP+EG unified)** — generate an exam directly from an existing LP (pre-fill grade/subject/curriculum/pages from LP), LP detail view shows associated exams, optional bundled LP+EG creation in one request
 - **Engine migration** — copy `UG_LessonPlan` into `dars/lp_engine/`, migrate textbook/OCR data to Supabase, remove HTTP dependency on `lp-assistant.taleemabad.com`
 - **LP editing UI** — edit history view (diff original vs. edited), manual edit in webapp
 - **Super-admin panel** — create and manage clients, view all usage
