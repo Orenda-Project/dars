@@ -37,15 +37,16 @@ Picks work from the roadmap, implements it fully, and ships it. Handles the full
 
 1. Read roadmap, identify item
 2. Open bead
-3. Explore relevant code — never propose before reading
-4. Propose approach (skip in `--auto` mode) — what changes, which files, any risks
-5. Wait for confirm (skip in `--auto` mode)
-6. Implement
-7. Write tests, run `make test` — fix until green
-8. Update `docs/conventions.md` and `.beads/failures.jsonl` if needed
-9. Close bead with resolution
-10. Commit
-11. Remove item from roadmap "Up next"
+3. Create git branch — `git checkout -b feat/<slug>` where slug is a short kebab-case name derived from the item (e.g. `feat/node-sdk`, `feat/webhook-dlq`)
+4. Explore relevant code — never propose before reading
+5. Propose approach (skip in `--auto` mode) — what changes, which files, any risks
+6. Wait for confirm (skip in `--auto` mode)
+7. Implement
+8. Write tests, run `make test` — fix until green
+9. Update `docs/conventions.md` and `.beads/failures.jsonl` if needed
+10. Close bead with resolution
+11. Commit to the feature branch
+12. Remove item from roadmap "Up next"
 
 ## Rules
 
