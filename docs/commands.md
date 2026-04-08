@@ -36,13 +36,6 @@ make db-link      # Link to a Supabase project (needs SUPABASE_PROJECT_REF)
 
 Migrations: plain SQL files in `supabase/migrations/` named `YYYYMMDDHHMMSS_description.sql`.
 
-## Packages
-
-```bash
-cd packages/dars-client && pnpm build   # Build @dars/client
-cd packages/dars-react && pnpm build    # Build @dars/react
-```
-
 ## Webapp
 
 ```bash

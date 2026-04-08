@@ -26,8 +26,6 @@
 | Folder | Contents |
 |--------|----------|
 | `server/` | FastAPI backend (Python 3.12, SQLAlchemy async, asyncpg) |
-| `packages/dars-client/` | TypeScript API client (`@dars/client`) |
-| `packages/dars-react/` | React components (`@dars/react`) |
 | `supabase/` | DB migrations (Supabase CLI) |
 | `webapp/` | Next.js web app |
 | `docs/` | All project documentation |
