@@ -7,11 +7,6 @@ from pydantic import BaseModel
 
 class LessonPlanEditRequest(BaseModel):
     edit_prompt: str
-    grade: str
-    subject: str
-    page_number: str
-    curriculum: str = "ICT"
-    class_strength: int | None = None
 
 
 class LessonPlanCreateRequest(BaseModel):

@@ -78,7 +78,7 @@ async def test_edit_lesson_plan_returns_updated_content(http_client, api_key):
     with patch("dars.lesson_plans.router.edit_lesson_plan", new=AsyncMock(return_value=mock_lp)):
         resp = await http_client.patch(
             f"/api/v1/lesson-plans/{mock_lp.id}",
-            json={"edit_prompt": "Add one more example", "grade": "3", "subject": "Maths", "page_number": "10"},
+            json={"edit_prompt": "Add one more example"},
             headers={"X-API-Key": api_key},
         )
     assert resp.status_code == 200
@@ -91,12 +91,7 @@ async def test_edit_lesson_plan_404_if_not_found(http_client, api_key):
     with patch("dars.lesson_plans.router.edit_lesson_plan", new=AsyncMock(return_value=None)):
         resp = await http_client.patch(
             "/api/v1/lesson-plans/00000000-0000-0000-0000-000000000000",
-            json={
-                "edit_prompt": "Add one more example",
-                "grade": "3",
-                "subject": "Maths",
-                "page_number": "10",
-            },
+            json={"edit_prompt": "Add one more example"},
             headers={"X-API-Key": api_key},
         )
     assert resp.status_code == 404
@@ -110,12 +105,7 @@ async def test_edit_lesson_plan_409_if_not_ready(http_client, api_key):
     ):
         resp = await http_client.patch(
             "/api/v1/lesson-plans/00000000-0000-0000-0000-000000000000",
-            json={
-                "edit_prompt": "Add one more example",
-                "grade": "3",
-                "subject": "Maths",
-                "page_number": "10",
-            },
+            json={"edit_prompt": "Add one more example"},
             headers={"X-API-Key": api_key},
         )
     assert resp.status_code == 409
@@ -124,7 +114,7 @@ async def test_edit_lesson_plan_409_if_not_ready(http_client, api_key):
 async def test_edit_lesson_plan_requires_auth(http_client):
     resp = await http_client.patch(
         "/api/v1/lesson-plans/00000000-0000-0000-0000-000000000000",
-        json={"edit_prompt": "x", "grade": "3", "subject": "Maths", "page_number": "10"},
+        json={"edit_prompt": "x"},
     )
     assert resp.status_code == 401
 

@@ -160,11 +160,11 @@ async def edit_lesson_plan(
     payload = {
         "existing_lp_html": lp.content,
         "edit_prompt": request.edit_prompt,
-        "grade": int(request.grade) if request.grade.isdigit() else request.grade,
-        "subject": request.subject,
-        "page_number": request.page_number,
-        "class_strength": request.class_strength or 30,
-        "curriculum": request.curriculum,
+        "grade": int(lp.grade) if lp.grade.isdigit() else lp.grade,
+        "subject": lp.subject,
+        "page_number": lp.page_number or "",
+        "class_strength": lp.class_strength or 30,
+        "curriculum": "ICT",
     }
 
     async with httpx.AsyncClient(timeout=300.0) as http:
