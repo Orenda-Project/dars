@@ -25,6 +25,9 @@ owner: hataf
 - `settings` is a module-level singleton instantiated at import time — tests cannot override env vars after first import
 - Test DB fixtures must declare `scope="function"` explicitly to prevent data bleed if scope is changed later
 - `*.db` files are gitignored — SQLite test.db is created by the default `database_url` config
+- Migration filenames must be unique — two files with the same `YYYYMMDDHHMMSS` prefix will conflict; increment the sequence suffix (`000001`, `000002`) within the same day
+- `curriculum` is not stored on the `LessonPlan` model — the edit flow defaults to `"ICT"`; fix tracked in roadmap
+- `lesson_plan_edits` is append-only history — each edit saves `content_before` + `content_bilingual_before` before overwriting `lp.content`; last-row wins for current state
 
 ## Keeping docs current
 
