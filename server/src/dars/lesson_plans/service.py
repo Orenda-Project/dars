@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.config import settings
 from dars.lesson_plans.models import LessonPlan
-from dars.lesson_plans.schemas import LessonPlanCreateRequest
+from dars.lesson_plans.schemas import LessonPlanCreateRequest, LessonPlanEditRequest
 
 logger = logging.getLogger(__name__)
 
@@ -144,9 +144,16 @@ async def edit_lesson_plan(
     db: AsyncSession,
     client_id: uuid.UUID,
     lp_id: uuid.UUID,
-    request: "LessonPlanEditRequest",
+    request: LessonPlanEditRequest,
 ) -> LessonPlan | None:
-    """Call LP Assistant /api/edit-lp, save history, and persist updated content. Returns None if not found."""
+    """Call LP Assistant /api/edit-lp, save history, and persist updated content atomically.
+
+    History row and content update are committed together — if the HTTP call or
+    commit fails, neither the history nor the LP content changes.
+    Returns None if not found.
+    """
+    from dars.lesson_plans.edit_models import LessonPlanEdit
+
     lp = await get_lesson_plan(db, client_id=client_id, lp_id=lp_id)
     if lp is None:
         return None
@@ -156,6 +163,17 @@ async def edit_lesson_plan(
 
     if not lp.content:
         raise ValueError("Lesson plan has no content to edit.")
+
+    # Stage history row before HTTP call — committed atomically with content update below.
+    # If the HTTP call raises, the session is never committed and this row is discarded.
+    edit_record = LessonPlanEdit(
+        client_id=client_id,
+        lp_id=lp_id,
+        edit_prompt=request.edit_prompt,
+        content_before=lp.content,
+        content_bilingual_before=lp.content_bilingual,
+    )
+    db.add(edit_record)
 
     payload = {
         "existing_lp_html": lp.content,
@@ -182,17 +200,6 @@ async def edit_lesson_plan(
             logger.error("LP assistant edit error response body: %s", response.text)
         response.raise_for_status()
         result = response.json()
-
-    from dars.lesson_plans.edit_models import LessonPlanEdit
-
-    edit_record = LessonPlanEdit(
-        client_id=client_id,
-        lp_id=lp_id,
-        edit_prompt=request.edit_prompt,
-        content_before=lp.content,
-        content_bilingual_before=lp.content_bilingual,
-    )
-    db.add(edit_record)
 
     lp.content = result.get("edited_lesson_plan_english") or lp.content
     lp.content_bilingual = result.get("edited_lesson_plan_bilingual") or lp.content_bilingual
