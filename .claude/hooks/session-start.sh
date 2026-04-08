@@ -5,18 +5,24 @@ if [ ! -f "$BEADS_FILE" ]; then
   exit 0
 fi
 
-OPEN=$(grep -E '"status":\s*"(open|in_progress)"' "$BEADS_FILE" 2>/dev/null | tail -10)
+OPEN=$(python3 -c "
+import json, sys
+seen = {}
+with open('$BEADS_FILE') as f:
+    for line in f:
+        try:
+            d = json.loads(line)
+            if 'id' in d:
+                seen[d['id']] = d
+        except: pass
+for d in seen.values():
+    if d.get('status') in ('open', 'in_progress'):
+        print(f'  [{d.get(\"priority\",\"?\").upper()}] {d.get(\"id\",\"?\")}: {d.get(\"title\",\"?\")}')
+" 2>/dev/null)
 
 if [ -n "$OPEN" ]; then
   echo "=== OPEN BEADS ==="
-  echo "$OPEN" | python3 -c "
-import json,sys
-for line in sys.stdin:
-    try:
-        d=json.loads(line)
-        print(f'  [{d.get(\"priority\",\"?\").upper()}] {d.get(\"id\",\"?\")}: {d.get(\"title\",\"?\")}')
-    except: pass
-"
+  echo "$OPEN"
   echo "=================="
 fi
 

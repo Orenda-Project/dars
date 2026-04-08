@@ -6,7 +6,17 @@ WARNINGS=""
 
 # Check for open beads
 if [ -f "$BEADS_FILE" ]; then
-  OPEN_COUNT=$(grep -cE '"status":\s*"(open|in_progress)"' "$BEADS_FILE" 2>/dev/null || echo 0)
+  OPEN_COUNT=$(python3 -c "
+import json
+seen = {}
+with open('$BEADS_FILE') as f:
+    for line in f:
+        try:
+            d = json.loads(line)
+            if 'id' in d: seen[d['id']] = d
+        except: pass
+print(sum(1 for d in seen.values() if d.get('status') in ('open','in_progress')))
+" 2>/dev/null || echo 0)
   if [ "$OPEN_COUNT" -gt 0 ]; then
     WARNINGS="$WARNINGS\n- $OPEN_COUNT open bead(s) — update status if work is done"
   fi
