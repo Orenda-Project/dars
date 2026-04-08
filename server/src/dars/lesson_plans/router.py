@@ -8,10 +8,12 @@ from dars.database import get_db
 from dars.deps import get_current_client
 from dars.lesson_plans.schemas import (
     LessonPlanCreateRequest,
+    LessonPlanEditRequest,
     LessonPlanListResponse,
     LessonPlanResponse,
 )
 from dars.lesson_plans.service import (
+    edit_lesson_plan,
     generate_lesson_plan_task,
     get_lesson_plan,
     list_lesson_plans,
@@ -51,6 +53,22 @@ async def list_lesson_plans_endpoint(
         items=[LessonPlanResponse.model_validate(lp) for lp in items],
         total=total,
     )
+
+
+@router.patch("/{lp_id}", response_model=LessonPlanResponse)
+async def edit_lesson_plan_endpoint(
+    lp_id: uuid.UUID,
+    body: LessonPlanEditRequest,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> LessonPlanResponse:
+    try:
+        lp = await edit_lesson_plan(db, client_id=current_client.id, lp_id=lp_id, request=body)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    if lp is None:
+        raise HTTPException(status_code=404, detail="Lesson plan not found")
+    return LessonPlanResponse.model_validate(lp)
 
 
 @router.get("/{lp_id}", response_model=LessonPlanResponse)

@@ -51,6 +51,84 @@ async def test_create_lesson_plan_returns_202_pending(http_client, api_key):
     assert "id" in data
 
 
+async def test_edit_lesson_plan_returns_updated_content(http_client, api_key):
+    import uuid
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock
+    from dars.lesson_plans.models import LessonPlan
+
+    mock_lp = LessonPlan(
+        id=uuid.uuid4(),
+        client_id=uuid.uuid4(),
+        grade="3",
+        subject="Maths",
+        topic=None,
+        page_number="10",
+        class_strength=None,
+        content="<p>Edited content</p>",
+        content_bilingual=None,
+        status="READY",
+        metadata_={},
+        tags={},
+        external_ref=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    with patch("dars.lesson_plans.router.edit_lesson_plan", new=AsyncMock(return_value=mock_lp)):
+        resp = await http_client.patch(
+            f"/api/v1/lesson-plans/{mock_lp.id}",
+            json={"edit_prompt": "Add one more example", "grade": "3", "subject": "Maths", "page_number": "10"},
+            headers={"X-API-Key": api_key},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["content"] == "<p>Edited content</p>"
+    assert resp.json()["status"] == "READY"
+
+
+async def test_edit_lesson_plan_404_if_not_found(http_client, api_key):
+    from unittest.mock import AsyncMock
+    with patch("dars.lesson_plans.router.edit_lesson_plan", new=AsyncMock(return_value=None)):
+        resp = await http_client.patch(
+            "/api/v1/lesson-plans/00000000-0000-0000-0000-000000000000",
+            json={
+                "edit_prompt": "Add one more example",
+                "grade": "3",
+                "subject": "Maths",
+                "page_number": "10",
+            },
+            headers={"X-API-Key": api_key},
+        )
+    assert resp.status_code == 404
+
+
+async def test_edit_lesson_plan_409_if_not_ready(http_client, api_key):
+    from unittest.mock import AsyncMock
+    with patch(
+        "dars.lesson_plans.router.edit_lesson_plan",
+        new=AsyncMock(side_effect=ValueError("Cannot edit a lesson plan with status 'PENDING'.")),
+    ):
+        resp = await http_client.patch(
+            "/api/v1/lesson-plans/00000000-0000-0000-0000-000000000000",
+            json={
+                "edit_prompt": "Add one more example",
+                "grade": "3",
+                "subject": "Maths",
+                "page_number": "10",
+            },
+            headers={"X-API-Key": api_key},
+        )
+    assert resp.status_code == 409
+
+
+async def test_edit_lesson_plan_requires_auth(http_client):
+    resp = await http_client.patch(
+        "/api/v1/lesson-plans/00000000-0000-0000-0000-000000000000",
+        json={"edit_prompt": "x", "grade": "3", "subject": "Maths", "page_number": "10"},
+    )
+    assert resp.status_code == 401
+
+
 async def test_get_lesson_plan_returns_pending(http_client, api_key):
     with patch("dars.lesson_plans.router.generate_lesson_plan_task"):
         create_resp = await http_client.post(

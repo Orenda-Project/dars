@@ -140,6 +140,68 @@ async def generate_lesson_plan_task(
             )
 
 
+async def edit_lesson_plan(
+    db: AsyncSession,
+    client_id: uuid.UUID,
+    lp_id: uuid.UUID,
+    request: "LessonPlanEditRequest",
+) -> LessonPlan | None:
+    """Call LP Assistant /api/edit-lp, save history, and persist updated content. Returns None if not found."""
+    lp = await get_lesson_plan(db, client_id=client_id, lp_id=lp_id)
+    if lp is None:
+        return None
+
+    if lp.status != "READY":
+        raise ValueError(f"Cannot edit a lesson plan with status '{lp.status}'. Only READY plans can be edited.")
+
+    if not lp.content:
+        raise ValueError("Lesson plan has no content to edit.")
+
+    payload = {
+        "existing_lp_html": lp.content,
+        "edit_prompt": request.edit_prompt,
+        "grade": int(request.grade) if request.grade.isdigit() else request.grade,
+        "subject": request.subject,
+        "page_number": request.page_number,
+        "class_strength": request.class_strength or 30,
+        "curriculum": request.curriculum,
+    }
+
+    async with httpx.AsyncClient(timeout=300.0) as http:
+        response = await http.post(
+            f"{settings.lp_assistant_url}/api/edit-lp",
+            json=payload,
+            headers={"api-key": settings.lp_assistant_api_key},
+        )
+        logger.info(
+            "LP assistant edit HTTP response: status=%s url=%s",
+            response.status_code,
+            response.url,
+        )
+        if response.is_error:
+            logger.error("LP assistant edit error response body: %s", response.text)
+        response.raise_for_status()
+        result = response.json()
+
+    from dars.lesson_plans.edit_models import LessonPlanEdit
+
+    edit_record = LessonPlanEdit(
+        client_id=client_id,
+        lp_id=lp_id,
+        edit_prompt=request.edit_prompt,
+        content_before=lp.content,
+        content_bilingual_before=lp.content_bilingual,
+    )
+    db.add(edit_record)
+
+    lp.content = result.get("edited_lesson_plan_english") or lp.content
+    lp.content_bilingual = result.get("edited_lesson_plan_bilingual") or lp.content_bilingual
+    lp.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(lp)
+    return lp
+
+
 async def list_lesson_plans(
     db: AsyncSession,
     client_id: uuid.UUID,
