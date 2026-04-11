@@ -1,17 +1,21 @@
 meta {
-  name: Get Lesson Plan Endpoint
+  name: Edit Lesson Plan Endpoint
   type: http
   seq: 1
 }
 
-get {
+patch {
   url: {{base-url}}/api/v1/lesson-plans/{lp_id}
-  body: none
+  body: json
   auth: none
 }
 
 headers {
   X-API-Key: {{api-key}}
+}
+
+body:json {
+  "edit_prompt": ""
 }
 
 params:path {

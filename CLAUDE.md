@@ -12,7 +12,7 @@
 | Dev commands, env setup | [docs/commands.md](docs/commands.md) |
 | Code conventions, gotchas | [docs/conventions.md](docs/conventions.md) |
 | Design tokens, typography | [docs/design-system.md](docs/design-system.md) |
-| Company context, LP assistant API | [docs/context/taleemabad.md](docs/context/taleemabad.md) |
+| Company context, LP assistant API | [../docs/context/taleemabad.md](../docs/context/taleemabad.md) |
 | Architecture decisions | [docs/adr/README.md](docs/adr/README.md) |
 | Feature specs | [docs/specs/README.md](docs/specs/README.md) |
 | Implementation plans | [docs/plans/README.md](docs/plans/README.md) |

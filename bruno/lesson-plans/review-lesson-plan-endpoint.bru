@@ -1,0 +1,22 @@
+meta {
+  name: Review Lesson Plan Endpoint
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base-url}}/api/v1/lesson-plans/review
+  body: json
+  auth: none
+}
+
+headers {
+  X-API-Key: {{api-key}}
+}
+
+body:json {
+  {"lesson_plan_id": null,
+  "lesson_plan_html": null,
+  "subject": "",
+  "grade": 0}
+}

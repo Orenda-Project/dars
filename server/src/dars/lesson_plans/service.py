@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.config import settings
 from dars.lesson_plans.models import LessonPlan
-from dars.lesson_plans.schemas import LessonPlanCreateRequest, LessonPlanEditRequest
+from dars.lesson_plans.schemas import LessonPlanCreateRequest, LessonPlanEditRequest, LessonPlanReviewRequest
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,69 @@ async def _call_lp_assistant(request: LessonPlanCreateRequest) -> dict:
             logger.debug("LP assistant response body (first 500 chars): %.500s", response.text)
         response.raise_for_status()
         return response.json()
+
+
+_SUBJECT_MAP: dict[str, str] = {
+    "Eng": "English",
+    "Urdu": "Urdu",
+    "Maths": "Maths",
+    "Science": "Science",
+}
+
+
+async def _call_lp_reviewer(lesson_plan_html: str, subject: str, grade: int) -> dict:
+    mapped_subject = _SUBJECT_MAP.get(subject, subject)
+    payload = {
+        "lesson_plan_html": lesson_plan_html,
+        "subject": mapped_subject,
+        "grade": grade,
+    }
+    async with httpx.AsyncClient(timeout=300.0) as http:
+        response = await http.post(
+            f"{settings.lp_assistant_url}/api/review-lp",
+            json=payload,
+            headers={"api-key": settings.lp_assistant_api_key},
+        )
+        logger.info(
+            "LP reviewer HTTP response: status=%s url=%s",
+            response.status_code,
+            response.url,
+        )
+        if response.is_error:
+            logger.error("LP reviewer error response body: %s", response.text)
+        else:
+            logger.debug("LP reviewer response body (first 500 chars): %.500s", response.text)
+        response.raise_for_status()
+        return response.json()
+
+
+async def review_lesson_plan(
+    db: AsyncSession,
+    client_id: uuid.UUID,
+    request: LessonPlanReviewRequest,
+) -> dict:
+    """Review a lesson plan. If lesson_plan_id is given, fetch content, call reviewer, store result.
+    If lesson_plan_html is given, call reviewer and return without storing."""
+    if request.lesson_plan_id is not None:
+        lp = await get_lesson_plan(db, client_id=client_id, lp_id=request.lesson_plan_id)
+        if lp is None:
+            raise LookupError("Lesson plan not found")
+        if not lp.content:
+            raise ValueError("Lesson plan has no content to review.")
+        html = lp.content
+        grade = int(lp.grade) if lp.grade.isdigit() else lp.grade  # type: ignore[union-attr]
+        review = await _call_lp_reviewer(html, subject=lp.subject, grade=grade)  # type: ignore[arg-type]
+        lp.review = review
+        lp.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        return review
+    else:
+        # raw HTML path — no DB interaction
+        return await _call_lp_reviewer(
+            request.lesson_plan_html,  # type: ignore[arg-type]
+            subject=request.subject,
+            grade=request.grade,
+        )
 
 
 async def queue_lesson_plan(

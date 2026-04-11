@@ -11,6 +11,8 @@ from dars.lesson_plans.schemas import (
     LessonPlanEditRequest,
     LessonPlanListResponse,
     LessonPlanResponse,
+    LessonPlanReviewRequest,
+    LessonPlanReviewResponse,
 )
 from dars.lesson_plans.service import (
     edit_lesson_plan,
@@ -18,9 +20,25 @@ from dars.lesson_plans.service import (
     get_lesson_plan,
     list_lesson_plans,
     queue_lesson_plan,
+    review_lesson_plan,
 )
 
 router = APIRouter(prefix="/api/v1/lesson-plans", tags=["lesson-plans"])
+
+
+@router.post("/review", response_model=LessonPlanReviewResponse)
+async def review_lesson_plan_endpoint(
+    body: LessonPlanReviewRequest,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> LessonPlanReviewResponse:
+    try:
+        review = await review_lesson_plan(db, client_id=current_client.id, request=body)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    return LessonPlanReviewResponse(review=review)
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=LessonPlanResponse)

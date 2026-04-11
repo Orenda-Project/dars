@@ -5,13 +5,9 @@ meta {
 }
 
 patch {
-  url: {{base-url}}/admin/clients/:client_id
+  url: {{base-url}}/admin/clients/{client_id}
   body: json
   auth: none
-}
-
-params:path {
-  client_id: c149b4ce-b329-4c6d-931b-0f0330922d00
 }
 
 headers {
@@ -19,5 +15,9 @@ headers {
 }
 
 body:json {
-  "webhook_url": "https://webhook.site/cafd0bde-8da1-4c5e-bc30-c1a0f0e7fe9b"
+  "webhook_url": null
+}
+
+params:path {
+  client_id: 00000000-0000-0000-0000-000000000000
 }

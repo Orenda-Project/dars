@@ -29,6 +29,7 @@ class LessonPlan(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
     tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    review: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

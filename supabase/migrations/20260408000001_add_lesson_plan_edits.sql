@@ -1,4 +1,4 @@
-create table lesson_plan_edits (
+create table if not exists lesson_plan_edits (
   id          uuid primary key default gen_random_uuid(),
   client_id   uuid not null references clients(id) on delete cascade,
   lp_id       uuid not null references lesson_plans(id) on delete cascade,
