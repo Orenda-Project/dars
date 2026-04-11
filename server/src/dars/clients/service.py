@@ -39,6 +39,29 @@ async def update_client(
     return client
 
 
+async def get_client_by_email(db: AsyncSession, email: str) -> Client | None:
+    result = await db.execute(select(Client).where(Client.email == email))
+    return result.scalar_one_or_none()
+
+
+async def get_client_by_supabase_user_id(
+    db: AsyncSession, supabase_user_id: str
+) -> Client | None:
+    result = await db.execute(
+        select(Client).where(Client.supabase_user_id == supabase_user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def rotate_api_key(db: AsyncSession, client: Client) -> str:
+    """Generate a new API key for an existing client. Returns the new raw key (shown once)."""
+    raw_key = _generate_api_key()
+    client.api_key_hash = _hash_key(raw_key)
+    await db.commit()
+    await db.refresh(client)
+    return raw_key
+
+
 async def get_client_by_api_key(db: AsyncSession, raw_key: str) -> Client | None:
     """Look up active client by raw API key. Returns None if not found or inactive."""
     key_hash = _hash_key(raw_key)

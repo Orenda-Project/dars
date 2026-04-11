@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     admin_secret: str = "dev-secret"
     lp_assistant_url: str = "https://lp-assistant.taleemabad.com"
     lp_assistant_api_key: str = ""
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    cors_origins: list[str] = ["http://localhost:3000"]
 
 
 settings = Settings()
