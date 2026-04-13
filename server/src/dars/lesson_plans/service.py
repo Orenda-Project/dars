@@ -111,11 +111,13 @@ async def review_lesson_plan(
 async def queue_lesson_plan(
     db: AsyncSession,
     client_id: uuid.UUID,
+    teacher_id: uuid.UUID,
     request: LessonPlanCreateRequest,
 ) -> LessonPlan:
     """Create a PENDING lesson plan record. Caller must schedule generate_lesson_plan_task as a background task."""
     lp = LessonPlan(
         client_id=client_id,
+        teacher_id=teacher_id,
         external_ref=request.external_ref,
         grade=request.grade,
         subject=request.subject,
@@ -277,17 +279,22 @@ async def list_lesson_plans(
     client_id: uuid.UUID,
     limit: int = 20,
     offset: int = 0,
+    teacher_id: uuid.UUID | None = None,
 ) -> tuple[list[LessonPlan], int]:
+    base_where = [LessonPlan.client_id == client_id]
+    if teacher_id is not None:
+        base_where.append(LessonPlan.teacher_id == teacher_id)
+
     count_result = await db.execute(
         select(func.count())
         .select_from(LessonPlan)
-        .where(LessonPlan.client_id == client_id)
+        .where(*base_where)
     )
     total = count_result.scalar_one()
 
     result = await db.execute(
         select(LessonPlan)
-        .where(LessonPlan.client_id == client_id)
+        .where(*base_where)
         .order_by(LessonPlan.created_at.desc())
         .limit(limit)
         .offset(offset)

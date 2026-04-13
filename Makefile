@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: dev test db-push db-pull db-status db-new db-link bruno-sync webapp
+.PHONY: dev test db-push db-pull db-status db-new db-link bruno-sync webapp up
 
 dev:
 	cd server && uv run uvicorn dars.main:app --reload
@@ -30,3 +30,9 @@ bruno-sync:
 
 webapp:
 	cd webapp && npm run dev
+
+up:
+	@trap 'kill 0' SIGINT; \
+	(cd server && uv run uvicorn dars.main:app --reload) & \
+	(cd webapp && npm run dev) & \
+	wait

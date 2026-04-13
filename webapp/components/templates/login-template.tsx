@@ -50,7 +50,9 @@ export function LoginTemplate() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail ?? "Sign in failed.");
-      setResult(data as AuthResult);
+      const authResult = data as AuthResult;
+      localStorage.setItem("dars_session", JSON.stringify(authResult));
+      window.location.href = "/dashboard";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred.");
     } finally {
@@ -71,7 +73,9 @@ export function LoginTemplate() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail ?? "Sign up failed.");
-      setResult(data as AuthResult);
+      const authResult = data as AuthResult;
+      localStorage.setItem("dars_session", JSON.stringify(authResult));
+      setResult(authResult);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred.");
     } finally {
@@ -162,6 +166,13 @@ export function LoginTemplate() {
               <p className="text-xs text-dars-muted">
                 Client ID: <span className="font-mono">{result.client_id}</span>
               </p>
+
+              <button
+                onClick={() => { window.location.href = "/dashboard"; }}
+                className="w-full bg-dars-terra text-white py-2.5 rounded-md text-sm font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                Continue to Dashboard
+              </button>
             </div>
           ) : tab === "signin" ? (
             /* Sign In form */

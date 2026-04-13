@@ -20,7 +20,8 @@ cp server/.env.example server/.env
 ## Daily commands
 
 ```bash
-make dev          # Run API (dev) — hot reload
+make up           # Run API + webapp together (Ctrl+C stops both)
+make dev          # Run API only (dev) — hot reload
 make test         # Run test suite (SQLite, no Supabase needed)
 ```
 

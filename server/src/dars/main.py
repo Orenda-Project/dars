@@ -13,10 +13,12 @@ logging.basicConfig(level=logging.INFO, handlers=[handler])
 
 import dars.webhooks.models  # noqa: F401 — registers WebhookDelivery with SQLAlchemy Base
 import dars.lesson_plans.edit_models  # noqa: F401 — registers LessonPlanEdit with SQLAlchemy Base
+import dars.teachers.models  # noqa: F401 — registers Teacher with SQLAlchemy Base
 from dars.auth.router import auth_router
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
 from dars.lesson_plans.router import router as lesson_plans_router
+from dars.teachers.router import router as teachers_router
 
 app = FastAPI(
     title="Dars API",
@@ -38,6 +40,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(client_router)
 app.include_router(lesson_plans_router)
+app.include_router(teachers_router)
 
 
 @app.get("/health")

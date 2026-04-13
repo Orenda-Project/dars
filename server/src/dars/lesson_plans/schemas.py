@@ -47,6 +47,7 @@ class LessonPlanCreateRequest(BaseModel):
 class LessonPlanResponse(BaseModel):
     id: uuid.UUID
     client_id: uuid.UUID
+    teacher_id: uuid.UUID
     external_ref: str | None
     grade: str
     subject: str

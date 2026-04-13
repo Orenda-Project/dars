@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.clients.models import Client
 from dars.database import get_db
-from dars.deps import get_current_client
+from dars.deps import get_current_client, require_teacher
 from dars.lesson_plans.schemas import (
     LessonPlanCreateRequest,
     LessonPlanEditRequest,
@@ -14,6 +14,7 @@ from dars.lesson_plans.schemas import (
     LessonPlanReviewRequest,
     LessonPlanReviewResponse,
 )
+from dars.teachers.models import Teacher
 from dars.lesson_plans.service import (
     edit_lesson_plan,
     generate_lesson_plan_task,
@@ -45,10 +46,11 @@ async def review_lesson_plan_endpoint(
 async def create_lesson_plan_endpoint(
     body: LessonPlanCreateRequest,
     background_tasks: BackgroundTasks,
+    teacher: Teacher = Depends(require_teacher),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:
-    lp = await queue_lesson_plan(db, client_id=current_client.id, request=body)
+    lp = await queue_lesson_plan(db, client_id=current_client.id, teacher_id=teacher.id, request=body)
     background_tasks.add_task(
         generate_lesson_plan_task,
         lp_id=lp.id,
@@ -63,10 +65,17 @@ async def create_lesson_plan_endpoint(
 async def list_lesson_plans_endpoint(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    teacher_id: uuid.UUID | None = Query(None),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanListResponse:
-    items, total = await list_lesson_plans(db, client_id=current_client.id, limit=limit, offset=offset)
+    items, total = await list_lesson_plans(
+        db,
+        client_id=current_client.id,
+        limit=limit,
+        offset=offset,
+        teacher_id=teacher_id,
+    )
     return LessonPlanListResponse(
         items=[LessonPlanResponse.model_validate(lp) for lp in items],
         total=total,

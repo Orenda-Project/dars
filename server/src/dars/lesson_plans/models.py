@@ -18,6 +18,9 @@ class LessonPlan(Base):
     client_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
     )
+    teacher_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teachers.id", ondelete="RESTRICT"), nullable=False
+    )
     external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     grade: Mapped[str] = mapped_column(String(50), nullable=False)
     subject: Mapped[str] = mapped_column(String(100), nullable=False)
