@@ -23,6 +23,7 @@ class BookResponse(BaseModel):
     cover_image: str | None
     total_chapters: int | None
     synced_at: datetime
+    book_text: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -36,3 +37,4 @@ class SyncResult(BaseModel):
     ict_books: int
     punjab_books: int
     chapters: int
+    pages_synced: int

@@ -6,6 +6,7 @@ CREATE TABLE books (
     curriculum varchar(20) NOT NULL,
     cover_image text,
     total_chapters integer,
+    book_text jsonb,
     synced_at timestamptz NOT NULL DEFAULT now()
 );
 

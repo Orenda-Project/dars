@@ -12,7 +12,7 @@ from dars.books.models import Book, BookChapter
 
 BOOKS_QUERY = """
 SELECT b.id, b.title, b.cover_image, b.total_chapters,
-       g.label as grade, s.short_code as subject
+       g.label as grade, s.short_code as subject, b.book_text
 FROM {schema}.book_library_book b
 JOIN {schema}.slo_gradesubject gs ON gs.id = b.grade_subject_id
 JOIN {schema}.slo_grade g ON g.id = gs.grade_id
@@ -49,7 +49,7 @@ def _fetch_books_from_schema(cur, schema: str, curriculum: str) -> list[dict]:
     rows = cur.fetchall()
     books = []
     for row in rows:
-        book_id, title, cover_image, total_chapters, grade_label, subject = row
+        book_id, title, cover_image, total_chapters, grade_label, subject, book_text = row
         books.append({
             "id": book_id,
             "title": title,
@@ -58,6 +58,7 @@ def _fetch_books_from_schema(cur, schema: str, curriculum: str) -> list[dict]:
             "grade": _extract_grade_int(grade_label),
             "subject": subject,
             "curriculum": curriculum,
+            "book_text": book_text,
         })
     return books
 
@@ -119,6 +120,7 @@ async def sync_books(db: AsyncSession) -> dict:
                 "curriculum": stmt.excluded.curriculum,
                 "cover_image": stmt.excluded.cover_image,
                 "total_chapters": stmt.excluded.total_chapters,
+                "book_text": stmt.excluded.book_text,
                 "synced_at": stmt.excluded.synced_at,
             },
         )
@@ -140,10 +142,13 @@ async def sync_books(db: AsyncSession) -> dict:
 
     await db.commit()
 
+    pages_synced = sum(1 for b in all_books if b.get("book_text") is not None)
+
     return {
         "ict_books": len(ict_books),
         "punjab_books": len(punjab_books),
         "chapters": len(all_chapters),
+        "pages_synced": pages_synced,
     }
 
 

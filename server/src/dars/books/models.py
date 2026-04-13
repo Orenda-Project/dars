@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dars.database import Base
@@ -16,6 +16,7 @@ class Book(Base):
     curriculum: Mapped[str] = mapped_column(String(20), nullable=False)
     cover_image: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_chapters: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    book_text: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

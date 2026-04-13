@@ -89,10 +89,10 @@ def _make_fake_conn(ict_books, punjab_books, ict_chapters, punjab_chapters):
 async def test_sync_books_returns_counts(admin_http_client):
     """POST /api/admin/books/sync calls core DB and returns insert counts."""
     ict_books = [
-        (1, "Science Grade 3", "cover.jpg", 5, "Grade 3", "SCI"),
+        (1, "Science Grade 3", "cover.jpg", 5, "Grade 3", "SCI", None),
     ]
     punjab_books = [
-        (101, "Maths Grade 2", None, 4, "2", "MATH"),
+        (101, "Maths Grade 2", None, 4, "2", "MATH", {"pages": []}),
     ]
     ict_chapters = [
         (10, "Chapter One", 1, 1, 20, 1),
@@ -110,7 +110,7 @@ async def test_sync_books_returns_counts(admin_http_client):
         from dars.books import service as books_service
 
         async def _fake_sync(db):
-            return {"ict_books": 1, "punjab_books": 1, "chapters": 2}
+            return {"ict_books": 1, "punjab_books": 1, "chapters": 2, "pages_synced": 0}
 
         with patch.object(books_service, "sync_books", side_effect=_fake_sync):
             response = await admin_http_client.post("/api/admin/books/sync")
