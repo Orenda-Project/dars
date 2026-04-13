@@ -56,6 +56,14 @@ async def require_teacher(
     return teacher
 
 
+async def get_admin_client(
+    client: Client = Depends(get_current_client),
+) -> Client:
+    if not client.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return client
+
+
 async def require_admin_secret(
     x_admin_secret: str | None = Header(default=None, alias="X-Admin-Secret"),
 ) -> None:

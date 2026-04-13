@@ -20,6 +20,7 @@ class Client(Base):
     webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     supabase_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

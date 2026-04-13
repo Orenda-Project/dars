@@ -18,5 +18,12 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # taleemabad-core DB (used for books/chapters sync)
+    core_db_host: str = "localhost"
+    core_db_port: int = 5432
+    core_db_name: str = "taleemabad"
+    core_db_user: str = "postgres"
+    core_db_password: str = ""
+
 
 settings = Settings()
