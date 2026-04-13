@@ -36,7 +36,8 @@
 
 ## Critical Rules
 
-1. **All DB queries must filter by `client_id`** — never query data tables without it
+1. **Always work on a feature branch** — never commit directly to `main`; branch naming: `feature/<slug>` or `fix/<slug>`
+2. **All DB queries must filter by `client_id`** — never query data tables without it
 2. **Never store API keys plain** — SHA-256 hash on creation, shown once only
 3. **Use `hmac.compare_digest`** for all secret comparisons — plain `!=` is timing-attackable
 4. **Use `sqlalchemy.types.Uuid`** not `sqlalchemy.dialects.postgresql.UUID` — PG dialect breaks SQLite tests
