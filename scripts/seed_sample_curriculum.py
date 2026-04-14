@@ -15,7 +15,7 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg2
@@ -34,7 +34,7 @@ BOOK = {
     "subject": "English",
     "curriculum": "NCP",
     "total_chapters": 1,
-    "synced_at": datetime.utcnow(),
+    "synced_at": datetime.now(timezone.utc),
 }
 
 CHAPTER = {
@@ -244,16 +244,68 @@ def seed(conn) -> None:
     # ------------------------------------------------------------------
     # 9. Insert curriculum_topics (sequence 1-5)
     # ------------------------------------------------------------------
+    curriculum_topic_ids = []
     for seq, topic_id in enumerate(topic_ids, start=1):
         cur.execute(
             """
             INSERT INTO curriculum_topics (curriculum_id, topic_id, sequence)
             VALUES (%s, %s, %s)
             ON CONFLICT (curriculum_id, sequence) DO NOTHING
+            RETURNING id
             """,
             (curriculum_id, topic_id, seq),
         )
-        print(f"  Linked curriculum topic {seq}")
+        result = cur.fetchone()
+        if result:
+            curriculum_topic_ids.append(result["id"])
+            print(f"  Linked curriculum topic {seq}")
+        else:
+            cur.execute(
+                "SELECT id FROM curriculum_topics WHERE curriculum_id = %s AND sequence = %s",
+                (curriculum_id, seq),
+            )
+            existing = cur.fetchone()
+            curriculum_topic_ids.append(existing["id"])
+            print(f"  Curriculum topic {seq} already exists, using existing id")
+
+    # ------------------------------------------------------------------
+    # 10. Insert curriculum_lp_stubs (2 per curriculum_topic)
+    # ------------------------------------------------------------------
+    LP_STUBS = [
+        {
+            "skill_type": "reading",
+            "cpa_phase": "concrete",
+            "blooms_level": "remember",
+            "sequence": 1,
+            "status": "pending",
+        },
+        {
+            "skill_type": "writing",
+            "cpa_phase": "pictorial",
+            "blooms_level": "understand",
+            "sequence": 2,
+            "status": "pending",
+        },
+    ]
+    for ct_seq, ct_id in enumerate(curriculum_topic_ids, start=1):
+        for stub in LP_STUBS:
+            cur.execute(
+                """
+                INSERT INTO curriculum_lp_stubs
+                    (curriculum_topic_id, skill_type, cpa_phase, blooms_level, sequence, status)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (
+                    ct_id,
+                    stub["skill_type"],
+                    stub["cpa_phase"],
+                    stub["blooms_level"],
+                    stub["sequence"],
+                    stub["status"],
+                ),
+            )
+        print(f"  Inserted LP stubs for curriculum_topic {ct_seq} (id={ct_id})")
 
     conn.commit()
     print("\nSeed complete.")
@@ -280,7 +332,21 @@ def teardown(conn) -> None:
     slos = cur.fetchall()
     slo_ids = [r["id"] for r in slos]
 
-    # 1. curriculum_topics
+    # 1. curriculum_lp_stubs
+    cur.execute(
+        """
+        DELETE FROM curriculum_lp_stubs
+        WHERE curriculum_topic_id IN (
+            SELECT ct.id FROM curriculum_topics ct
+            JOIN curriculums c ON c.id = ct.curriculum_id
+            WHERE c.name = %s
+        )
+        """,
+        (CURRICULUM_NAME,),
+    )
+    print(f"Deleted curriculum_lp_stubs for '{CURRICULUM_NAME}'")
+
+    # 2. curriculum_topics
     cur.execute(
         """
         DELETE FROM curriculum_topics
@@ -292,11 +358,11 @@ def teardown(conn) -> None:
     )
     print(f"Deleted curriculum_topics for '{CURRICULUM_NAME}'")
 
-    # 2. curriculums
+    # 3. curriculums
     cur.execute("DELETE FROM curriculums WHERE name = %s", (CURRICULUM_NAME,))
     print(f"Deleted curriculum '{CURRICULUM_NAME}'")
 
-    # 3. topic_sub_slos for topics under chapter 99991
+    # 4. topic_sub_slos for topics under chapter 99991
     cur.execute(
         """
         DELETE FROM topic_sub_slos
@@ -308,26 +374,26 @@ def teardown(conn) -> None:
     )
     print(f"Deleted topic_sub_slos for chapter_id={CHAPTER['id']}")
 
-    # 4. topics
+    # 5. topics
     cur.execute("DELETE FROM topics WHERE chapter_id = %s", (CHAPTER["id"],))
     print(f"Deleted topics where chapter_id={CHAPTER['id']}")
 
-    # 5. book_chapters
+    # 6. book_chapters
     cur.execute("DELETE FROM book_chapters WHERE id = %s", (CHAPTER["id"],))
     print(f"Deleted book_chapter id={CHAPTER['id']}")
 
-    # 6. books
+    # 7. books
     cur.execute("DELETE FROM books WHERE id = %s", (BOOK["id"],))
     print(f"Deleted book id={BOOK['id']}")
 
-    # 7. sub_slos
+    # 8. sub_slos
     if slo_ids:
         cur.execute(
             """
             DELETE FROM sub_slos
             WHERE source_id IS NULL
               AND code LIKE %s
-              AND slo_id = ANY(%s)
+              AND slo_id = ANY(%s::uuid[])
             """,
             ("%.1", slo_ids),
         )
