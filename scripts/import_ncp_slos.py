@@ -9,7 +9,7 @@ Usage:
     uv run python scripts/import_ncp_slos.py [--dry-run]
 
 Required env vars (add to .env):
-    CORE_DB_HOST, CORE_DB_PORT, CORE_DB_NAME, CORE_DB_USER, CORE_DB_PASSWORD
+    CORE_STAGING_DB_HOST, CORE_STAGING_DB_PORT, CORE_STAGING_DB_NAME, CORE_STAGING_DB_USER, CORE_STAGING_DB_PASSWORD
     DATABASE_URL  (the dars Supabase connection string)
 """
 
@@ -73,11 +73,11 @@ SUBJECT_SHORT_CODES: dict[str, str] = {
 
 def core_conn():
     return psycopg2.connect(
-        host=settings.core_db_host,
-        port=settings.core_db_port,
-        dbname=settings.core_db_name,
-        user=settings.core_db_user,
-        password=settings.core_db_password,
+        host=settings.core_staging_db_host,
+        port=settings.core_staging_db_port,
+        dbname=settings.core_staging_db_name,
+        user=settings.core_staging_db_user,
+        password=settings.core_staging_db_password,
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
@@ -169,7 +169,7 @@ def run(dry_run: bool) -> None:
         print(f"Found {len(ncp_slos)} active NCP SLOs in core")
 
         if not ncp_slos:
-            print("No NCP SLOs found — check CORE_DB_* connection vars and that data exists.")
+            print("No NCP SLOs found — check CORE_STAGING_DB_* connection vars and that data exists.")
             return
 
         if dry_run:
