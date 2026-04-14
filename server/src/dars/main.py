@@ -15,6 +15,7 @@ import dars.webhooks.models  # noqa: F401 — registers WebhookDelivery with SQL
 import dars.lesson_plans.edit_models  # noqa: F401 — registers LessonPlanEdit with SQLAlchemy Base
 import dars.teachers.models  # noqa: F401 — registers Teacher with SQLAlchemy Base
 import dars.books.models  # noqa: F401 — registers Book + BookChapter with SQLAlchemy Base
+import dars.curriculum.models  # noqa: F401 — registers curriculum models with SQLAlchemy Base
 from dars.auth.router import auth_router
 from dars.books.router import router as books_router
 from dars.clients.router import admin_router, client_router
