@@ -250,23 +250,14 @@ def seed(conn) -> None:
             """
             INSERT INTO curriculum_topics (curriculum_id, topic_id, sequence)
             VALUES (%s, %s, %s)
-            ON CONFLICT (curriculum_id, sequence) DO NOTHING
+            ON CONFLICT (curriculum_id, sequence) DO UPDATE SET topic_id = EXCLUDED.topic_id
             RETURNING id
             """,
             (curriculum_id, topic_id, seq),
         )
         result = cur.fetchone()
-        if result:
-            curriculum_topic_ids.append(result["id"])
-            print(f"  Linked curriculum topic {seq}")
-        else:
-            cur.execute(
-                "SELECT id FROM curriculum_topics WHERE curriculum_id = %s AND sequence = %s",
-                (curriculum_id, seq),
-            )
-            existing = cur.fetchone()
-            curriculum_topic_ids.append(existing["id"])
-            print(f"  Curriculum topic {seq} already exists, using existing id")
+        curriculum_topic_ids.append(result["id"])
+        print(f"  Linked curriculum topic {seq} (id={result['id']})")
 
     # ------------------------------------------------------------------
     # 10. Insert curriculum_lp_stubs (2 per curriculum_topic)
