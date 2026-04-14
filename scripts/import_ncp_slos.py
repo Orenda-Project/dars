@@ -107,7 +107,11 @@ def run(dry_run: bool) -> None:
 
     print("Connecting to dars DB...")
     dst = dars_conn()
+    # Use autocommit so we control the transaction boundary explicitly with BEGIN.
+    dst.autocommit = False
     dst_cur = dst.cursor()
+
+    print("Starting transaction...")
 
     try:
         # ----------------------------------------------------------------
@@ -253,10 +257,34 @@ def run(dry_run: bool) -> None:
         print(f"Upserted NCP provider (id={provider_id})")
 
         # ----------------------------------------------------------------
-        # 7. Upsert SLOs
+        # 7. Upsert SLOs (batched)
         # ----------------------------------------------------------------
+        total_slos = len(ncp_slos)
+        print(f"Upserting {total_slos} SLOs in batches of 500...")
+
+        BATCH_SIZE = 500
+        SLO_SQL = """
+            INSERT INTO slos
+                (provider_id, code, statement, grade_id, subject_id,
+                 domain, language_skills, sub_strand, source_id, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true)
+            ON CONFLICT (provider_id, code, grade_id, subject_id) DO UPDATE
+                SET statement       = EXCLUDED.statement,
+                    domain          = EXCLUDED.domain,
+                    language_skills = EXCLUDED.language_skills,
+                    sub_strand      = EXCLUDED.sub_strand,
+                    source_id       = EXCLUDED.source_id,
+                    is_active       = true
+        """
+
         inserted = 0
         skipped = 0
+        batch: list[tuple] = []
+
+        def flush_batch(cur, rows: list[tuple]) -> None:
+            if rows:
+                psycopg2.extras.execute_batch(cur, SLO_SQL, rows, page_size=BATCH_SIZE)
+
         for row in ncp_slos:
             grade_uuid = grade_map.get(row["core_grade_id"])
             subject_uuid = subject_map.get(row["core_subject_id"])
@@ -264,33 +292,31 @@ def run(dry_run: bool) -> None:
                 skipped += 1
                 continue
 
-            dst_cur.execute(
-                """
-                INSERT INTO slos
-                    (provider_id, code, statement, grade_id, subject_id,
-                     domain, language_skills, sub_strand, source_id, is_active)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true)
-                ON CONFLICT (provider_id, code, grade_id, subject_id) DO UPDATE
-                    SET statement      = EXCLUDED.statement,
-                        domain         = EXCLUDED.domain,
-                        language_skills = EXCLUDED.language_skills,
-                        sub_strand     = EXCLUDED.sub_strand,
-                        source_id      = EXCLUDED.source_id,
-                        is_active      = true
-                """,
-                (
-                    provider_id,
-                    row["code"],
-                    row["statement"],
-                    grade_uuid,
-                    subject_uuid,
-                    row["domain"],
-                    row["language_skills"],   # psycopg2 passes list as PG array
-                    row["sub_strand"],
-                    row["source_id"],
-                ),
-            )
+            batch.append((
+                provider_id,
+                row["code"],
+                row["statement"],
+                grade_uuid,
+                subject_uuid,
+                row["domain"],
+                row["language_skills"],   # psycopg2 passes list as PG array
+                row["sub_strand"],
+                row["source_id"],
+            ))
             inserted += 1
+
+            if len(batch) >= BATCH_SIZE:
+                flush_batch(dst_cur, batch)
+                batch.clear()
+                if inserted % 100 == 0:
+                    print(f"  [{inserted}/{total_slos}] SLOs upserted...")
+
+        # Flush any remaining rows
+        flush_batch(dst_cur, batch)
+
+        # Final progress line if last batch didn't land on a 100-boundary
+        if inserted % 100 != 0 or inserted == 0:
+            print(f"  [{inserted}/{total_slos}] SLOs upserted...")
 
         dst.commit()
         print(f"Done. Upserted {inserted} SLOs ({skipped} skipped due to missing grade/subject).")
