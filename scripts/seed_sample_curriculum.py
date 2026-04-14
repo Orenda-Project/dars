@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import psycopg2
@@ -33,6 +34,7 @@ BOOK = {
     "subject": "English",
     "curriculum": "NCP",
     "total_chapters": 1,
+    "synced_at": datetime.utcnow(),
 }
 
 CHAPTER = {
@@ -153,8 +155,8 @@ def seed(conn) -> None:
     # ------------------------------------------------------------------
     cur.execute(
         """
-        INSERT INTO books (id, title, grade, subject, curriculum, total_chapters)
-        VALUES (%(id)s, %(title)s, %(grade)s, %(subject)s, %(curriculum)s, %(total_chapters)s)
+        INSERT INTO books (id, title, grade, subject, curriculum, total_chapters, synced_at)
+        VALUES (%(id)s, %(title)s, %(grade)s, %(subject)s, %(curriculum)s, %(total_chapters)s, %(synced_at)s)
         ON CONFLICT (id) DO NOTHING
         """,
         BOOK,
