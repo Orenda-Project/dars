@@ -20,6 +20,7 @@ from dars.auth.router import auth_router
 from dars.books.router import router as books_router
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
+from dars.curriculum.router import router as curriculum_router
 from dars.lesson_plans.router import router as lesson_plans_router
 from dars.teachers.router import router as teachers_router
 
@@ -45,6 +46,7 @@ app.include_router(client_router)
 app.include_router(lesson_plans_router)
 app.include_router(teachers_router)
 app.include_router(books_router)
+app.include_router(curriculum_router)
 
 
 @app.get("/health")
