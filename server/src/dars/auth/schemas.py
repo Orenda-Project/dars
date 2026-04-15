@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -17,3 +19,4 @@ class AuthResponse(BaseModel):
     client_id: str
     name: str
     email: str
+    teacher_id: uuid.UUID

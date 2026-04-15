@@ -8,7 +8,10 @@ from dars.teachers.schemas import TeacherRegisterRequest, TeacherUpdateRequest
 
 
 async def register_teacher(
-    db: AsyncSession, client_id: uuid.UUID, request: TeacherRegisterRequest
+    db: AsyncSession,
+    client_id: uuid.UUID,
+    request: TeacherRegisterRequest,
+    is_client_teacher: bool = False,
 ) -> Teacher:
     existing = await db.execute(
         select(Teacher).where(
@@ -25,11 +28,25 @@ async def register_teacher(
         email=request.email,
         phone=request.phone,
         school=request.school,
+        is_client_teacher=is_client_teacher,
     )
     db.add(teacher)
     await db.commit()
     await db.refresh(teacher)
     return teacher
+
+
+async def get_client_teacher(
+    db: AsyncSession, client_id: uuid.UUID
+) -> "Teacher | None":
+    """Return the teacher with is_client_teacher=True for this client, or None."""
+    result = await db.execute(
+        select(Teacher).where(
+            Teacher.client_id == client_id,
+            Teacher.is_client_teacher == True,  # noqa: E712
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_teacher(

@@ -7,19 +7,7 @@ interface Session {
   client_id: string;
   name: string;
   email: string;
-}
-
-interface Teacher {
-  id: string;
-  name: string;
-  email: string | null;
-}
-
-interface TeacherListResponse {
-  items: Teacher[];
-  total: number;
-  limit: number;
-  offset: number;
+  teacher_id: string;
 }
 
 interface LessonPlan {
@@ -121,15 +109,6 @@ export default function LessonPlansPage() {
 
   const [session, setSession] = useState<Session | null>(null);
 
-  // --- Teacher selector state ---
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [teachersLoading, setTeachersLoading] = useState(false);
-  const [teacherSearch, setTeacherSearch] = useState("");
-  const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const teacherSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // --- Generate form state ---
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [generating, setGenerating] = useState(false);
@@ -161,76 +140,13 @@ export default function LessonPlansPage() {
     setSession(JSON.parse(raw) as Session);
   }, []);
 
-  // --- Close dropdown on outside click ---
-  useEffect(() => {
-    function handleOutsideClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
-
-  // --- Fetch teachers for selector ---
-  function fetchTeachers(apiKey: string, query: string) {
-    setTeachersLoading(true);
-    const params = new URLSearchParams({ limit: "20", offset: "0" });
-    if (query) params.set("search", query);
-    fetch(`${apiBase}/api/v1/teachers?${params.toString()}`, {
-      headers: { "X-API-Key": apiKey },
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 401) {
-            localStorage.removeItem("dars_session");
-            window.location.href = "/login";
-            return;
-          }
-          throw new Error("Failed to fetch teachers.");
-        }
-        const data = (await res.json()) as TeacherListResponse;
-        setTeachers(data.items);
-        setTeachersLoading(false);
-      })
-      .catch(() => {
-        setTeachersLoading(false);
-      });
-  }
-
-  useEffect(() => {
-    if (!session) return;
-    fetchTeachers(session.api_key, "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
-
-  function handleTeacherSearchChange(value: string) {
-    setTeacherSearch(value);
-    if (teacherSearchDebounceRef.current) clearTimeout(teacherSearchDebounceRef.current);
-    if (!session) return;
-    teacherSearchDebounceRef.current = setTimeout(() => {
-      fetchTeachers(session.api_key, value.trim());
-    }, 300);
-  }
-
-  function handleSelectTeacher(teacher: Teacher) {
-    setSelectedTeacher(teacher);
-    setDropdownOpen(false);
-    setTeacherSearch("");
-    // Reset LP list to page 1 for newly selected teacher
-    setLpOffset(0);
-    setGeneratedLP(null);
-    setExpandedId(null);
-  }
-
   // --- Fetch LP list ---
-  function fetchLPs(offset: number, apiKey: string, teacherId: string) {
+  function fetchLPs(offset: number, apiKey: string) {
     setLpLoading(true);
     setLpError(null);
     const params = new URLSearchParams({
       limit: String(LP_LIMIT),
       offset: String(offset),
-      teacher_id: teacherId,
     });
     fetch(`${apiBase}/api/v1/lesson-plans?${params.toString()}`, {
       headers: { "X-API-Key": apiKey },
@@ -256,15 +172,15 @@ export default function LessonPlansPage() {
   }
 
   useEffect(() => {
-    if (!session || !selectedTeacher) return;
-    fetchLPs(lpOffset, session.api_key, selectedTeacher.id);
+    if (!session) return;
+    fetchLPs(lpOffset, session.api_key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, selectedTeacher, lpOffset]);
+  }, [session, lpOffset]);
 
   // --- Generate LP ---
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
-    if (!session || !selectedTeacher) return;
+    if (!session) return;
     setGenerating(true);
     setGenerateError(null);
     setGeneratedLP(null);
@@ -287,7 +203,7 @@ export default function LessonPlansPage() {
         headers: {
           "Content-Type": "application/json",
           "X-API-Key": session.api_key,
-          "X-Teacher-ID": selectedTeacher.id,
+          "X-Teacher-ID": session.teacher_id,
         },
         body: JSON.stringify(body),
       });
@@ -329,7 +245,7 @@ export default function LessonPlansPage() {
           setGeneratedLP(lp);
           setGenerating(false);
           // Refresh list
-          fetchLPs(lpOffset, session.api_key, selectedTeacher.id);
+          fetchLPs(lpOffset, session.api_key);
           setTimeout(() => {
             generatedRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }, 100);
@@ -388,7 +304,6 @@ export default function LessonPlansPage() {
 
   const totalPages = Math.ceil(lpTotal / LP_LIMIT);
   const currentPage = Math.floor(lpOffset / LP_LIMIT) + 1;
-  const isGated = !selectedTeacher;
 
   return (
     <div className="p-8 max-w-4xl">
@@ -402,483 +317,325 @@ export default function LessonPlansPage() {
         )}
       </div>
 
-      {/* Teacher selector */}
-      <section className="mb-8">
-        <label className="block text-xs font-semibold text-dars-muted mb-2 uppercase tracking-wide">
-          Teacher <span className="text-dars-terra">*</span>
-        </label>
-        <div className="relative" ref={dropdownRef}>
-          <button
-            type="button"
-            onClick={() => {
-              setDropdownOpen((v) => !v);
-              if (!dropdownOpen && session) fetchTeachers(session.api_key, teacherSearch);
-            }}
-            className="w-full sm:w-96 flex items-center justify-between border border-dars-rule-dark rounded-md px-3 py-2 text-sm bg-white text-dars-ink hover:border-dars-terra focus:outline-none focus:ring-1 focus:ring-dars-terra transition-colors cursor-pointer"
-          >
-            {selectedTeacher ? (
-              <span className="font-medium">
-                {selectedTeacher.name}
-                {selectedTeacher.email && (
-                  <span className="font-normal text-dars-muted ml-1.5">
-                    &middot; {selectedTeacher.email}
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span className="text-dars-muted">Select a teacher...</span>
-            )}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className={`h-4 w-4 text-dars-muted shrink-0 ml-2 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-
-          {dropdownOpen && (
-            <div className="absolute z-20 mt-1 w-full sm:w-96 bg-white border border-dars-rule-dark rounded-md shadow-lg overflow-hidden">
-              <div className="p-2 border-b border-dars-rule-light">
-                <input
-                  autoFocus
-                  type="search"
-                  value={teacherSearch}
-                  onChange={(e) => handleTeacherSearchChange(e.target.value)}
-                  placeholder="Search by name or email..."
-                  className="w-full px-2 py-1.5 text-sm text-dars-ink border border-dars-rule-dark rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                />
-              </div>
-              <ul className="max-h-56 overflow-y-auto">
-                {teachersLoading && (
-                  <li className="px-3 py-3 text-sm text-dars-muted animate-pulse">
-                    Loading teachers...
-                  </li>
-                )}
-                {!teachersLoading && teachers.length === 0 && (
-                  <li className="px-3 py-3 text-sm text-dars-muted">No teachers found.</li>
-                )}
-                {!teachersLoading &&
-                  teachers.map((t) => (
-                    <li key={t.id}>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectTeacher(t)}
-                        className={`w-full text-left px-3 py-2.5 text-sm hover:bg-dars-parchment transition-colors cursor-pointer border-none bg-transparent ${
-                          selectedTeacher?.id === t.id ? "bg-dars-parchment font-semibold" : ""
-                        }`}
-                      >
-                        <span className="font-medium text-dars-ink">{t.name}</span>
-                        {t.email && (
-                          <span className="text-dars-muted ml-1.5 text-xs">{t.email}</span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-              </ul>
+      {/* Section A: Generate form */}
+      <section className="mb-12">
+        <h2 className="text-lg font-serif font-semibold text-dars-ink mb-4">
+          Generate a Lesson Plan
+        </h2>
+        <form
+          onSubmit={handleGenerate}
+          className="border border-dars-rule-light rounded-lg bg-dars-parchment p-6 space-y-5"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Grade */}
+            <div>
+              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+                Grade <span className="text-dars-terra">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={form.grade}
+                onChange={(e) => setForm((f) => ({ ...f, grade: e.target.value }))}
+                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                placeholder="e.g. 5"
+              />
             </div>
+
+            {/* Subject */}
+            <div>
+              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+                Subject <span className="text-dars-terra">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={form.subject}
+                onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                placeholder="e.g. Mathematics"
+              />
+            </div>
+
+            {/* Page Number */}
+            <div>
+              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+                Page Number <span className="text-dars-terra">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={form.page_number}
+                onChange={(e) => setForm((f) => ({ ...f, page_number: e.target.value }))}
+                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                placeholder="e.g. 42"
+              />
+            </div>
+
+            {/* Curriculum */}
+            <div>
+              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+                Curriculum <span className="text-dars-terra">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={form.curriculum}
+                onChange={(e) => setForm((f) => ({ ...f, curriculum: e.target.value }))}
+                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                placeholder="e.g. ICT"
+              />
+            </div>
+
+            {/* Topic */}
+            <div>
+              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+                Topic
+              </label>
+              <input
+                type="text"
+                value={form.topic}
+                onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                placeholder="Optional"
+              />
+            </div>
+
+            {/* Class Strength */}
+            <div>
+              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+                Class Strength
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={form.class_strength}
+                onChange={(e) => setForm((f) => ({ ...f, class_strength: e.target.value }))}
+                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                placeholder="Optional"
+              />
+            </div>
+
+            {/* Exercise Page Number */}
+            <div>
+              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+                Exercise Page Number
+              </label>
+              <input
+                type="text"
+                value={form.exercise_page_number}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, exercise_page_number: e.target.value }))
+                }
+                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          {/* Custom Prompt */}
+          <div>
+            <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
+              Custom Prompt
+            </label>
+            <textarea
+              rows={3}
+              value={form.custom_prompt}
+              onChange={(e) => setForm((f) => ({ ...f, custom_prompt: e.target.value }))}
+              className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra resize-y"
+              placeholder="Optional additional instructions..."
+            />
+          </div>
+
+          {/* Generate Bilingual toggle */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.generate_bilingual}
+              onClick={() =>
+                setForm((f) => ({ ...f, generate_bilingual: !f.generate_bilingual }))
+              }
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                form.generate_bilingual ? "bg-dars-terra" : "bg-dars-rule-dark"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                  form.generate_bilingual ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <span className="text-sm text-dars-ink">Generate Bilingual</span>
+          </div>
+
+          {generateError && (
+            <p className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-2 bg-red-50">
+              {generateError}
+            </p>
           )}
-        </div>
+
+          <button
+            type="submit"
+            disabled={generating}
+            className="px-5 py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {generating ? "Generating your lesson plan..." : "Generate Lesson Plan"}
+          </button>
+        </form>
+
+        {/* Generated LP output */}
+        {generatedLP && generatedLP.content && (
+          <div ref={generatedRef} className="mt-6">
+            <div className="flex items-center gap-3 mb-3">
+              <h3 className="text-base font-serif font-semibold text-dars-ink">
+                Generated Lesson Plan
+              </h3>
+              <StatusBadge status={generatedLP.status} />
+            </div>
+            <div
+              className="border border-dars-rule-light rounded-lg bg-white p-6 prose prose-sm max-w-none overflow-auto"
+              dangerouslySetInnerHTML={{ __html: generatedLP.content }}
+            />
+          </div>
+        )}
       </section>
 
-      {/* Teacher context banner — shown when a teacher is selected */}
-      {selectedTeacher && (
-        <div className="mb-8 flex items-center gap-3 px-4 py-3 bg-dars-parchment border border-dars-terra/30 rounded-lg">
-          <div className="shrink-0 w-8 h-8 rounded-full bg-dars-terra/10 flex items-center justify-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 text-dars-terra"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-dars-muted uppercase tracking-wide">
-              Generating for
-            </p>
-            <p className="text-sm font-semibold text-dars-ink">
-              {selectedTeacher.name}
-              {selectedTeacher.email && (
-                <span className="font-normal text-dars-muted ml-1.5">{selectedTeacher.email}</span>
-              )}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedTeacher(null);
-              setLpList([]);
-              setLpTotal(0);
-              setGeneratedLP(null);
-            }}
-            className="ml-auto text-xs text-dars-muted hover:text-dars-ink transition-colors cursor-pointer"
-          >
-            Change
-          </button>
-        </div>
-      )}
+      {/* Section B: Past lesson plans */}
+      <section>
+        <h2 className="text-lg font-serif font-semibold text-dars-ink mb-4">
+          Past Lesson Plans
+        </h2>
 
-      {/* Gated content wrapper */}
-      <div className={isGated ? "opacity-40 pointer-events-none select-none" : undefined}>
-        {/* Gate message — only visible when no teacher selected */}
-        {isGated && (
-          <div className="mb-6 flex items-center gap-2 px-4 py-3 bg-dars-parchment border border-dars-rule-dark rounded-lg">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 text-dars-muted shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            <p className="text-sm text-dars-muted">
-              Select a teacher above to get started.
-            </p>
+        {lpLoading && (
+          <p className="text-sm text-dars-muted animate-pulse">Loading lesson plans...</p>
+        )}
+
+        {lpError && (
+          <p className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-2 bg-red-50">
+            {lpError}
+          </p>
+        )}
+
+        {!lpLoading && !lpError && lpList.length === 0 && (
+          <p className="text-sm text-dars-muted">
+            No lesson plans found. Generate your first one above.
+          </p>
+        )}
+
+        {!lpLoading && lpList.length > 0 && (
+          <div className="space-y-3">
+            {lpList.map((lp) => {
+              const isExpanded = expandedId === lp.id;
+              return (
+                <div
+                  key={lp.id}
+                  className="border border-dars-rule-light rounded-lg bg-dars-parchment overflow-hidden"
+                >
+                  {/* Card header — click to expand/collapse */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : lp.id)}
+                    className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-dars-parchment-mid transition-colors cursor-pointer bg-transparent border-none"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-dars-ink">
+                          {lp.subject} — Grade {lp.grade}
+                        </span>
+                        {lp.topic && (
+                          <span className="text-xs text-dars-muted">&middot; {lp.topic}</span>
+                        )}
+                        <StatusBadge status={lp.status} />
+                      </div>
+                      <p className="text-xs text-dars-muted mt-0.5">{formatDate(lp.created_at)}</p>
+                    </div>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className={`h-4 w-4 text-dars-muted shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div className="border-t border-dars-rule-light px-5 py-5 bg-white">
+                      {lp.content ? (
+                        <div
+                          className="prose prose-sm max-w-none overflow-auto"
+                          dangerouslySetInnerHTML={{ __html: lp.content }}
+                        />
+                      ) : (
+                        <p className="text-sm text-dars-muted italic">No content available.</p>
+                      )}
+
+                      {/* Review button */}
+                      <div className="mt-5 pt-4 border-t border-dars-rule-light">
+                        <button
+                          type="button"
+                          onClick={() => handleReview(lp.id)}
+                          disabled={!!reviewLoading[lp.id]}
+                          className="px-4 py-2 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          {reviewLoading[lp.id] ? "Reviewing..." : "Review this LP"}
+                        </button>
+
+                        {reviewError[lp.id] && (
+                          <p className="mt-2 text-sm text-red-600">{reviewError[lp.id]}</p>
+                        )}
+
+                        {reviewData[lp.id] && (
+                          <ReviewDisplay data={reviewData[lp.id]} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {/* Section A: Generate form */}
-        <section className="mb-12">
-          <h2 className="text-lg font-serif font-semibold text-dars-ink mb-4">
-            Generate a Lesson Plan
-          </h2>
-          <form
-            onSubmit={handleGenerate}
-            className="border border-dars-rule-light rounded-lg bg-dars-parchment p-6 space-y-5"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Grade */}
-              <div>
-                <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                  Grade <span className="text-dars-terra">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.grade}
-                  onChange={(e) => setForm((f) => ({ ...f, grade: e.target.value }))}
-                  className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                  placeholder="e.g. 5"
-                />
-              </div>
-
-              {/* Subject */}
-              <div>
-                <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                  Subject <span className="text-dars-terra">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.subject}
-                  onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
-                  className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                  placeholder="e.g. Mathematics"
-                />
-              </div>
-
-              {/* Page Number */}
-              <div>
-                <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                  Page Number <span className="text-dars-terra">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.page_number}
-                  onChange={(e) => setForm((f) => ({ ...f, page_number: e.target.value }))}
-                  className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                  placeholder="e.g. 42"
-                />
-              </div>
-
-              {/* Curriculum */}
-              <div>
-                <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                  Curriculum <span className="text-dars-terra">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.curriculum}
-                  onChange={(e) => setForm((f) => ({ ...f, curriculum: e.target.value }))}
-                  className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                  placeholder="e.g. ICT"
-                />
-              </div>
-
-              {/* Topic */}
-              <div>
-                <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                  Topic
-                </label>
-                <input
-                  type="text"
-                  value={form.topic}
-                  onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
-                  className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                  placeholder="Optional"
-                />
-              </div>
-
-              {/* Class Strength */}
-              <div>
-                <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                  Class Strength
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={form.class_strength}
-                  onChange={(e) => setForm((f) => ({ ...f, class_strength: e.target.value }))}
-                  className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                  placeholder="Optional"
-                />
-              </div>
-
-              {/* Exercise Page Number */}
-              <div>
-                <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                  Exercise Page Number
-                </label>
-                <input
-                  type="text"
-                  value={form.exercise_page_number}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, exercise_page_number: e.target.value }))
-                  }
-                  className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                  placeholder="Optional"
-                />
-              </div>
-            </div>
-
-            {/* Custom Prompt */}
-            <div>
-              <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
-                Custom Prompt
-              </label>
-              <textarea
-                rows={3}
-                value={form.custom_prompt}
-                onChange={(e) => setForm((f) => ({ ...f, custom_prompt: e.target.value }))}
-                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra resize-y"
-                placeholder="Optional additional instructions..."
-              />
-            </div>
-
-            {/* Generate Bilingual toggle */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={form.generate_bilingual}
-                onClick={() =>
-                  setForm((f) => ({ ...f, generate_bilingual: !f.generate_bilingual }))
-                }
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                  form.generate_bilingual ? "bg-dars-terra" : "bg-dars-rule-dark"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
-                    form.generate_bilingual ? "translate-x-4" : "translate-x-0"
-                  }`}
-                />
-              </button>
-              <span className="text-sm text-dars-ink">Generate Bilingual</span>
-            </div>
-
-            {generateError && (
-              <p className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-2 bg-red-50">
-                {generateError}
-              </p>
-            )}
-
+        {/* Pagination */}
+        {lpTotal > LP_LIMIT && (
+          <div className="mt-6 flex items-center gap-3">
             <button
-              type="submit"
-              disabled={generating || isGated}
-              className="px-5 py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              type="button"
+              onClick={() => {
+                if (session) {
+                  setLpOffset(Math.max(0, lpOffset - LP_LIMIT));
+                }
+              }}
+              disabled={lpOffset === 0 || lpLoading}
+              className="px-4 py-2 text-sm font-medium border border-dars-rule-dark rounded-md text-dars-ink hover:bg-dars-parchment-mid transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer bg-white"
             >
-              {generating ? "Generating your lesson plan..." : "Generate Lesson Plan"}
+              Previous
             </button>
-          </form>
-
-          {/* Generated LP output */}
-          {generatedLP && generatedLP.content && (
-            <div ref={generatedRef} className="mt-6">
-              <div className="flex items-center gap-3 mb-3">
-                <h3 className="text-base font-serif font-semibold text-dars-ink">
-                  Generated Lesson Plan
-                </h3>
-                <StatusBadge status={generatedLP.status} />
-              </div>
-              <div
-                className="border border-dars-rule-light rounded-lg bg-white p-6 prose prose-sm max-w-none overflow-auto"
-                dangerouslySetInnerHTML={{ __html: generatedLP.content }}
-              />
-            </div>
-          )}
-        </section>
-
-        {/* Section B: Past lesson plans */}
-        <section>
-          <h2 className="text-lg font-serif font-semibold text-dars-ink mb-4">
-            Past Lesson Plans
-          </h2>
-
-          {lpLoading && (
-            <p className="text-sm text-dars-muted animate-pulse">Loading lesson plans...</p>
-          )}
-
-          {lpError && (
-            <p className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-2 bg-red-50">
-              {lpError}
-            </p>
-          )}
-
-          {!lpLoading && !lpError && lpList.length === 0 && (
-            <p className="text-sm text-dars-muted">
-              {selectedTeacher
-                ? `No lesson plans found for ${selectedTeacher.name}. Generate the first one above.`
-                : "No lesson plans found. Generate your first one above."}
-            </p>
-          )}
-
-          {!lpLoading && lpList.length > 0 && (
-            <div className="space-y-3">
-              {lpList.map((lp) => {
-                const isExpanded = expandedId === lp.id;
-                return (
-                  <div
-                    key={lp.id}
-                    className="border border-dars-rule-light rounded-lg bg-dars-parchment overflow-hidden"
-                  >
-                    {/* Card header — click to expand/collapse */}
-                    <button
-                      type="button"
-                      onClick={() => setExpandedId(isExpanded ? null : lp.id)}
-                      className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-dars-parchment-mid transition-colors cursor-pointer bg-transparent border-none"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold text-dars-ink">
-                            {lp.subject} — Grade {lp.grade}
-                          </span>
-                          {lp.topic && (
-                            <span className="text-xs text-dars-muted">&middot; {lp.topic}</span>
-                          )}
-                          <StatusBadge status={lp.status} />
-                        </div>
-                        <p className="text-xs text-dars-muted mt-0.5">{formatDate(lp.created_at)}</p>
-                      </div>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className={`h-4 w-4 text-dars-muted shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </button>
-
-                    {/* Expanded content */}
-                    {isExpanded && (
-                      <div className="border-t border-dars-rule-light px-5 py-5 bg-white">
-                        {lp.content ? (
-                          <div
-                            className="prose prose-sm max-w-none overflow-auto"
-                            dangerouslySetInnerHTML={{ __html: lp.content }}
-                          />
-                        ) : (
-                          <p className="text-sm text-dars-muted italic">No content available.</p>
-                        )}
-
-                        {/* Review button */}
-                        <div className="mt-5 pt-4 border-t border-dars-rule-light">
-                          <button
-                            type="button"
-                            onClick={() => handleReview(lp.id)}
-                            disabled={!!reviewLoading[lp.id]}
-                            className="px-4 py-2 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                          >
-                            {reviewLoading[lp.id] ? "Reviewing..." : "Review this LP"}
-                          </button>
-
-                          {reviewError[lp.id] && (
-                            <p className="mt-2 text-sm text-red-600">{reviewError[lp.id]}</p>
-                          )}
-
-                          {reviewData[lp.id] && (
-                            <ReviewDisplay data={reviewData[lp.id]} />
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {lpTotal > LP_LIMIT && (
-            <div className="mt-6 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (session && selectedTeacher) {
-                    const newOffset = Math.max(0, lpOffset - LP_LIMIT);
-                    setLpOffset(newOffset);
-                  }
-                }}
-                disabled={lpOffset === 0 || lpLoading}
-                className="px-4 py-2 text-sm font-medium border border-dars-rule-dark rounded-md text-dars-ink hover:bg-dars-parchment-mid transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer bg-white"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-dars-muted">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (session && selectedTeacher) {
-                    const newOffset = lpOffset + LP_LIMIT;
-                    setLpOffset(newOffset);
-                  }
-                }}
-                disabled={lpOffset + LP_LIMIT >= lpTotal || lpLoading}
-                className="px-4 py-2 text-sm font-medium border border-dars-rule-dark rounded-md text-dars-ink hover:bg-dars-parchment-mid transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer bg-white"
-              >
-                Next
-              </button>
-            </div>
-          )}
-        </section>
-      </div>
+            <span className="text-sm text-dars-muted">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (session) {
+                  setLpOffset(lpOffset + LP_LIMIT);
+                }
+              }}
+              disabled={lpOffset + LP_LIMIT >= lpTotal || lpLoading}
+              className="px-4 py-2 text-sm font-medium border border-dars-rule-dark rounded-md text-dars-ink hover:bg-dars-parchment-mid transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer bg-white"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.clients.models import Client
 from dars.database import get_db
-from dars.deps import get_current_client, require_teacher
+from dars.deps import get_current_client, get_effective_teacher, require_teacher
 from dars.lesson_plans.schemas import (
     LessonPlanCreateRequest,
     LessonPlanEditRequest,
@@ -46,7 +46,7 @@ async def review_lesson_plan_endpoint(
 async def create_lesson_plan_endpoint(
     body: LessonPlanCreateRequest,
     background_tasks: BackgroundTasks,
-    teacher: Teacher = Depends(require_teacher),
+    teacher: Teacher = Depends(get_effective_teacher),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:

@@ -10,6 +10,7 @@ interface AuthResult {
   client_id: string;
   name: string;
   email: string;
+  teacher_id: string;
 }
 
 export function LoginTemplate() {
