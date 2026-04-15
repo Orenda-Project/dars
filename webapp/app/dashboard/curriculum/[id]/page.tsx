@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 interface Session {
@@ -274,8 +274,8 @@ export default function CurriculumDetailPage() {
                             const isGenerated = generatedStubs.has(stub.id);
                             const card = mockCards[stub.id];
                             return (
-                              <>
-                                <tr key={stub.id} className="hover:bg-dars-parchment/40 transition-colors">
+                              <React.Fragment key={stub.id}>
+                                <tr className="hover:bg-dars-parchment/40 transition-colors">
                                   <td className="px-5 py-3 text-xs text-dars-muted font-mono">
                                     {stub.sequence}
                                   </td>
@@ -316,7 +316,7 @@ export default function CurriculumDetailPage() {
                                     </td>
                                   </tr>
                                 )}
-                              </>
+                              </React.Fragment>
                             );
                           })}
                         </tbody>
