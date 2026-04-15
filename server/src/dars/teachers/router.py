@@ -16,7 +16,7 @@ from dars.teachers.schemas import (
 from dars.teachers.service import (
     get_teacher,
     list_teachers,
-    register_teacher,
+    register_teacher_and_commit,
     update_teacher,
 )
 
@@ -30,7 +30,7 @@ async def register_teacher_endpoint(
     db: AsyncSession = Depends(get_db),
 ) -> TeacherResponse:
     try:
-        teacher = await register_teacher(db, client_id=current_client.id, request=body)
+        teacher = await register_teacher_and_commit(db, client_id=current_client.id, request=body)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     return TeacherResponse.model_validate(teacher)

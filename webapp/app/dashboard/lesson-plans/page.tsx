@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BookLoader } from "@/components/atoms";
 
 interface Session {
   api_key: string;
@@ -508,7 +509,9 @@ export default function LessonPlansPage() {
         </h2>
 
         {lpLoading && (
-          <p className="text-sm text-dars-muted animate-pulse">Loading lesson plans...</p>
+          <div className="flex justify-center items-center min-h-[110px]">
+            <BookLoader />
+          </div>
         )}
 
         {lpError && (

@@ -34,6 +34,17 @@ async def register_teacher(
     return teacher
 
 
+async def register_teacher_and_commit(
+    db: AsyncSession,
+    client_id: uuid.UUID,
+    request: TeacherRegisterRequest,
+) -> Teacher:
+    teacher = await register_teacher(db, client_id, request)
+    await db.commit()
+    await db.refresh(teacher)
+    return teacher
+
+
 async def get_teacher(
     db: AsyncSession, client_id: uuid.UUID, teacher_id: uuid.UUID
 ) -> Teacher | None:

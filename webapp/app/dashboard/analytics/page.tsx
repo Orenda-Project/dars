@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BookLoader } from "@/components/atoms";
 
 interface Session {
   api_key: string;
@@ -73,7 +74,9 @@ export default function AnalyticsPage() {
         </p>
 
         {stats.loading && (
-          <p className="text-3xl font-serif font-bold text-dars-ink animate-pulse">—</p>
+          <div className="flex justify-center items-center min-h-[110px]">
+            <BookLoader />
+          </div>
         )}
 
         {stats.error && (

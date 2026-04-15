@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BookLoader } from "@/components/atoms";
 
 interface Session {
   api_key: string;
   client_id: string;
   name: string;
   email: string;
+  teacher_id?: string;
 }
 
 interface Teacher {
@@ -322,112 +324,149 @@ export default function TeachersPage() {
         )}
 
         {/* Table */}
-        <div className="border border-dars-rule-light rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-dars-parchment border-b border-dars-rule-light">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide">
-                  Name
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide">
-                  Email
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide hidden sm:table-cell">
-                  Phone
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide hidden md:table-cell">
-                  School
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide whitespace-nowrap hidden lg:table-cell">
-                  Teacher ID
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide whitespace-nowrap">
-                  Registered
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {listLoading && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-dars-muted animate-pulse">
-                    Loading teachers...
-                  </td>
-                </tr>
-              )}
+        {(() => {
+          const defaultTeacher = session?.teacher_id
+            ? teachers.find((t) => t.id === session.teacher_id) ?? null
+            : null;
+          const otherTeachers = session?.teacher_id
+            ? teachers.filter((t) => t.id !== session.teacher_id)
+            : teachers;
 
-              {!listLoading && !listError && teachers.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-dars-muted">
-                    {searchQuery
-                      ? `No teachers found matching "${searchQuery}".`
-                      : "No teachers registered yet. Add the first one above."}
-                  </td>
-                </tr>
-              )}
-
-              {!listLoading &&
-                teachers.map((teacher, idx) => (
-                  <tr
-                    key={teacher.id}
-                    className={
-                      idx % 2 === 0
-                        ? "bg-white border-b border-dars-rule-light last:border-b-0"
-                        : "bg-dars-parchment border-b border-dars-rule-light last:border-b-0"
-                    }
-                  >
-                    <td className="px-4 py-3 font-medium text-dars-ink">
-                      {teacher.name}
-                    </td>
-                    <td className="px-4 py-3 text-dars-muted">
-                      {teacher.email ?? <span className="text-dars-rule-dark">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-dars-muted hidden sm:table-cell">
-                      {teacher.phone ?? <span className="text-dars-rule-dark">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-dars-muted hidden md:table-cell">
-                      {teacher.school ?? <span className="text-dars-rule-dark">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-dars-muted hidden lg:table-cell">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="font-mono text-xs">
-                          {teacher.id.slice(0, 8)}&hellip;
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyId(teacher.id)}
-                          title="Copy full Teacher ID"
-                          className="text-dars-muted hover:text-dars-ink transition-colors cursor-pointer"
+          function teacherRow(teacher: Teacher, idx: number, isDefault: boolean) {
+            return (
+              <tr
+                key={teacher.id}
+                className={
+                  idx % 2 === 0
+                    ? "bg-white border-b border-dars-rule-light last:border-b-0"
+                    : "bg-dars-parchment border-b border-dars-rule-light last:border-b-0"
+                }
+              >
+                <td className="px-4 py-3 font-medium text-dars-ink">
+                  <span>{teacher.name}</span>
+                  {isDefault && (
+                    <span className="block text-xs text-dars-muted font-normal mt-0.5">
+                      Your account — used to access all platform features
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-dars-muted">
+                  {teacher.email ?? <span className="text-dars-rule-dark">—</span>}
+                </td>
+                <td className="px-4 py-3 text-dars-muted hidden sm:table-cell">
+                  {teacher.phone ?? <span className="text-dars-rule-dark">—</span>}
+                </td>
+                <td className="px-4 py-3 text-dars-muted hidden md:table-cell">
+                  {teacher.school ?? <span className="text-dars-rule-dark">—</span>}
+                </td>
+                <td className="px-4 py-3 text-dars-muted hidden lg:table-cell">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="font-mono text-xs">
+                      {teacher.id.slice(0, 8)}&hellip;
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyId(teacher.id)}
+                      title="Copy full Teacher ID"
+                      className="text-dars-muted hover:text-dars-ink transition-colors cursor-pointer"
+                    >
+                      {copiedId === teacher.id ? (
+                        <span className="text-xs font-medium text-green-600">Copied!</span>
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
                         >
-                          {copiedId === teacher.id ? (
-                            <span className="text-xs font-medium text-green-600">Copied!</span>
-                          ) : (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="13"
-                              height="13"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
-                        </button>
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-dars-muted whitespace-nowrap">
-                      {formatDate(teacher.created_at)}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                    </button>
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-dars-muted whitespace-nowrap">
+                  {formatDate(teacher.created_at)}
+                </td>
+              </tr>
+            );
+          }
+
+          const colSpan = 6;
+          const headerRow = (
+            <tr className="bg-dars-parchment border-b border-dars-rule-light">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide">
+                Name
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide">
+                Email
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide hidden sm:table-cell">
+                Phone
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide hidden md:table-cell">
+                School
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide whitespace-nowrap hidden lg:table-cell">
+                Teacher ID
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-wide whitespace-nowrap">
+                Registered
+              </th>
+            </tr>
+          );
+
+          return (
+            <div className="border border-dars-rule-light rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>{headerRow}</thead>
+                <tbody>
+                  {listLoading && (
+                    <tr>
+                      <td colSpan={colSpan} className="px-4 py-0 text-center h-[110px]">
+                        <BookLoader />
+                      </td>
+                    </tr>
+                  )}
+
+                  {!listLoading && !listError && teachers.length === 0 && (
+                    <tr>
+                      <td colSpan={colSpan} className="px-4 py-8 text-center text-sm text-dars-muted">
+                        {searchQuery
+                          ? `No teachers found matching "${searchQuery}".`
+                          : "No teachers registered yet. Add the first one above."}
+                      </td>
+                    </tr>
+                  )}
+
+                  {!listLoading && defaultTeacher && teacherRow(defaultTeacher, 0, true)}
+
+                  {!listLoading && defaultTeacher && otherTeachers.length > 0 && (
+                    <tr>
+                      <td colSpan={colSpan} className="px-4 py-2 bg-dars-parchment border-b border-dars-rule-light">
+                        <span className="text-xs font-semibold text-dars-muted uppercase tracking-wide">
+                          Other teachers
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+
+                  {!listLoading &&
+                    otherTeachers.map((teacher, idx) =>
+                      teacherRow(teacher, idx, false)
+                    )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
 
         {/* Pagination */}
         {total > LIMIT && (

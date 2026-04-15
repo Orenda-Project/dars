@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BookLoader } from "@/components/atoms";
 
 interface Session {
   api_key: string;
@@ -157,7 +158,9 @@ export default function CurriculumPage() {
         <h2 className="text-lg font-serif font-semibold text-dars-ink mb-4">Curriculums</h2>
 
         {curriculumsLoading && (
-          <p className="text-sm text-dars-muted animate-pulse">Loading curriculums...</p>
+          <div className="flex justify-center items-center min-h-[110px]">
+            <BookLoader />
+          </div>
         )}
         {curriculumsError && (
           <p className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-2 bg-red-50">
@@ -218,7 +221,9 @@ export default function CurriculumPage() {
               </div>
 
               {booksLoading && (
-                <p className="px-4 py-4 text-sm text-dars-muted animate-pulse">Loading books...</p>
+                <div className="flex justify-center items-center min-h-[110px]">
+                  <BookLoader />
+                </div>
               )}
               {booksError && (
                 <p className="px-4 py-4 text-sm text-red-600">{booksError}</p>

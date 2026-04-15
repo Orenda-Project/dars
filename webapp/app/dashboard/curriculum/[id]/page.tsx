@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { BookLoader } from "@/components/atoms";
 import { useParams } from "next/navigation";
 
 interface Session {
@@ -143,7 +144,9 @@ export default function CurriculumDetailPage() {
   if (loading) {
     return (
       <div className="p-8">
-        <p className="text-sm text-dars-muted animate-pulse">Loading curriculum...</p>
+        <div className="flex justify-center items-center min-h-[110px]">
+          <BookLoader />
+        </div>
       </div>
     );
   }

@@ -50,6 +50,11 @@ async def signup(
         response = sb.auth.sign_up({"email": email, "password": password})
     except Exception as exc:
         logger.warning("Supabase sign_up error: %s", exc)
+        if "already registered" in str(exc).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with this email already exists.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Auth provider error during signup. Try again later.",
