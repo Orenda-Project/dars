@@ -26,7 +26,6 @@ class TeacherResponse(BaseModel):
     phone: str | None
     school: str | None
     is_active: bool
-    is_client_teacher: bool
     created_at: datetime
     updated_at: datetime
 

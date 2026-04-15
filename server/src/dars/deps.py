@@ -8,7 +8,7 @@ from dars.clients.service import get_client_by_api_key
 from dars.config import settings
 from dars.database import get_db
 from dars.teachers.models import Teacher
-from dars.teachers.service import get_client_teacher, get_teacher
+from dars.teachers.service import get_teacher
 
 
 async def get_current_client(
@@ -65,9 +65,9 @@ async def get_effective_teacher(
     Resolve the active teacher for a request.
 
     - If X-Teacher-ID header is present, look it up and validate it belongs to the client.
-    - Otherwise, fall back to the client's is_client_teacher=True teacher.
+    - Otherwise, fall back to the client's default_teacher_id.
     - Raises 404 if the header value does not match a known teacher.
-    - Raises 422 if neither the header nor a client teacher is found.
+    - Raises 422 if neither the header nor a default teacher is found.
     """
     if x_teacher_id is not None:
         import uuid as _uuid
@@ -80,12 +80,12 @@ async def get_effective_teacher(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
         return teacher
 
-    # Fall back to the client's own teacher
-    teacher = await get_client_teacher(db, current_client.id)
+    # Fall back to the client's default teacher
+    teacher = await db.get(Teacher, current_client.default_teacher_id)
     if teacher is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No teacher resolved. Provide X-Teacher-ID header or ensure a client teacher exists.",
+            detail="No teacher resolved. Provide X-Teacher-ID header or ensure a default teacher exists.",
         )
     return teacher
 
