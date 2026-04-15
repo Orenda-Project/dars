@@ -14,6 +14,7 @@
   --color-dars-rule-light: #e0d5c8;
 
   --font-serif: var(--font-lora), Georgia, serif;
+  --font-nastaliq: var(--font-nastaliq), 'Noto Nastaliq Urdu', serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 

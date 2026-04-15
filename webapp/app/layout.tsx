@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Lora } from "next/font/google";
+import { Cormorant_Garamond, Geist_Mono, Lora, Noto_Nastaliq_Urdu } from "next/font/google";
 import "./globals.css";
 
 const lora = Lora({
@@ -12,6 +12,18 @@ const lora = Lora({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const cormorant = Cormorant_Garamond({
+  variable: "--font-cormorant",
+  subsets: ["latin"],
+  weight: ["600", "700"],
+});
+
+const notoNastaliq = Noto_Nastaliq_Urdu({
+  variable: "--font-nastaliq",
+  subsets: ["arabic"],
+  weight: ["400", "700"],
 });
 
 export const metadata: Metadata = {
@@ -28,7 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${lora.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${lora.variable} ${geistMono.variable} ${notoNastaliq.variable} ${cormorant.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
