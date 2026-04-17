@@ -1,0 +1,366 @@
+"""Tests for Phase 1 curriculum read API endpoints."""
+import uuid
+
+import pytest
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from dars.books.models import Book, BookChapter
+from dars.clients.models import Client
+from dars.clients.service import create_client
+from dars.curriculum.models import (
+    Curriculum,
+    CurriculumLpStub,
+    CurriculumTopic,
+    SloProvider,
+    Slo,
+    SubSlo,
+    Topic,
+    TopicSubSlo,
+)
+from dars.database import Base, get_db
+from dars.main import app
+
+TEST_DB = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest.fixture(scope="function")
+async def db_session():
+    engine = create_async_engine(TEST_DB)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest.fixture(scope="function")
+async def http_client(db_session):
+    client_obj, raw_key = await create_client(db_session, name="Test Client")
+    app.dependency_overrides[get_db] = lambda: db_session
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        c.headers["X-API-Key"] = raw_key
+        yield c, client_obj
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+async def admin_http_client(db_session):
+    client_obj, raw_key = await create_client(db_session, name="Admin Client")
+    client_obj.is_admin = True
+    await db_session.commit()
+    await db_session.refresh(client_obj)
+    app.dependency_overrides[get_db] = lambda: db_session
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        c.headers["X-API-Key"] = raw_key
+        yield c, client_obj
+    app.dependency_overrides.clear()
+
+
+async def _seed_book(db: AsyncSession) -> Book:
+    book = Book(id=1, title="English Grade 1", grade=1, subject="English", board="ICT")
+    db.add(book)
+    chapter = BookChapter(id=10, book_id=1, title="My Family", chapter_number=1)
+    db.add(chapter)
+    await db.commit()
+    await db.refresh(book)
+    return book
+
+
+async def _seed_provider(db: AsyncSession) -> SloProvider:
+    provider = SloProvider(
+        id=uuid.uuid4(),
+        slug="ncp",
+        name="NCP",
+        issuing_body="Government",
+    )
+    db.add(provider)
+    await db.commit()
+    return provider
+
+
+async def _seed_curriculum(db: AsyncSession, book: Book, provider: SloProvider, client_id=None, is_default=True) -> Curriculum:
+    curriculum = Curriculum(
+        id=uuid.uuid4(),
+        name="Test Curriculum",
+        book_id=book.id,
+        provider_id=provider.id,
+        is_default=is_default,
+        client_id=client_id,
+        is_active=True,
+    )
+    db.add(curriculum)
+    await db.commit()
+    return curriculum
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/books
+# ---------------------------------------------------------------------------
+
+async def test_list_books_empty(http_client):
+    c, _ = http_client
+    resp = await c.get("/api/v1/books")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_list_books_returns_book(http_client, db_session):
+    c, _ = http_client
+    await _seed_book(db_session)
+    resp = await c.get("/api/v1/books")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "English Grade 1"
+    assert data[0]["board"] == "ICT"
+    # chapters should NOT be in list response
+    assert "chapters" not in data[0]
+
+
+async def test_list_books_filter_by_grade(http_client, db_session):
+    c, _ = http_client
+    await _seed_book(db_session)
+    resp = await c.get("/api/v1/books?grade=2")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    resp = await c.get("/api/v1/books?grade=1")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+async def test_list_books_requires_auth():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.get("/api/v1/books")
+    assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/books/{id}
+# ---------------------------------------------------------------------------
+
+async def test_get_book_detail_not_found(http_client):
+    c, _ = http_client
+    resp = await c.get("/api/v1/books/9999")
+    assert resp.status_code == 404
+
+
+async def test_get_book_detail_returns_chapters(http_client, db_session):
+    c, _ = http_client
+    await _seed_book(db_session)
+    resp = await c.get("/api/v1/books/1")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == 1
+    assert data["title"] == "English Grade 1"
+    assert len(data["chapters"]) == 1
+    assert data["chapters"][0]["title"] == "My Family"
+    assert data["chapters"][0]["topics"] == []
+
+
+async def test_get_book_detail_with_topics_and_sub_slos(http_client, db_session):
+    c, _ = http_client
+    await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+
+    slo = Slo(
+        id=uuid.uuid4(), provider_id=provider.id, book_id=1,
+        code="E1-01", statement="Base SLO",
+    )
+    db_session.add(slo)
+    await db_session.commit()
+
+    sub_slo = SubSlo(id=uuid.uuid4(), slo_id=slo.id, code="E1-01.1", statement="Sub SLO 1")
+    db_session.add(sub_slo)
+
+    topic = Topic(id=uuid.uuid4(), chapter_id=10, title="Family Members", sequence=1)
+    db_session.add(topic)
+    await db_session.commit()
+
+    tslo = TopicSubSlo(topic_id=topic.id, sub_slo_id=sub_slo.id)
+    db_session.add(tslo)
+    await db_session.commit()
+
+    resp = await c.get("/api/v1/books/1")
+    assert resp.status_code == 200
+    data = resp.json()
+    chapter = data["chapters"][0]
+    assert len(chapter["topics"]) == 1
+    t = chapter["topics"][0]
+    assert t["title"] == "Family Members"
+    assert len(t["sub_slos"]) == 1
+    assert t["sub_slos"][0]["code"] == "E1-01.1"
+    assert t["sub_slos"][0]["slo_code"] == "E1-01"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/curriculums
+# ---------------------------------------------------------------------------
+
+async def test_list_curriculums_empty(http_client):
+    c, _ = http_client
+    resp = await c.get("/api/v1/curriculums")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_list_curriculums_shows_defaults(http_client, db_session):
+    c, _ = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    await _seed_curriculum(db_session, book, provider, is_default=True)
+
+    resp = await c.get("/api/v1/curriculums")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["is_default"] is True
+    assert data[0]["book_title"] == "English Grade 1"
+    assert data[0]["provider_name"] == "NCP"
+
+
+async def test_list_curriculums_shows_own_client_curriculum(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    # curriculum belonging to this client (not default)
+    await _seed_curriculum(db_session, book, provider, client_id=client_obj.id, is_default=False)
+
+    resp = await c.get("/api/v1/curriculums")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+async def test_list_curriculums_hides_other_clients_curriculum(http_client, db_session):
+    c, _ = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    other_client_id = uuid.uuid4()
+    # non-default curriculum belonging to a different client
+    await _seed_curriculum(db_session, book, provider, client_id=other_client_id, is_default=False)
+
+    resp = await c.get("/api/v1/curriculums")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/curriculums/{id}
+# ---------------------------------------------------------------------------
+
+async def test_get_curriculum_detail_not_found(http_client):
+    c, _ = http_client
+    resp = await c.get(f"/api/v1/curriculums/{uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
+async def test_get_curriculum_detail_invalid_uuid(http_client):
+    c, _ = http_client
+    resp = await c.get("/api/v1/curriculums/not-a-uuid")
+    assert resp.status_code == 404
+
+
+async def test_get_curriculum_detail_returns_topics(http_client, db_session):
+    c, _ = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+
+    topic = Topic(id=uuid.uuid4(), chapter_id=10, title="Topic 1", sequence=1)
+    db_session.add(topic)
+    await db_session.commit()
+
+    ct = CurriculumTopic(
+        id=uuid.uuid4(), curriculum_id=curriculum.id, topic_id=topic.id,
+        sequence=1,
+    )
+    db_session.add(ct)
+    await db_session.commit()
+
+    stub = CurriculumLpStub(
+        id=uuid.uuid4(), curriculum_topic_id=ct.id, sequence=1,
+        skill_type="reading", status="pending",
+    )
+    db_session.add(stub)
+    await db_session.commit()
+
+    resp = await c.get(f"/api/v1/curriculums/{curriculum.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "Test Curriculum"
+    assert data["book_title"] == "English Grade 1"
+    assert len(data["topics"]) == 1
+    t = data["topics"][0]
+    assert t["topic_title"] == "Topic 1"
+    assert len(t["lp_stubs"]) == 1
+    assert t["lp_stubs"][0]["skill_type"] == "reading"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/curriculums/{id}/progress
+# ---------------------------------------------------------------------------
+
+async def test_get_curriculum_progress_empty(http_client, db_session):
+    c, _ = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+
+    resp = await c.get(f"/api/v1/curriculums/{curriculum.id}/progress")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_topics"] == 0
+    assert data["completed"] == 0
+    assert data["behind"] == 0
+    assert data["on_track"] == 0
+
+
+async def test_get_curriculum_progress_counts(http_client, db_session):
+    from datetime import date, timedelta
+    c, _ = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+
+    today = date.today()
+    topic1 = Topic(id=uuid.uuid4(), chapter_id=10, title="T1", sequence=1)
+    topic2 = Topic(id=uuid.uuid4(), chapter_id=10, title="T2", sequence=2)
+    topic3 = Topic(id=uuid.uuid4(), chapter_id=10, title="T3", sequence=3)
+    db_session.add_all([topic1, topic2, topic3])
+    await db_session.commit()
+
+    # completed topic
+    ct1 = CurriculumTopic(
+        id=uuid.uuid4(), curriculum_id=curriculum.id, topic_id=topic1.id, sequence=1,
+        planned_date=today - timedelta(days=5), completed_date=today - timedelta(days=1),
+    )
+    # behind: planned in past, not done
+    ct2 = CurriculumTopic(
+        id=uuid.uuid4(), curriculum_id=curriculum.id, topic_id=topic2.id, sequence=2,
+        planned_date=today - timedelta(days=2), completed_date=None,
+    )
+    # on track: planned in future, not done
+    ct3 = CurriculumTopic(
+        id=uuid.uuid4(), curriculum_id=curriculum.id, topic_id=topic3.id, sequence=3,
+        planned_date=today + timedelta(days=3), completed_date=None,
+    )
+    db_session.add_all([ct1, ct2, ct3])
+    await db_session.commit()
+
+    resp = await c.get(f"/api/v1/curriculums/{curriculum.id}/progress")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_topics"] == 3
+    assert data["completed"] == 1
+    assert data["behind"] == 1
+    assert data["on_track"] == 1
+
+
+async def test_get_curriculum_progress_not_found(http_client):
+    c, _ = http_client
+    resp = await c.get(f"/api/v1/curriculums/{uuid.uuid4()}/progress")
+    assert resp.status_code == 404
