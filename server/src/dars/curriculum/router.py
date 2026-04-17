@@ -1,7 +1,8 @@
+import uuid as _uuid_module
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,11 +27,14 @@ from .schemas import (
     BookDetailResponse,
     BookListItem,
     ChapterDetail,
+    CurriculumCreateRequest,
     CurriculumDetailResponse,
     CurriculumListItem,
     CurriculumProgressResponse,
     CurriculumResponse,
+    CurriculumSetTopicsRequest,
     CurriculumTopicDetail,
+    CurriculumUpdateRequest,
     GradeResponse,
     LpStubSummary,
     SubjectResponse,
@@ -396,3 +400,253 @@ async def list_all_curriculums(
         }
         for curriculum, book_title, provider_name in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Admin CRUD — Phase 2
+# ---------------------------------------------------------------------------
+
+async def _build_curriculum_detail(db: AsyncSession, curriculum_id: _uuid_module.UUID) -> CurriculumDetailResponse:
+    """Load a curriculum with all topics + stubs and return the full detail response."""
+    row = (await db.execute(
+        select(Curriculum, Book.title, SloProvider.name)
+        .join(Book, Curriculum.book_id == Book.id)
+        .join(SloProvider, Curriculum.provider_id == SloProvider.id)
+        .where(Curriculum.id == curriculum_id)
+    )).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+    curriculum, book_title, provider_name = row
+
+    ct_result = await db.execute(
+        select(CurriculumTopic)
+        .where(CurriculumTopic.curriculum_id == curriculum_id)
+        .options(selectinload(CurriculumTopic.stubs))
+        .order_by(CurriculumTopic.sequence)
+    )
+    curriculum_topics = ct_result.scalars().all()
+
+    topic_ids = [ct.topic_id for ct in curriculum_topics]
+    topic_map: dict = {}
+    if topic_ids:
+        topics_result = await db.execute(select(Topic).where(Topic.id.in_(topic_ids)))
+        topic_map = {t.id: t for t in topics_result.scalars().all()}
+
+    topics_out = []
+    for ct in curriculum_topics:
+        topic = topic_map.get(ct.topic_id)
+        stubs_out = [
+            LpStubSummary(
+                id=stub.id,
+                sequence=stub.sequence,
+                skill_type=stub.skill_type,
+                cpa_phase=stub.cpa_phase,
+                blooms_level=stub.blooms_level,
+                planned_date=stub.planned_date,
+                status=stub.status,
+                lesson_plan_id=stub.lesson_plan_id,
+            )
+            for stub in ct.stubs
+        ]
+        topics_out.append(CurriculumTopicDetail(
+            id=ct.id,
+            sequence=ct.sequence,
+            topic_id=ct.topic_id,
+            topic_title=topic.title if topic else "",
+            topic_text=topic.text if topic else None,
+            planned_date=ct.planned_date,
+            completed_date=ct.completed_date,
+            lp_stubs=stubs_out,
+        ))
+
+    return CurriculumDetailResponse(
+        id=curriculum.id,
+        name=curriculum.name,
+        book_id=curriculum.book_id,
+        book_title=book_title,
+        provider_name=provider_name,
+        is_default=curriculum.is_default,
+        teacher_id=curriculum.teacher_id,
+        is_active=curriculum.is_active,
+        created_at=curriculum.created_at,
+        topics=topics_out,
+    )
+
+
+@router.post("/api/admin/curriculums", response_model=CurriculumListItem, status_code=201)
+async def create_curriculum(
+    body: CurriculumCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    _client: Client = Depends(get_admin_client),
+) -> CurriculumListItem:
+    """Create a new curriculum. is_default=true → teacher_id and client_id are null."""
+    # Validate book exists
+    book = (await db.execute(select(Book).where(Book.id == body.book_id))).scalar_one_or_none()
+    if book is None:
+        raise HTTPException(status_code=422, detail="book_id does not exist.")
+
+    # Validate provider exists
+    provider = (await db.execute(
+        select(SloProvider).where(SloProvider.id == body.provider_id)
+    )).scalar_one_or_none()
+    if provider is None:
+        raise HTTPException(status_code=422, detail="provider_id does not exist.")
+
+    curriculum = Curriculum(
+        id=_uuid_module.uuid4(),
+        name=body.name,
+        book_id=body.book_id,
+        provider_id=body.provider_id,
+        is_default=body.is_default,
+        teacher_id=None,
+        client_id=None,
+        is_active=True,
+    )
+    db.add(curriculum)
+    await db.commit()
+    await db.refresh(curriculum)
+
+    return CurriculumListItem(
+        id=curriculum.id,
+        name=curriculum.name,
+        book_id=curriculum.book_id,
+        book_title=book.title,
+        provider_name=provider.name,
+        is_default=curriculum.is_default,
+        teacher_id=curriculum.teacher_id,
+        is_active=curriculum.is_active,
+    )
+
+
+@router.post("/api/admin/curriculums/{curriculum_id}/topics", response_model=CurriculumDetailResponse)
+async def set_curriculum_topics(
+    curriculum_id: str,
+    body: CurriculumSetTopicsRequest,
+    db: AsyncSession = Depends(get_db),
+    _client: Client = Depends(get_admin_client),
+) -> CurriculumDetailResponse:
+    """Replace the full ordered topic list for a curriculum."""
+    try:
+        cid = _uuid_module.UUID(curriculum_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    # Check curriculum exists
+    curriculum = (await db.execute(
+        select(Curriculum).where(Curriculum.id == cid)
+    )).scalar_one_or_none()
+    if curriculum is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    # Validate all topic_ids exist
+    if body.topics:
+        requested_ids = [e.topic_id for e in body.topics]
+        found = (await db.execute(
+            select(Topic.id).where(Topic.id.in_(requested_ids))
+        )).scalars().all()
+        found_set = set(found)
+        missing = [str(tid) for tid in requested_ids if tid not in found_set]
+        if missing:
+            raise HTTPException(status_code=422, detail=f"Unknown topic_ids: {missing}")
+
+    # Delete existing topics (cascades to stubs)
+    await db.execute(delete(CurriculumTopic).where(CurriculumTopic.curriculum_id == cid))
+
+    # Insert new topics in order
+    for seq, entry in enumerate(body.topics, start=1):
+        ct = CurriculumTopic(
+            id=_uuid_module.uuid4(),
+            curriculum_id=cid,
+            topic_id=entry.topic_id,
+            sequence=seq,
+            planned_date=entry.planned_date,
+        )
+        db.add(ct)
+
+    await db.commit()
+    return await _build_curriculum_detail(db, cid)
+
+
+@router.patch("/api/admin/curriculums/{curriculum_id}", response_model=CurriculumListItem)
+async def update_curriculum(
+    curriculum_id: str,
+    body: CurriculumUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _client: Client = Depends(get_admin_client),
+) -> CurriculumListItem:
+    """Update curriculum metadata (name, is_default, is_active)."""
+    try:
+        cid = _uuid_module.UUID(curriculum_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    row = (await db.execute(
+        select(Curriculum, Book.title, SloProvider.name)
+        .join(Book, Curriculum.book_id == Book.id)
+        .join(SloProvider, Curriculum.provider_id == SloProvider.id)
+        .where(Curriculum.id == cid)
+    )).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+    curriculum, book_title, provider_name = row
+
+    if body.name is not None:
+        curriculum.name = body.name
+    if body.is_default is not None:
+        curriculum.is_default = body.is_default
+    if body.is_active is not None:
+        curriculum.is_active = body.is_active
+
+    await db.commit()
+    await db.refresh(curriculum)
+
+    return CurriculumListItem(
+        id=curriculum.id,
+        name=curriculum.name,
+        book_id=curriculum.book_id,
+        book_title=book_title,
+        provider_name=provider_name,
+        is_default=curriculum.is_default,
+        teacher_id=curriculum.teacher_id,
+        is_active=curriculum.is_active,
+    )
+
+
+@router.delete("/api/admin/curriculums/{curriculum_id}/topics/{ct_id}", status_code=204)
+async def delete_curriculum_topic(
+    curriculum_id: str,
+    ct_id: str,
+    db: AsyncSession = Depends(get_db),
+    _client: Client = Depends(get_admin_client),
+) -> Response:
+    """Remove a single topic from a curriculum and re-sequence the remaining topics."""
+    try:
+        cid = _uuid_module.UUID(curriculum_id)
+        ctid = _uuid_module.UUID(ct_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    # Verify curriculum + topic exists
+    ct = (await db.execute(
+        select(CurriculumTopic).where(
+            CurriculumTopic.id == ctid,
+            CurriculumTopic.curriculum_id == cid,
+        )
+    )).scalar_one_or_none()
+    if ct is None:
+        raise HTTPException(status_code=404, detail="Curriculum topic not found.")
+
+    await db.delete(ct)
+    await db.flush()
+
+    # Re-sequence remaining topics
+    remaining = (await db.execute(
+        select(CurriculumTopic)
+        .where(CurriculumTopic.curriculum_id == cid)
+        .order_by(CurriculumTopic.sequence)
+    )).scalars().all()
+    for new_seq, remaining_ct in enumerate(remaining, start=1):
+        remaining_ct.sequence = new_seq
+
+    await db.commit()
+    return Response(status_code=204)

@@ -364,3 +364,211 @@ async def test_get_curriculum_progress_not_found(http_client):
     c, _ = http_client
     resp = await c.get(f"/api/v1/curriculums/{uuid.uuid4()}/progress")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Admin CRUD
+# ---------------------------------------------------------------------------
+
+# POST /api/admin/curriculums
+
+async def test_create_curriculum_success(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+
+    resp = await c.post("/api/admin/curriculums", json={
+        "name": "Grade 1 English NCP",
+        "book_id": book.id,
+        "provider_id": str(provider.id),
+        "is_default": True,
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["name"] == "Grade 1 English NCP"
+    assert data["book_title"] == "English Grade 1"
+    assert data["provider_name"] == "NCP"
+    assert data["is_default"] is True
+    assert data["teacher_id"] is None
+
+
+async def test_create_curriculum_invalid_book(admin_http_client, db_session):
+    c, _ = admin_http_client
+    provider = await _seed_provider(db_session)
+    resp = await c.post("/api/admin/curriculums", json={
+        "name": "Test",
+        "book_id": 9999,
+        "provider_id": str(provider.id),
+        "is_default": False,
+    })
+    assert resp.status_code == 422
+
+
+async def test_create_curriculum_invalid_provider(admin_http_client, db_session):
+    c, _ = admin_http_client
+    await _seed_book(db_session)
+    resp = await c.post("/api/admin/curriculums", json={
+        "name": "Test",
+        "book_id": 1,
+        "provider_id": str(uuid.uuid4()),
+        "is_default": False,
+    })
+    assert resp.status_code == 422
+
+
+async def test_create_curriculum_requires_admin(http_client, db_session):
+    c, _ = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    resp = await c.post("/api/admin/curriculums", json={
+        "name": "Should fail",
+        "book_id": book.id,
+        "provider_id": str(provider.id),
+        "is_default": False,
+    })
+    assert resp.status_code == 403
+
+
+# POST /api/admin/curriculums/{id}/topics
+
+async def test_set_curriculum_topics_success(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider)
+
+    topic1 = Topic(id=uuid.uuid4(), chapter_id=10, title="T1", sequence=1)
+    topic2 = Topic(id=uuid.uuid4(), chapter_id=10, title="T2", sequence=2)
+    db_session.add_all([topic1, topic2])
+    await db_session.commit()
+
+    resp = await c.post(f"/api/admin/curriculums/{curriculum.id}/topics", json={
+        "topics": [
+            {"topic_id": str(topic1.id), "planned_date": "2025-09-01"},
+            {"topic_id": str(topic2.id), "planned_date": "2025-09-02"},
+        ]
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["topics"]) == 2
+    assert data["topics"][0]["topic_title"] == "T1"
+    assert data["topics"][0]["sequence"] == 1
+    assert data["topics"][1]["topic_title"] == "T2"
+    assert data["topics"][1]["sequence"] == 2
+    assert data["topics"][0]["planned_date"] == "2025-09-01"
+
+
+async def test_set_curriculum_topics_replaces_existing(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider)
+
+    topic1 = Topic(id=uuid.uuid4(), chapter_id=10, title="T1", sequence=1)
+    topic2 = Topic(id=uuid.uuid4(), chapter_id=10, title="T2", sequence=2)
+    db_session.add_all([topic1, topic2])
+    await db_session.commit()
+
+    # Set initial topics
+    await c.post(f"/api/admin/curriculums/{curriculum.id}/topics", json={
+        "topics": [
+            {"topic_id": str(topic1.id)},
+            {"topic_id": str(topic2.id)},
+        ]
+    })
+
+    # Replace with just topic2
+    resp = await c.post(f"/api/admin/curriculums/{curriculum.id}/topics", json={
+        "topics": [{"topic_id": str(topic2.id)}]
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["topics"]) == 1
+    assert data["topics"][0]["topic_title"] == "T2"
+
+
+async def test_set_curriculum_topics_invalid_topic_id(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider)
+
+    resp = await c.post(f"/api/admin/curriculums/{curriculum.id}/topics", json={
+        "topics": [{"topic_id": str(uuid.uuid4())}]
+    })
+    assert resp.status_code == 422
+
+
+# PATCH /api/admin/curriculums/{id}
+
+async def test_patch_curriculum_name(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider)
+
+    resp = await c.patch(f"/api/admin/curriculums/{curriculum.id}", json={"name": "Renamed"})
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Renamed"
+
+
+async def test_patch_curriculum_deactivate(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider)
+
+    resp = await c.patch(f"/api/admin/curriculums/{curriculum.id}", json={"is_active": False})
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+
+
+async def test_patch_curriculum_not_found(admin_http_client):
+    c, _ = admin_http_client
+    resp = await c.patch(f"/api/admin/curriculums/{uuid.uuid4()}", json={"name": "X"})
+    assert resp.status_code == 404
+
+
+# DELETE /api/admin/curriculums/{id}/topics/{topic_id}
+
+async def test_delete_curriculum_topic_success(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider)
+
+    topic1 = Topic(id=uuid.uuid4(), chapter_id=10, title="T1", sequence=1)
+    topic2 = Topic(id=uuid.uuid4(), chapter_id=10, title="T2", sequence=2)
+    topic3 = Topic(id=uuid.uuid4(), chapter_id=10, title="T3", sequence=3)
+    db_session.add_all([topic1, topic2, topic3])
+    await db_session.commit()
+
+    ct1 = CurriculumTopic(id=uuid.uuid4(), curriculum_id=curriculum.id, topic_id=topic1.id, sequence=1)
+    ct2 = CurriculumTopic(id=uuid.uuid4(), curriculum_id=curriculum.id, topic_id=topic2.id, sequence=2)
+    ct3 = CurriculumTopic(id=uuid.uuid4(), curriculum_id=curriculum.id, topic_id=topic3.id, sequence=3)
+    db_session.add_all([ct1, ct2, ct3])
+    await db_session.commit()
+
+    # Delete middle topic
+    resp = await c.delete(f"/api/admin/curriculums/{curriculum.id}/topics/{ct2.id}")
+    assert resp.status_code == 204
+
+    # Verify re-sequencing: remaining should be seq 1 and 2
+    from sqlalchemy import select as sa_select
+    from dars.curriculum.models import CurriculumTopic as CT
+    remaining = (await db_session.execute(
+        sa_select(CT).where(CT.curriculum_id == curriculum.id).order_by(CT.sequence)
+    )).scalars().all()
+    assert len(remaining) == 2
+    assert remaining[0].sequence == 1
+    assert remaining[1].sequence == 2
+
+
+async def test_delete_curriculum_topic_not_found(admin_http_client, db_session):
+    c, _ = admin_http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider)
+
+    resp = await c.delete(f"/api/admin/curriculums/{curriculum.id}/topics/{uuid.uuid4()}")
+    assert resp.status_code == 404

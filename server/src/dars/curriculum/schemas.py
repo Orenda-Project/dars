@@ -157,3 +157,29 @@ class CurriculumProgressResponse(BaseModel):
     completed: int
     behind: int
     on_track: int
+
+
+# ---------------------------------------------------------------------------
+# Admin request schemas (Phase 2)
+# ---------------------------------------------------------------------------
+
+class CurriculumCreateRequest(BaseModel):
+    name: str
+    book_id: int
+    provider_id: uuid.UUID
+    is_default: bool = False
+
+
+class TopicEntry(BaseModel):
+    topic_id: uuid.UUID
+    planned_date: date | None = None
+
+
+class CurriculumSetTopicsRequest(BaseModel):
+    topics: list[TopicEntry]
+
+
+class CurriculumUpdateRequest(BaseModel):
+    name: str | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
