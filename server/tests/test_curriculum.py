@@ -20,6 +20,7 @@ from dars.curriculum.models import (
 )
 from dars.database import Base, get_db
 from dars.main import app
+from dars.teachers.models import Teacher
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
 
@@ -572,3 +573,256 @@ async def test_delete_curriculum_topic_not_found(admin_http_client, db_session):
 
     resp = await c.delete(f"/api/admin/curriculums/{curriculum.id}/topics/{uuid.uuid4()}")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Teacher clone + progress tracking
+# ---------------------------------------------------------------------------
+
+async def _seed_teacher(db: AsyncSession, client_id: uuid.UUID) -> Teacher:
+    teacher = Teacher(
+        id=uuid.uuid4(),
+        client_id=client_id,
+        name="Test Teacher",
+    )
+    db.add(teacher)
+    await db.commit()
+    return teacher
+
+
+async def _seed_topic(db: AsyncSession, chapter_id: int = 10, sequence: int = 1) -> Topic:
+    topic = Topic(id=uuid.uuid4(), chapter_id=chapter_id, title=f"Topic {sequence}", sequence=sequence)
+    db.add(topic)
+    await db.commit()
+    return topic
+
+
+async def _seed_curriculum_topic(
+    db: AsyncSession,
+    curriculum: Curriculum,
+    topic: Topic,
+    sequence: int = 1,
+    planned_date=None,
+) -> CurriculumTopic:
+    ct = CurriculumTopic(
+        id=uuid.uuid4(),
+        curriculum_id=curriculum.id,
+        topic_id=topic.id,
+        sequence=sequence,
+        planned_date=planned_date,
+    )
+    db.add(ct)
+    await db.commit()
+    return ct
+
+
+# POST /api/v1/curriculums/{id}/clone
+
+async def test_clone_curriculum_requires_teacher_header(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+
+    resp = await c.post(f"/api/v1/curriculums/{curriculum.id}/clone")
+    assert resp.status_code == 422
+
+
+async def test_clone_default_curriculum(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+    teacher = await _seed_teacher(db_session, client_obj.id)
+    topic = await _seed_topic(db_session)
+    ct = await _seed_curriculum_topic(db_session, curriculum, topic, sequence=1)
+
+    resp = await c.post(
+        f"/api/v1/curriculums/{curriculum.id}/clone",
+        headers={"X-Teacher-ID": str(teacher.id)},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["is_default"] is False
+    assert data["teacher_id"] == str(teacher.id)
+    assert len(data["topics"]) == 1
+    assert data["topics"][0]["topic_id"] == str(topic.id)
+
+
+async def test_clone_copies_stubs(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+    teacher = await _seed_teacher(db_session, client_obj.id)
+    topic = await _seed_topic(db_session)
+    ct = await _seed_curriculum_topic(db_session, curriculum, topic, sequence=1)
+
+    stub = CurriculumLpStub(
+        id=uuid.uuid4(),
+        curriculum_topic_id=ct.id,
+        sequence=1,
+        status="pending",
+        skill_type="reading",
+    )
+    db_session.add(stub)
+    await db_session.commit()
+
+    resp = await c.post(
+        f"/api/v1/curriculums/{curriculum.id}/clone",
+        headers={"X-Teacher-ID": str(teacher.id)},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert len(data["topics"][0]["lp_stubs"]) == 1
+    assert data["topics"][0]["lp_stubs"][0]["status"] == "pending"
+    # cloned stub should have a different id
+    assert data["topics"][0]["lp_stubs"][0]["id"] != str(stub.id)
+
+
+async def test_clone_rejects_other_client_curriculum(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    # Curriculum owned by a different client (not default)
+    other_curriculum = await _seed_curriculum(
+        db_session, book, provider, client_id=uuid.uuid4(), is_default=False
+    )
+    teacher = await _seed_teacher(db_session, client_obj.id)
+
+    resp = await c.post(
+        f"/api/v1/curriculums/{other_curriculum.id}/clone",
+        headers={"X-Teacher-ID": str(teacher.id)},
+    )
+    assert resp.status_code == 404
+
+
+# PATCH /api/v1/curriculums/{id}/topics/{ct_id}
+
+async def test_patch_topic_planned_date(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, client_id=client_obj.id, is_default=False)
+    topic = await _seed_topic(db_session)
+    ct = await _seed_curriculum_topic(db_session, curriculum, topic, sequence=1)
+
+    resp = await c.patch(
+        f"/api/v1/curriculums/{curriculum.id}/topics/{ct.id}",
+        json={"planned_date": "2025-09-05"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["planned_date"] == "2025-09-05"
+
+
+async def test_patch_topic_sequence_reorders(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, client_id=client_obj.id, is_default=False)
+    topic1 = await _seed_topic(db_session, sequence=1)
+    topic2 = await _seed_topic(db_session, sequence=2)
+    topic3 = await _seed_topic(db_session, sequence=3)
+    ct1 = await _seed_curriculum_topic(db_session, curriculum, topic1, sequence=1)
+    ct2 = await _seed_curriculum_topic(db_session, curriculum, topic2, sequence=2)
+    ct3 = await _seed_curriculum_topic(db_session, curriculum, topic3, sequence=3)
+
+    # Move ct1 (seq 1) to position 3
+    resp = await c.patch(
+        f"/api/v1/curriculums/{curriculum.id}/topics/{ct1.id}",
+        json={"sequence": 3},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["sequence"] == 3
+
+    # Verify others shifted
+    await db_session.refresh(ct2)
+    await db_session.refresh(ct3)
+    assert ct2.sequence == 1
+    assert ct3.sequence == 2
+
+
+async def test_patch_topic_on_default_curriculum_returns_403(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    # Default curriculum
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+    topic = await _seed_topic(db_session)
+    ct = await _seed_curriculum_topic(db_session, curriculum, topic, sequence=1)
+
+    resp = await c.patch(
+        f"/api/v1/curriculums/{curriculum.id}/topics/{ct.id}",
+        json={"planned_date": "2025-09-05"},
+    )
+    assert resp.status_code == 403
+    assert "clone it first" in resp.json()["detail"]
+
+
+# POST /api/v1/curriculums/{id}/topics/{ct_id}/complete
+
+async def test_complete_topic_sets_completed_date(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, client_id=client_obj.id, is_default=False)
+    topic = await _seed_topic(db_session)
+    ct = await _seed_curriculum_topic(db_session, curriculum, topic)
+
+    resp = await c.post(f"/api/v1/curriculums/{curriculum.id}/topics/{ct.id}/complete")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["completed_date"] is not None
+
+
+async def test_complete_topic_on_default_curriculum_returns_403(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+    topic = await _seed_topic(db_session)
+    ct = await _seed_curriculum_topic(db_session, curriculum, topic)
+
+    resp = await c.post(f"/api/v1/curriculums/{curriculum.id}/topics/{ct.id}/complete")
+    assert resp.status_code == 403
+
+
+# DELETE /api/v1/curriculums/{id}/topics/{ct_id} (teacher endpoint)
+
+async def test_delete_teacher_topic_removes_and_resequences(http_client, db_session):
+    from sqlalchemy import select as sa_select
+    from dars.curriculum.models import CurriculumTopic as CT
+
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, client_id=client_obj.id, is_default=False)
+    topic1 = await _seed_topic(db_session, sequence=1)
+    topic2 = await _seed_topic(db_session, sequence=2)
+    topic3 = await _seed_topic(db_session, sequence=3)
+    ct1 = await _seed_curriculum_topic(db_session, curriculum, topic1, sequence=1)
+    ct2 = await _seed_curriculum_topic(db_session, curriculum, topic2, sequence=2)
+    ct3 = await _seed_curriculum_topic(db_session, curriculum, topic3, sequence=3)
+
+    resp = await c.delete(f"/api/v1/curriculums/{curriculum.id}/topics/{ct2.id}")
+    assert resp.status_code == 204
+
+    remaining = (await db_session.execute(
+        sa_select(CT).where(CT.curriculum_id == curriculum.id).order_by(CT.sequence)
+    )).scalars().all()
+    assert len(remaining) == 2
+    assert remaining[0].sequence == 1
+    assert remaining[1].sequence == 2
+
+
+async def test_delete_teacher_topic_on_default_curriculum_returns_403(http_client, db_session):
+    c, client_obj = http_client
+    book = await _seed_book(db_session)
+    provider = await _seed_provider(db_session)
+    curriculum = await _seed_curriculum(db_session, book, provider, is_default=True)
+    topic = await _seed_topic(db_session)
+    ct = await _seed_curriculum_topic(db_session, curriculum, topic)
+
+    resp = await c.delete(f"/api/v1/curriculums/{curriculum.id}/topics/{ct.id}")
+    assert resp.status_code == 403

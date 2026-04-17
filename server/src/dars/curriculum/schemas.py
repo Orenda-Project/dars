@@ -183,3 +183,12 @@ class CurriculumUpdateRequest(BaseModel):
     name: str | None = None
     is_default: bool | None = None
     is_active: bool | None = None
+
+
+# ---------------------------------------------------------------------------
+# Teacher request schemas (Phase 3)
+# ---------------------------------------------------------------------------
+
+class CurriculumTopicUpdateRequest(BaseModel):
+    planned_date: date | None = None
+    sequence: int | None = None

@@ -9,7 +9,8 @@ from sqlalchemy.orm import selectinload
 from dars.books.models import Book, BookChapter
 from dars.clients.models import Client
 from dars.database import get_db
-from dars.deps import get_admin_client, get_current_client
+from dars.deps import get_admin_client, get_current_client, get_current_teacher, require_teacher
+from dars.teachers.models import Teacher
 
 from .models import (
     Curriculum,
@@ -34,6 +35,7 @@ from .schemas import (
     CurriculumResponse,
     CurriculumSetTopicsRequest,
     CurriculumTopicDetail,
+    CurriculumTopicUpdateRequest,
     CurriculumUpdateRequest,
     GradeResponse,
     LpStubSummary,
@@ -640,6 +642,322 @@ async def delete_curriculum_topic(
     await db.flush()
 
     # Re-sequence remaining topics
+    remaining = (await db.execute(
+        select(CurriculumTopic)
+        .where(CurriculumTopic.curriculum_id == cid)
+        .order_by(CurriculumTopic.sequence)
+    )).scalars().all()
+    for new_seq, remaining_ct in enumerate(remaining, start=1):
+        remaining_ct.sequence = new_seq
+
+    await db.commit()
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Teacher endpoints — Phase 3
+# ---------------------------------------------------------------------------
+
+def _assert_not_default(curriculum: Curriculum) -> None:
+    if curriculum.is_default:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot modify a default curriculum — clone it first",
+        )
+
+
+def _assert_client_owns(curriculum: Curriculum, client: Client) -> None:
+    if curriculum.client_id != client.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
+@router.post("/api/v1/curriculums/{curriculum_id}/clone", response_model=CurriculumDetailResponse, status_code=201)
+async def clone_curriculum(
+    curriculum_id: str,
+    db: AsyncSession = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    teacher: Teacher = Depends(require_teacher),
+) -> CurriculumDetailResponse:
+    """Clone a curriculum into a new teacher-owned curriculum."""
+    try:
+        cid = _uuid_module.UUID(curriculum_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    # Source must be default OR owned by this client
+    source = (await db.execute(
+        select(Curriculum)
+        .where(
+            Curriculum.id == cid,
+            Curriculum.is_active == True,  # noqa: E712
+            (Curriculum.is_default == True) | (Curriculum.client_id == client.id),  # noqa: E712
+        )
+    )).scalar_one_or_none()
+    if source is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    # Load topics + stubs from source
+    source_topics = (await db.execute(
+        select(CurriculumTopic)
+        .where(CurriculumTopic.curriculum_id == cid)
+        .options(selectinload(CurriculumTopic.stubs))
+        .order_by(CurriculumTopic.sequence)
+    )).scalars().all()
+
+    # Create new curriculum
+    new_curriculum = Curriculum(
+        id=_uuid_module.uuid4(),
+        name=f"{source.name} (copy)",
+        book_id=source.book_id,
+        provider_id=source.provider_id,
+        is_default=False,
+        teacher_id=teacher.id,
+        client_id=client.id,
+        is_active=True,
+    )
+    db.add(new_curriculum)
+    await db.flush()  # populate new_curriculum.id
+
+    # Copy topics + stubs
+    for ct in source_topics:
+        new_ct = CurriculumTopic(
+            id=_uuid_module.uuid4(),
+            curriculum_id=new_curriculum.id,
+            topic_id=ct.topic_id,
+            sequence=ct.sequence,
+            planned_date=ct.planned_date,
+            completed_date=None,
+        )
+        db.add(new_ct)
+        await db.flush()
+
+        for stub in ct.stubs:
+            new_stub = CurriculumLpStub(
+                id=_uuid_module.uuid4(),
+                curriculum_topic_id=new_ct.id,
+                skill_type=stub.skill_type,
+                cpa_phase=stub.cpa_phase,
+                blooms_level=stub.blooms_level,
+                sequence=stub.sequence,
+                planned_date=stub.planned_date,
+                status="pending",
+                lesson_plan_id=None,
+            )
+            db.add(new_stub)
+
+    await db.commit()
+    return await _build_curriculum_detail(db, new_curriculum.id)
+
+
+@router.patch("/api/v1/curriculums/{curriculum_id}/topics/{ct_id}", response_model=CurriculumTopicDetail)
+async def update_curriculum_topic(
+    curriculum_id: str,
+    ct_id: str,
+    body: CurriculumTopicUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    _teacher: Teacher | None = Depends(get_current_teacher),
+) -> CurriculumTopicDetail:
+    """Update planned_date and/or sequence on a single curriculum topic (teacher's own only)."""
+    try:
+        cid = _uuid_module.UUID(curriculum_id)
+        ctid = _uuid_module.UUID(ct_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    curriculum = (await db.execute(
+        select(Curriculum).where(Curriculum.id == cid)
+    )).scalar_one_or_none()
+    if curriculum is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    _assert_not_default(curriculum)
+    _assert_client_owns(curriculum, client)
+
+    ct = (await db.execute(
+        select(CurriculumTopic)
+        .where(CurriculumTopic.id == ctid, CurriculumTopic.curriculum_id == cid)
+        .options(selectinload(CurriculumTopic.stubs))
+    )).scalar_one_or_none()
+    if ct is None:
+        raise HTTPException(status_code=404, detail="Curriculum topic not found.")
+
+    if body.planned_date is not None:
+        ct.planned_date = body.planned_date
+
+    if body.sequence is not None and body.sequence != ct.sequence:
+        old_seq = ct.sequence
+        new_seq = body.sequence
+
+        # Load all other topics
+        others = (await db.execute(
+            select(CurriculumTopic)
+            .where(
+                CurriculumTopic.curriculum_id == cid,
+                CurriculumTopic.id != ctid,
+            )
+            .order_by(CurriculumTopic.sequence)
+        )).scalars().all()
+
+        # Build the full desired ordering in Python first
+        # All topics in order (others already excludes ct)
+        all_others_sorted = sorted(others, key=lambda o: o.sequence)
+        # Remove ct from its old position and insert at new_seq
+        # others were fetched without ct, so just need to insert ct
+        # Build a new ordered list of (ct_obj, desired_seq)
+        # Insert ct into the list at position new_seq (1-based)
+        ordered = list(all_others_sorted)
+        ordered.insert(new_seq - 1, ct)
+        desired = {row.id: idx + 1 for idx, row in enumerate(ordered)}
+
+        # Step 1: move all rows to unique large negatives to clear out the unique constraint
+        temp_base = -100000
+        all_rows = [ct] + others
+        for i, row in enumerate(all_rows):
+            row.sequence = temp_base - i
+        await db.flush()
+
+        # Step 2: apply desired sequences
+        for row in all_rows:
+            row.sequence = desired[row.id]
+
+    await db.commit()
+    await db.refresh(ct)
+
+    # Load topic title/text
+    topic = (await db.execute(select(Topic).where(Topic.id == ct.topic_id))).scalar_one_or_none()
+
+    # Reload stubs
+    stubs_result = (await db.execute(
+        select(CurriculumLpStub)
+        .where(CurriculumLpStub.curriculum_topic_id == ctid)
+        .order_by(CurriculumLpStub.sequence)
+    )).scalars().all()
+
+    return CurriculumTopicDetail(
+        id=ct.id,
+        sequence=ct.sequence,
+        topic_id=ct.topic_id,
+        topic_title=topic.title if topic else "",
+        topic_text=topic.text if topic else None,
+        planned_date=ct.planned_date,
+        completed_date=ct.completed_date,
+        lp_stubs=[
+            LpStubSummary(
+                id=s.id,
+                sequence=s.sequence,
+                skill_type=s.skill_type,
+                cpa_phase=s.cpa_phase,
+                blooms_level=s.blooms_level,
+                planned_date=s.planned_date,
+                status=s.status,
+                lesson_plan_id=s.lesson_plan_id,
+            )
+            for s in stubs_result
+        ],
+    )
+
+
+@router.post("/api/v1/curriculums/{curriculum_id}/topics/{ct_id}/complete", response_model=CurriculumTopicDetail)
+async def complete_curriculum_topic(
+    curriculum_id: str,
+    ct_id: str,
+    db: AsyncSession = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    _teacher: Teacher | None = Depends(get_current_teacher),
+) -> CurriculumTopicDetail:
+    """Mark a curriculum topic as completed (sets completed_date=today UTC)."""
+    try:
+        cid = _uuid_module.UUID(curriculum_id)
+        ctid = _uuid_module.UUID(ct_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    curriculum = (await db.execute(
+        select(Curriculum).where(Curriculum.id == cid)
+    )).scalar_one_or_none()
+    if curriculum is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    _assert_not_default(curriculum)
+    _assert_client_owns(curriculum, client)
+
+    ct = (await db.execute(
+        select(CurriculumTopic)
+        .where(CurriculumTopic.id == ctid, CurriculumTopic.curriculum_id == cid)
+    )).scalar_one_or_none()
+    if ct is None:
+        raise HTTPException(status_code=404, detail="Curriculum topic not found.")
+
+    ct.completed_date = date.today()
+    await db.commit()
+    await db.refresh(ct)
+
+    topic = (await db.execute(select(Topic).where(Topic.id == ct.topic_id))).scalar_one_or_none()
+    stubs_result = (await db.execute(
+        select(CurriculumLpStub)
+        .where(CurriculumLpStub.curriculum_topic_id == ctid)
+        .order_by(CurriculumLpStub.sequence)
+    )).scalars().all()
+
+    return CurriculumTopicDetail(
+        id=ct.id,
+        sequence=ct.sequence,
+        topic_id=ct.topic_id,
+        topic_title=topic.title if topic else "",
+        topic_text=topic.text if topic else None,
+        planned_date=ct.planned_date,
+        completed_date=ct.completed_date,
+        lp_stubs=[
+            LpStubSummary(
+                id=s.id,
+                sequence=s.sequence,
+                skill_type=s.skill_type,
+                cpa_phase=s.cpa_phase,
+                blooms_level=s.blooms_level,
+                planned_date=s.planned_date,
+                status=s.status,
+                lesson_plan_id=s.lesson_plan_id,
+            )
+            for s in stubs_result
+        ],
+    )
+
+
+@router.delete("/api/v1/curriculums/{curriculum_id}/topics/{ct_id}", status_code=204)
+async def delete_teacher_curriculum_topic(
+    curriculum_id: str,
+    ct_id: str,
+    db: AsyncSession = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    _teacher: Teacher | None = Depends(get_current_teacher),
+) -> Response:
+    """Remove a topic from teacher's own curriculum. Cascades to stubs. Re-sequences remaining."""
+    try:
+        cid = _uuid_module.UUID(curriculum_id)
+        ctid = _uuid_module.UUID(ct_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    curriculum = (await db.execute(
+        select(Curriculum).where(Curriculum.id == cid)
+    )).scalar_one_or_none()
+    if curriculum is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+
+    _assert_not_default(curriculum)
+    _assert_client_owns(curriculum, client)
+
+    ct = (await db.execute(
+        select(CurriculumTopic)
+        .where(CurriculumTopic.id == ctid, CurriculumTopic.curriculum_id == cid)
+    )).scalar_one_or_none()
+    if ct is None:
+        raise HTTPException(status_code=404, detail="Curriculum topic not found.")
+
+    await db.delete(ct)
+    await db.flush()
+
     remaining = (await db.execute(
         select(CurriculumTopic)
         .where(CurriculumTopic.curriculum_id == cid)
