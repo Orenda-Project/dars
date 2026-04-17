@@ -1,61 +1,79 @@
 ---
 type: reference
-last_verified: 2026-04-08
+last_verified: 2026-04-17
 owner: hataf
 ---
 
 # Dars — Roadmap
 
-Ordered roughly by priority. No phases — just work. Move things up or down as priorities shift. Open a bead when you start something.
+Ordered roughly by priority. Open a bead when you start something.
 
 ---
 
-## Up next
+## Phase 1 goal: curriculum-driven LP generation
 
-- **`@dars/node` SDK** — `DarsClient` entry point class, `index.ts` export, middleware (proxy requests from browser, inject API key server-side), build config, publish to npm
-- **Webhook DLQ UI** — expose failed webhook deliveries in the dashboard with a manual re-trigger button (`WebhookDelivery` table with `status="failed"` already exists)
-- **LP generation error handling** — graceful `ERROR` status returned to client, webhook fired on failure (currently errors may not fire webhooks)
-- **Observability** — errors logged and surfaced somewhere you can see when things break
+The end state: a client picks a curriculum (book + grade + subject + SLO provider), the system breaks each topic into a plan of lesson plans, and generates them. Teachers get a full term's worth of LPs, each grounded in the textbook topic and the correct sub-SLOs.
+
+Full spec: [docs/specs/curriculum-lp-breakdown.md](specs/curriculum-lp-breakdown.md)
+
+### What needs to be built
+
+**1. Data layer (migrations in progress)**
+- Sub-SLOs — schema + import from Schema tool
+- Topics — model under `book_chapters`
+- `topic_sub_slos` — join table linking topics to sub-SLOs
+- Curriculums — named plan per book/grade/subject/provider/year
+- Curriculum topics — ordered topic list within a curriculum
+- LP stubs — one row per LP-to-be-generated, output of the breakdown module
+
+**2. LP Breakdown Module**
+AI step: given a curriculum topic (title, text, sub-SLOs, grade, subject), output a sequence of LP stubs: `(skill_type, cpa_phase, blooms_level)`. This decides how many LPs a topic needs and what kind — e.g. 2 reading, 1 comprehension, 1 revision.
+
+**3. LP Assistant: topic-text mode**
+Currently LP Assistant takes `page_number` and fetches OCR text internally. We need it to also accept `topic_text` + `sub_slos` + `skill_type` + `cpa_phase` + `blooms_level` directly. This is a change in `UG_LessonPlan/`. Without it, Dars cannot generate LPs from curriculum topics.
+
+**4. Stub generation**
+Trigger LP generation per stub (async, same pattern as existing LP generation). On success: stub `status → generated`, `lesson_plan_id` set.
+
+---
+
+## Up next (platform work)
+
+- **`@dars/node` SDK** — `DarsClient` entry point, middleware, publish to npm
+- **Webhook DLQ UI** — expose failed deliveries in dashboard, manual re-trigger
+- **LP generation error handling** — graceful `ERROR` status + webhook on failure
+- **Observability** — errors logged and surfaced
 
 ---
 
 ## Soon
 
-- **Client accounts** — self-serve signup (email + password) from the webapp; `Client` model gets `email`, `password_hash`, and `config` (curriculum board, default params, etc.); login returns a session token; foundation for feature toggles, analytics, and settings UI
-- **Client analytics dashboard** — LP generation count over time, breakdown by subject/grade/language, recent LP history
-- **EG integration — Phase 1 (independent)** — exam generation as a standalone feature in dars: `POST /exam-generations` (async, 202), webhook receiver from `UG_EG`, `GET /exam-generations/{id}`, dars fires client webhook on completion, webapp UI (grade/subject/curriculum/page ranges/question types). Mirrors LP async flow.
-- **`@dars/mcp` server** — wraps `@dars/node` as MCP tools so AI agents can generate LPs natively; depends on `@dars/node` being published
-- **`@dars/react` components** — `<LPCreationForm />` and `<LPRenderer />`; depends on `@dars/node` middleware
-- **Store `curriculum` on LP** — currently hardcoded to `"ICT"` in edit flow; should be persisted at creation time
+- **Client accounts** — self-serve signup; `Client` gets `email`, `password_hash`, `config` (default curriculum, grade, subject, language); session token for webapp login
+- **Client analytics dashboard** — LP count over time, breakdown by subject/grade/language
+- **EG integration — Phase 1** — exam generation as standalone feature: `POST /exam-generations` (async), webhook from `UG_EG`, webapp UI. Mirrors LP async flow.
 
 ---
 
 ## Later
 
-- **EG integration — Phase 2 (LP+EG unified)** — generate an exam directly from an existing LP (pre-fill grade/subject/curriculum/pages from LP), LP detail view shows associated exams, optional bundled LP+EG creation in one request
-- **Engine migration** — copy `UG_LessonPlan` into `dars/lp_engine/`, migrate textbook/OCR data to Supabase, remove HTTP dependency on `lp-assistant.taleemabad.com`
+- **EG integration — Phase 2** — generate exam from an existing LP; LP detail shows associated exams
+- **Engine migration** — copy `UG_LessonPlan` into `dars/lp_engine/`, remove HTTP dependency on `lp-assistant.taleemabad.com`
 - **LP editing UI** — edit history view (diff original vs. edited), manual edit in webapp
 - **Super-admin panel** — create and manage clients, view all usage
-- **Coverage map** — which regions, books, and languages are supported
-- **LP parameter config UI** — clients set default LP params (province/board, grade range, subjects, language) in webapp instead of hardcoding in API calls
-- **Staging environment** — separate `dars-prod` Supabase project; currently only `dars-dev` exists
-- **Job queue** — replace `BackgroundTasks` with ARQ/Celery for retry durability and load handling
-- **WhatsApp product** — teachers generate LPs by messaging a Dars-operated WhatsApp number; depends on client management + teacher records
-- **User and class model** — FDS users, teacher records, student records, class entity; LP generation stays usable without it
+- **Staging environment** — separate `dars-prod` Supabase project
+- **Job queue** — replace `BackgroundTasks` with ARQ/Celery for retry durability
+- **WhatsApp product** — teachers generate LPs via Dars-operated WhatsApp number
 
 ---
 
 ## Parking lot
 
-Ideas raised, not yet prioritized:
-
-- `@dars/react` async + polling UX (depends on whether async LP is the norm by then)
 - LP reviewer integration — auto-review after generation, score + issues in dashboard
-- LP editing AI assist — AI suggestions while editing (e.g. "improve this activity")
-- Student-aware LP generation
-- Teacher priorities and trends as LP context
+- LP editing AI assist — AI suggestions while editing
+- Continuity across LPs — carry forward context from LP n to LP n+1 within a topic
+- `@dars/react` components — `<LPCreationForm />`, `<LPRenderer />`
+- `@dars/mcp` server — MCP tools wrapping `@dars/node`
+- Coverage map — which boards, books, grades are supported
 - Multi-language support beyond bilingual
-- Bring-your-own-book (BYOB) — upload textbook, generate LPs from it
-- `@dars/whatsapp` dev tool — for FDS clients building their own WhatsApp bots backed by Dars
+- Student-aware LP generation
 - Cross-service intelligence (Digital Coach, Exam Generation, Teacher Training)
-- Curriculum planning — year → terms → units → lessons with continuity
