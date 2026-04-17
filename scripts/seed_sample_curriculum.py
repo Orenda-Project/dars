@@ -32,7 +32,7 @@ BOOK = {
     "title": "English Grade 1 (Sample)",
     "grade": 1,
     "subject": "English",
-    "curriculum": "NCP",
+    "board": "NCP",
     "total_chapters": 1,
     "synced_at": datetime.now(timezone.utc),
 }
@@ -72,24 +72,8 @@ def seed(conn) -> None:
     cur = conn.cursor()
 
     # ------------------------------------------------------------------
-    # 1. Look up grade, subject, provider UUIDs
+    # 1. Look up provider UUID
     # ------------------------------------------------------------------
-    cur.execute("SELECT id FROM grades WHERE short_code = 'G1'")
-    row = cur.fetchone()
-    if not row:
-        print("ERROR: grade G1 not found in grades table. Run import_ncp_slos.py first.")
-        sys.exit(1)
-    grade_id = row["id"]
-    print(f"Grade G1 id: {grade_id}")
-
-    cur.execute("SELECT id FROM subjects WHERE short_code = 'Eng'")
-    row = cur.fetchone()
-    if not row:
-        print("ERROR: subject Eng not found in subjects table. Run import_ncp_slos.py first.")
-        sys.exit(1)
-    subject_id = row["id"]
-    print(f"Subject Eng id: {subject_id}")
-
     cur.execute("SELECT id FROM slo_providers WHERE slug = 'ncp'")
     row = cur.fetchone()
     if not row:
@@ -99,27 +83,24 @@ def seed(conn) -> None:
     print(f"Provider ncp id: {provider_id}")
 
     # ------------------------------------------------------------------
-    # 2. Pick 10 NCP G1 English SLOs
+    # 2. Pick 10 NCP SLOs for the sample book (book_id=9999)
     # ------------------------------------------------------------------
     cur.execute(
         """
         SELECT s.id, s.code, s.statement
         FROM slos s
         JOIN slo_providers p ON p.id = s.provider_id
-        JOIN grades g         ON g.id = s.grade_id
-        JOIN subjects sub     ON sub.id = s.subject_id
         WHERE p.slug = 'ncp'
-          AND g.short_code = 'G1'
-          AND sub.short_code = 'Eng'
+          AND s.book_id = 9999
         ORDER BY s.code
         LIMIT 10
         """
     )
     slos = cur.fetchall()
     if not slos:
-        print("ERROR: no NCP G1 English SLOs found. Run import_ncp_slos.py first.")
-        sys.exit(1)
-    print(f"Found {len(slos)} NCP G1 English SLOs (using first 10)")
+        print("NOTE: no NCP SLOs found for book 9999 — sub-SLO step will be skipped.")
+    else:
+        print(f"Found {len(slos)} NCP SLOs for book 9999 (using first 10)")
 
     # ------------------------------------------------------------------
     # 3. Insert one sub-SLO per SLO
@@ -155,8 +136,8 @@ def seed(conn) -> None:
     # ------------------------------------------------------------------
     cur.execute(
         """
-        INSERT INTO books (id, title, grade, subject, curriculum, total_chapters, synced_at)
-        VALUES (%(id)s, %(title)s, %(grade)s, %(subject)s, %(curriculum)s, %(total_chapters)s, %(synced_at)s)
+        INSERT INTO books (id, title, grade, subject, board, total_chapters, synced_at)
+        VALUES (%(id)s, %(title)s, %(grade)s, %(subject)s, %(board)s, %(total_chapters)s, %(synced_at)s)
         ON CONFLICT (id) DO NOTHING
         """,
         BOOK,
@@ -225,12 +206,12 @@ def seed(conn) -> None:
     # ------------------------------------------------------------------
     cur.execute(
         """
-        INSERT INTO curriculums (name, grade_id, subject_id, book_id, provider_id, academic_year)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO curriculums (name, book_id, provider_id, is_default)
+        VALUES (%s, %s, %s, true)
         ON CONFLICT DO NOTHING
         RETURNING id
         """,
-        (CURRICULUM_NAME, grade_id, subject_id, BOOK["id"], provider_id, "2025-2026"),
+        (CURRICULUM_NAME, BOOK["id"], provider_id),
     )
     result = cur.fetchone()
     if result:
@@ -305,17 +286,13 @@ def seed(conn) -> None:
 def teardown(conn) -> None:
     cur = conn.cursor()
 
-    # Find the 10 NCP G1 English SLO ids (same query as seed)
+    # Find the NCP SLO ids for book 9999
     cur.execute(
         """
         SELECT s.id, s.code
         FROM slos s
         JOIN slo_providers p ON p.id = s.provider_id
-        JOIN grades g         ON g.id = s.grade_id
-        JOIN subjects sub     ON sub.id = s.subject_id
-        WHERE p.slug = 'ncp'
-          AND g.short_code = 'G1'
-          AND sub.short_code = 'Eng'
+        WHERE p.slug = 'ncp' AND s.book_id = 9999
         ORDER BY s.code
         LIMIT 10
         """

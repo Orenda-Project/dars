@@ -44,7 +44,7 @@ def _extract_grade_int(label: str) -> int:
     return int(match.group()) if match else 0
 
 
-def _fetch_books_from_schema(cur, schema: str, curriculum: str) -> list[dict]:
+def _fetch_books_from_schema(cur, schema: str, board: str) -> list[dict]:
     cur.execute(BOOKS_QUERY.format(schema=schema))
     rows = cur.fetchall()
     books = []
@@ -57,7 +57,7 @@ def _fetch_books_from_schema(cur, schema: str, curriculum: str) -> list[dict]:
             "total_chapters": total_chapters,
             "grade": _extract_grade_int(grade_label),
             "subject": subject,
-            "curriculum": curriculum,
+            "board": board,
             "book_text": book_text,
         })
     return books
@@ -89,8 +89,8 @@ async def sync_books(db: AsyncSession) -> dict:
     try:
         cur = conn.cursor()
 
-        ict_books = _fetch_books_from_schema(cur, "fde_staging", "ICT")
-        punjab_books = _fetch_books_from_schema(cur, "balochistan_staging", "Punjab")
+        ict_books = _fetch_books_from_schema(cur, "fde_staging", "ICT")  # board=ICT
+        punjab_books = _fetch_books_from_schema(cur, "balochistan_staging", "Punjab")  # board=Punjab
 
         all_books = ict_books + punjab_books
 
@@ -117,7 +117,7 @@ async def sync_books(db: AsyncSession) -> dict:
                 "title": stmt.excluded.title,
                 "grade": stmt.excluded.grade,
                 "subject": stmt.excluded.subject,
-                "curriculum": stmt.excluded.curriculum,
+                "board": stmt.excluded.board,
                 "cover_image": stmt.excluded.cover_image,
                 "total_chapters": stmt.excluded.total_chapters,
                 "book_text": stmt.excluded.book_text,
@@ -154,7 +154,7 @@ async def sync_books(db: AsyncSession) -> dict:
 
 async def list_books(
     db: AsyncSession,
-    curriculum: str | None = None,
+    board: str | None = None,
     grade: int | None = None,
     subject: str | None = None,
     limit: int = 50,
@@ -163,9 +163,9 @@ async def list_books(
     query = select(Book)
     count_query = select(func.count()).select_from(Book)
 
-    if curriculum:
-        query = query.where(Book.curriculum == curriculum)
-        count_query = count_query.where(Book.curriculum == curriculum)
+    if board:
+        query = query.where(Book.board == board)
+        count_query = count_query.where(Book.board == board)
     if grade is not None:
         query = query.where(Book.grade == grade)
         count_query = count_query.where(Book.grade == grade)
@@ -173,7 +173,7 @@ async def list_books(
         query = query.where(Book.subject == subject)
         count_query = count_query.where(Book.subject == subject)
 
-    query = query.order_by(Book.curriculum, Book.grade, Book.subject).limit(limit).offset(offset)
+    query = query.order_by(Book.board, Book.grade, Book.subject).limit(limit).offset(offset)
 
     result = await db.execute(query)
     total_result = await db.execute(count_query)

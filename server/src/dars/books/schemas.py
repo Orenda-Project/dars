@@ -19,7 +19,7 @@ class BookResponse(BaseModel):
     title: str
     grade: int
     subject: str
-    curriculum: str
+    board: str
     cover_image: str | None
     total_chapters: int | None
     synced_at: datetime

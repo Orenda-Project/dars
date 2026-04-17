@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
@@ -9,6 +9,7 @@ from dars.database import Base
 
 
 class Grade(Base):
+    """UI catalog — not a FK on any core table, kept for display/filter convenience."""
     __tablename__ = "grades"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -18,6 +19,7 @@ class Grade(Base):
 
 
 class Subject(Base):
+    """UI catalog — not a FK on any core table, kept for display/filter convenience."""
     __tablename__ = "subjects"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -44,28 +46,27 @@ class SloProvider(Base):
 
 
 class Slo(Base):
+    """SLOs issued by a provider for a specific book. Grade/subject are derived from the book."""
     __tablename__ = "slos"
-    __table_args__ = (UniqueConstraint("provider_id", "code", "grade_id", "subject_id"),)
+    __table_args__ = (UniqueConstraint("provider_id", "book_id", "code"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("slo_providers.id"), nullable=False, index=True
     )
+    book_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("books.id"), nullable=False, index=True
+    )
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     statement: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    subject_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("subjects.id"), nullable=False
-    )
-    grade_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("grades.id"), nullable=False
-    )
     domain: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    language_skills: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
+    language_skills: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     sub_strand: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     provider: Mapped["SloProvider"] = relationship("SloProvider", back_populates="slos")
+    sub_slos: Mapped[list["SubSlo"]] = relationship("SubSlo", back_populates="slo")
 
 
 class SubSlo(Base):
@@ -81,6 +82,8 @@ class SubSlo(Base):
     source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    slo: Mapped["Slo"] = relationship("Slo", back_populates="sub_slos")
+
 
 class Topic(Base):
     __tablename__ = "topics"
@@ -91,8 +94,11 @@ class Topic(Base):
         Integer, ForeignKey("book_chapters.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    sub_slos: Mapped[list["TopicSubSlo"]] = relationship("TopicSubSlo", back_populates="topic")
 
 
 class TopicSubSlo(Base):
@@ -105,28 +111,40 @@ class TopicSubSlo(Base):
         Uuid(as_uuid=True), ForeignKey("sub_slos.id"), primary_key=True
     )
 
+    topic: Mapped["Topic"] = relationship("Topic", back_populates="sub_slos")
+    sub_slo: Mapped["SubSlo"] = relationship("SubSlo")
+
 
 class Curriculum(Base):
+    """
+    Named teaching plan for a specific book + SLO provider.
+    - is_default=True, teacher_id=None, client_id=None → admin default
+    - is_default=False, teacher_id set → teacher's personal curriculum
+    """
     __tablename__ = "curriculums"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    grade_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("grades.id"), nullable=False
-    )
-    subject_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("subjects.id"), nullable=False
-    )
-    book_id: Mapped[int] = mapped_column(Integer, ForeignKey("books.id"), nullable=False)
+    book_id: Mapped[int] = mapped_column(Integer, ForeignKey("books.id"), nullable=False, index=True)
     provider_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("slo_providers.id"), nullable=False
     )
-    academic_year: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    teacher_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
+    )
+
+    topics: Mapped[list["CurriculumTopic"]] = relationship(
+        "CurriculumTopic", back_populates="curriculum", order_by="CurriculumTopic.sequence"
     )
 
 
@@ -145,6 +163,13 @@ class CurriculumTopic(Base):
         Uuid(as_uuid=True), ForeignKey("topics.id"), nullable=False
     )
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    planned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    completed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    curriculum: Mapped["Curriculum"] = relationship("Curriculum", back_populates="topics")
+    stubs: Mapped[list["CurriculumLpStub"]] = relationship(
+        "CurriculumLpStub", back_populates="curriculum_topic", order_by="CurriculumLpStub.sequence"
+    )
 
 
 class CurriculumLpStub(Base):
@@ -162,6 +187,7 @@ class CurriculumLpStub(Base):
     cpa_phase: Mapped[str | None] = mapped_column(String(50), nullable=True)
     blooms_level: Mapped[str | None] = mapped_column(String(30), nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    planned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     lesson_plan_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
@@ -174,3 +200,5 @@ class CurriculumLpStub(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+    curriculum_topic: Mapped["CurriculumTopic"] = relationship("CurriculumTopic", back_populates="stubs")

@@ -1,35 +1,34 @@
 """
 Import NCP SLOs from taleemabad-core into dars.
 
-Reads from the taleemabad-core PostgreSQL DB (slo_ncpslo, slo_grade, slo_subject,
-slo_gradesubject) and upserts into dars' grades, subjects, slo_providers, and slos tables.
+SLOs are tied to a specific book (not grade/subject). This script imports
+NCP SLOs from taleemabad-core and links them to the correct book in dars.
+
+It joins slo_ncpslo → slo_gradesubject → book_library_book to find the book
+each SLO belongs to. Only SLOs for books that already exist in dars (synced
+via POST /api/admin/books/sync) are imported.
 
 Usage:
     cd dars
     uv run python scripts/import_ncp_slos.py [--dry-run]
 
 Required env vars (add to .env):
-    CORE_STAGING_DB_HOST, CORE_STAGING_DB_PORT, CORE_STAGING_DB_NAME, CORE_STAGING_DB_USER, CORE_STAGING_DB_PASSWORD
+    CORE_STAGING_DB_HOST, CORE_STAGING_DB_PORT, CORE_STAGING_DB_NAME,
+    CORE_STAGING_DB_USER, CORE_STAGING_DB_PASSWORD
     DATABASE_URL  (the dars Supabase connection string)
 """
 
 import argparse
-import asyncio
 import sys
 from pathlib import Path
 
-import asyncpg
 import psycopg2
 import psycopg2.extras
 
-# Make dars importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "server" / "src"))
 
 from dars.config import settings  # noqa: E402
 
-# ---------------------------------------------------------------------------
-# NCP provider metadata
-# ---------------------------------------------------------------------------
 NCP_PROVIDER = {
     "slug": "ncp",
     "name": "National Curriculum of Pakistan (NCP)",
@@ -40,7 +39,17 @@ NCP_PROVIDER = {
     ),
 }
 
-# Grade label → short_code + order_index (covers what's in taleemabad-core)
+SUBJECT_SHORT_CODES: dict[str, str] = {
+    "English": "Eng",
+    "Urdu": "Urdu",
+    "Maths": "Maths",
+    "Mathematics": "Maths",
+    "Science": "Science",
+    "Social Studies": "SocStudies",
+    "Islamic Studies": "IslamicStudies",
+    "General Knowledge": "GK",
+}
+
 GRADE_META: dict[str, tuple[str, int]] = {
     "KG": ("KG", 0),
     "Grade 1": ("G1", 1),
@@ -55,21 +64,6 @@ GRADE_META: dict[str, tuple[str, int]] = {
     "Grade 10": ("G10", 10),
 }
 
-SUBJECT_SHORT_CODES: dict[str, str] = {
-    "English": "Eng",
-    "Urdu": "Urdu",
-    "Maths": "Maths",
-    "Mathematics": "Maths",
-    "Science": "Science",
-    "Social Studies": "SocStudies",
-    "Islamic Studies": "IslamicStudies",
-    "General Knowledge": "GK",
-}
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def core_conn():
     return psycopg2.connect(
@@ -83,7 +77,6 @@ def core_conn():
 
 
 def pg_dsn(url: str) -> str:
-    """Convert asyncpg-style DSN (postgresql+asyncpg://...) to plain psycopg2 DSN."""
     return url.replace("postgresql+asyncpg://", "postgresql://").replace(
         "postgresql+psycopg2://", "postgresql://"
     )
@@ -96,10 +89,6 @@ def dars_conn():
     )
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def run(dry_run: bool) -> None:
     print("Connecting to taleemabad-core DB...")
     src = core_conn()
@@ -107,148 +96,116 @@ def run(dry_run: bool) -> None:
 
     print("Connecting to dars DB...")
     dst = dars_conn()
-    # Use autocommit so we control the transaction boundary explicitly with BEGIN.
     dst.autocommit = False
     dst_cur = dst.cursor()
 
-    print("Starting transaction...")
-
     try:
         # ----------------------------------------------------------------
-        # 1. Fetch grades from core
-        # ----------------------------------------------------------------
-        src_cur.execute(
-            """
-            SELECT g.id, g.label, g.short_code, g.grade_order
-            FROM slo_grade g
-            WHERE g.deleted_at IS NULL
-            ORDER BY g.grade_order
-            """
-        )
-        core_grades = src_cur.fetchall()
-        print(f"Found {len(core_grades)} grades in core")
-
-        # ----------------------------------------------------------------
-        # 2. Fetch subjects from core
-        # ----------------------------------------------------------------
-        src_cur.execute(
-            """
-            SELECT s.id, s.label, s.short_code
-            FROM slo_subject s
-            WHERE s.deleted_at IS NULL
-            ORDER BY s.label
-            """
-        )
-        core_subjects = src_cur.fetchall()
-        print(f"Found {len(core_subjects)} subjects in core")
-
-        # ----------------------------------------------------------------
-        # 3. Fetch NCP SLOs (active only) with grade+subject via gradesubject
+        # 1. Fetch NCP SLOs joined to books from core
+        #    book_library_book is the source of book IDs (synced into dars)
         # ----------------------------------------------------------------
         src_cur.execute(
             """
             SELECT
-                n.id          AS source_id,
-                n.ncp_slo_id  AS code,
+                n.id            AS source_id,
+                n.ncp_slo_id    AS code,
                 n.slo_statement AS statement,
                 n.domain,
                 n.language_skills,
                 n.sub_strand,
-                g.id          AS core_grade_id,
-                g.label       AS grade_label,
-                g.short_code  AS grade_short_code,
+                g.label         AS grade_label,
+                g.short_code    AS grade_short_code,
                 g.grade_order,
-                s.id          AS core_subject_id,
-                s.label       AS subject_label,
-                s.short_code  AS subject_short_code
+                s.label         AS subject_label,
+                s.short_code    AS subject_short_code,
+                b.id            AS book_id
             FROM slo_ncpslo n
             JOIN slo_gradesubject gs ON gs.id = n.grade_subject_id AND gs.deleted_at IS NULL
             JOIN slo_grade g         ON g.id  = gs.grade_id         AND g.deleted_at IS NULL
             JOIN slo_subject s       ON s.id  = gs.subject_id       AND s.deleted_at IS NULL
+            JOIN book_library_book b ON b.grade_subject_id = gs.id  AND b.is_active = true
             WHERE n.is_active = true
-            ORDER BY g.grade_order, s.label, n.ncp_slo_id
+            ORDER BY b.id, g.grade_order, s.label, n.ncp_slo_id
             """
         )
         ncp_slos = src_cur.fetchall()
-        print(f"Found {len(ncp_slos)} active NCP SLOs in core")
+        print(f"Found {len(ncp_slos)} active NCP SLOs with book links in core")
 
         if not ncp_slos:
-            print("No NCP SLOs found — check CORE_STAGING_DB_* connection vars and that data exists.")
+            print("No NCP SLOs with book links found — check that books exist in core and are active.")
             return
+
+        # ----------------------------------------------------------------
+        # 2. Filter to books that exist in dars (already synced)
+        # ----------------------------------------------------------------
+        dst_cur.execute("SELECT id FROM books")
+        dars_book_ids = {row["id"] for row in dst_cur.fetchall()}
+
+        filtered_slos = [r for r in ncp_slos if r["book_id"] in dars_book_ids]
+        skipped_book = len(ncp_slos) - len(filtered_slos)
+        print(f"  {len(filtered_slos)} SLOs match books in dars ({skipped_book} skipped — book not synced yet)")
 
         if dry_run:
-            print("\n[DRY RUN] Would import:")
-            grades_seen = {r["grade_label"] for r in ncp_slos}
-            subjects_seen = {r["subject_label"] for r in ncp_slos}
+            books_seen = {r["book_id"] for r in filtered_slos}
+            grades_seen = {r["grade_label"] for r in filtered_slos}
+            subjects_seen = {r["subject_label"] for r in filtered_slos}
+            print(f"\n[DRY RUN] Would import:")
+            print(f"  Books: {sorted(books_seen)}")
             print(f"  Grades: {sorted(grades_seen)}")
             print(f"  Subjects: {sorted(subjects_seen)}")
-            print(f"  SLOs: {len(ncp_slos)}")
+            print(f"  SLOs: {len(filtered_slos)}")
+            return
+
+        if not filtered_slos:
+            print("Nothing to import. Run POST /api/admin/books/sync first.")
             return
 
         # ----------------------------------------------------------------
-        # 4. Upsert grades into dars
-        #    Match by short_code; fall back to deriving from label.
+        # 3. Upsert grades (catalog — for UI use)
         # ----------------------------------------------------------------
-        grade_map: dict[int, str] = {}  # core_grade_id → dars grade uuid
-
-        unique_grades = {r["core_grade_id"]: r for r in ncp_slos}.values()
+        unique_grades = {r["grade_label"]: r for r in filtered_slos}.values()
         for g in unique_grades:
             label = g["grade_label"]
             short_code = g["grade_short_code"] or GRADE_META.get(label, (label[:10], 99))[0]
             order_index = g["grade_order"] or GRADE_META.get(label, (None, 99))[1]
-
             dst_cur.execute(
                 """
                 INSERT INTO grades (label, short_code, order_index)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (short_code) DO UPDATE
-                    SET label = EXCLUDED.label,
-                        order_index = EXCLUDED.order_index
-                RETURNING id
+                    SET label = EXCLUDED.label, order_index = EXCLUDED.order_index
                 """,
                 (label, short_code, order_index),
             )
-            row = dst_cur.fetchone()
-            grade_map[g["core_grade_id"]] = row["id"]
-
-        print(f"Upserted {len(grade_map)} grades")
+        print(f"Upserted grades catalog")
 
         # ----------------------------------------------------------------
-        # 5. Upsert subjects into dars
+        # 4. Upsert subjects (catalog — for UI use)
         # ----------------------------------------------------------------
-        subject_map: dict[int, str] = {}  # core_subject_id → dars subject uuid
-
-        unique_subjects = {r["core_subject_id"]: r for r in ncp_slos}.values()
+        unique_subjects = {r["subject_label"]: r for r in filtered_slos}.values()
         for s in unique_subjects:
             label = s["subject_label"]
             short_code = SUBJECT_SHORT_CODES.get(label, s["subject_short_code"] or label[:20])
-
             dst_cur.execute(
                 """
                 INSERT INTO subjects (label, short_code)
                 VALUES (%s, %s)
-                ON CONFLICT (short_code) DO UPDATE
-                    SET label = EXCLUDED.label
-                RETURNING id
+                ON CONFLICT (short_code) DO UPDATE SET label = EXCLUDED.label
                 """,
                 (label, short_code),
             )
-            row = dst_cur.fetchone()
-            subject_map[s["core_subject_id"]] = row["id"]
-
-        print(f"Upserted {len(subject_map)} subjects")
+        print(f"Upserted subjects catalog")
 
         # ----------------------------------------------------------------
-        # 6. Upsert NCP provider
+        # 5. Upsert NCP provider
         # ----------------------------------------------------------------
         dst_cur.execute(
             """
             INSERT INTO slo_providers (slug, name, issuing_body, description)
             VALUES (%(slug)s, %(name)s, %(issuing_body)s, %(description)s)
             ON CONFLICT (slug) DO UPDATE
-                SET name         = EXCLUDED.name,
-                    issuing_body = EXCLUDED.issuing_body,
-                    description  = EXCLUDED.description
+                SET name = EXCLUDED.name, issuing_body = EXCLUDED.issuing_body,
+                    description = EXCLUDED.description
             RETURNING id
             """,
             NCP_PROVIDER,
@@ -257,18 +214,18 @@ def run(dry_run: bool) -> None:
         print(f"Upserted NCP provider (id={provider_id})")
 
         # ----------------------------------------------------------------
-        # 7. Upsert SLOs (batched)
+        # 6. Upsert SLOs with book_id (batched)
         # ----------------------------------------------------------------
-        total_slos = len(ncp_slos)
-        print(f"Upserting {total_slos} SLOs in batches of 500...")
+        total = len(filtered_slos)
+        print(f"Upserting {total} SLOs...")
 
         BATCH_SIZE = 500
         SLO_SQL = """
             INSERT INTO slos
-                (provider_id, code, statement, grade_id, subject_id,
+                (provider_id, book_id, code, statement,
                  domain, language_skills, sub_strand, source_id, is_active)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true)
-            ON CONFLICT (provider_id, code, grade_id, subject_id) DO UPDATE
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, true)
+            ON CONFLICT (provider_id, book_id, code) DO UPDATE
                 SET statement       = EXCLUDED.statement,
                     domain          = EXCLUDED.domain,
                     language_skills = EXCLUDED.language_skills,
@@ -277,49 +234,33 @@ def run(dry_run: bool) -> None:
                     is_active       = true
         """
 
-        inserted = 0
-        skipped = 0
         batch: list[tuple] = []
 
-        def flush_batch(cur, rows: list[tuple]) -> None:
+        def flush(cur, rows):
             if rows:
                 psycopg2.extras.execute_batch(cur, SLO_SQL, rows, page_size=BATCH_SIZE)
 
-        for row in ncp_slos:
-            grade_uuid = grade_map.get(row["core_grade_id"])
-            subject_uuid = subject_map.get(row["core_subject_id"])
-            if not grade_uuid or not subject_uuid:
-                skipped += 1
-                continue
-
+        for i, row in enumerate(filtered_slos, 1):
             batch.append((
                 provider_id,
+                row["book_id"],
                 row["code"],
                 row["statement"],
-                grade_uuid,
-                subject_uuid,
                 row["domain"],
-                row["language_skills"],   # psycopg2 passes list as PG array
+                row["language_skills"],
                 row["sub_strand"],
                 row["source_id"],
             ))
-            inserted += 1
-
             if len(batch) >= BATCH_SIZE:
-                flush_batch(dst_cur, batch)
+                flush(dst_cur, batch)
                 batch.clear()
-                if inserted % 100 == 0:
-                    print(f"  [{inserted}/{total_slos}] SLOs upserted...")
+                print(f"  [{i}/{total}] SLOs upserted...")
 
-        # Flush any remaining rows
-        flush_batch(dst_cur, batch)
-
-        # Final progress line if last batch didn't land on a 100-boundary
-        if inserted % 100 != 0 or inserted == 0:
-            print(f"  [{inserted}/{total_slos}] SLOs upserted...")
+        flush(dst_cur, batch)
+        print(f"  [{total}/{total}] Done.")
 
         dst.commit()
-        print(f"Done. Upserted {inserted} SLOs ({skipped} skipped due to missing grade/subject).")
+        print(f"\nImport complete. {total} SLOs upserted.")
 
     except Exception:
         dst.rollback()

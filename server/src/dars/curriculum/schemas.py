@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -24,7 +24,12 @@ class SubjectResponse(BaseModel):
 class CurriculumResponse(BaseModel):
     id: uuid.UUID
     name: str
-    academic_year: str | None
+    book_id: int
+    provider_id: uuid.UUID
+    is_default: bool
+    teacher_id: uuid.UUID | None
+    client_id: uuid.UUID | None
     is_active: bool
+    created_at: datetime
 
     model_config = {"from_attributes": True}

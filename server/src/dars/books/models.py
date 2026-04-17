@@ -13,7 +13,7 @@ class Book(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     grade: Mapped[int] = mapped_column(Integer, nullable=False)
     subject: Mapped[str] = mapped_column(String(50), nullable=False)
-    curriculum: Mapped[str] = mapped_column(String(20), nullable=False)
+    board: Mapped[str] = mapped_column(String(20), nullable=False)
     cover_image: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_chapters: Mapped[int | None] = mapped_column(Integer, nullable=True)
     book_text: Mapped[dict | None] = mapped_column(JSON, nullable=True)
