@@ -195,6 +195,33 @@ class CurriculumTopicUpdateRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Phase 5 — LP stub response
+# ---------------------------------------------------------------------------
+
+class LpStubResponse(BaseModel):
+    id: uuid.UUID
+    curriculum_topic_id: uuid.UUID
+    skill_type: str | None
+    cpa_phase: str | None
+    blooms_level: str | None
+    planned_date: date | None
+    status: str
+    lesson_plan_id: uuid.UUID | None
+    sequence: int
+
+    model_config = {"from_attributes": True}
+
+
+class GenerateStubResponse(BaseModel):
+    stub_id: uuid.UUID
+    status: str
+
+
+class GenerateAllResponse(BaseModel):
+    queued: int
+
+
+# ---------------------------------------------------------------------------
 # Phase 4 — AI generate request
 # ---------------------------------------------------------------------------
 
