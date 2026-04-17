@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    anthropic_api_key: str = ""
+
     # taleemabad-core staging DB (used for SLO import scripts)
     core_staging_db_host: str = "localhost"
     core_staging_db_port: int = 5432

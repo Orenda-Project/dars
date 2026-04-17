@@ -192,3 +192,17 @@ class CurriculumUpdateRequest(BaseModel):
 class CurriculumTopicUpdateRequest(BaseModel):
     planned_date: date | None = None
     sequence: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — AI generate request
+# ---------------------------------------------------------------------------
+
+class CurriculumGenerateRequest(BaseModel):
+    book_id: int
+    provider_id: uuid.UUID
+    name: str
+    start_date: date
+    end_date: date
+    days_per_week: int = 5
+    is_default: bool = True

@@ -30,6 +30,7 @@ from .schemas import (
     ChapterDetail,
     CurriculumCreateRequest,
     CurriculumDetailResponse,
+    CurriculumGenerateRequest,
     CurriculumListItem,
     CurriculumProgressResponse,
     CurriculumResponse,
@@ -968,3 +969,211 @@ async def delete_teacher_curriculum_topic(
 
     await db.commit()
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — AI breakdown pipeline
+# ---------------------------------------------------------------------------
+
+@router.post("/api/admin/curriculums/generate", response_model=CurriculumDetailResponse, status_code=201)
+async def generate_curriculum(
+    body: CurriculumGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    _client: Client = Depends(get_admin_client),
+) -> CurriculumDetailResponse:
+    """
+    Run the two-step AI pipeline and persist a fully scheduled curriculum.
+
+    Step A: Allocate teaching days across chapters (one LLM call).
+    Step B: For each chapter, generate ordered LP stubs with dates (one LLM call per chapter).
+    """
+    import anthropic as _anthropic
+    from dars.config import settings as _settings
+    from .breakdown import (
+        ChapterAllocation,
+        LpStub,
+        compute_teaching_days,
+        plan_chapter_days,
+        plan_topic_stubs,
+    )
+
+    # --- validate book + provider ----------------------------------------
+    book = (await db.execute(select(Book).where(Book.id == body.book_id))).scalar_one_or_none()
+    if book is None:
+        raise HTTPException(status_code=422, detail="book_id does not exist.")
+
+    provider = (await db.execute(
+        select(SloProvider).where(SloProvider.id == body.provider_id)
+    )).scalar_one_or_none()
+    if provider is None:
+        raise HTTPException(status_code=422, detail="provider_id does not exist.")
+
+    # --- fetch chapters + topics ------------------------------------------
+    chapters_result = await db.execute(
+        select(BookChapter)
+        .where(BookChapter.book_id == body.book_id)
+        .order_by(BookChapter.chapter_number)
+    )
+    chapters = chapters_result.scalars().all()
+    if not chapters:
+        raise HTTPException(status_code=422, detail="Book has no chapters.")
+
+    chapter_ids = [c.id for c in chapters]
+    topics_result = await db.execute(
+        select(Topic)
+        .where(Topic.chapter_id.in_(chapter_ids))
+        .options(
+            selectinload(Topic.sub_slos).selectinload(TopicSubSlo.sub_slo)
+        )
+        .order_by(Topic.chapter_id, Topic.sequence)
+    )
+    topics_by_chapter: dict[int, list[Topic]] = {}
+    for topic in topics_result.scalars().all():
+        topics_by_chapter.setdefault(topic.chapter_id, []).append(topic)
+
+    # --- compute teaching days -------------------------------------------
+    teaching_days = compute_teaching_days(body.start_date, body.end_date, body.days_per_week)
+    total_days = len(teaching_days)
+    if total_days == 0:
+        raise HTTPException(status_code=422, detail="No teaching days in the given date range.")
+    if total_days < len(chapters):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Only {total_days} teaching days for {len(chapters)} chapters — need at least one day per chapter.",
+        )
+
+    # Build chapter summaries for Step A
+    chapter_summaries = [
+        {
+            "id": ch.id,
+            "chapter_number": ch.chapter_number,
+            "title": ch.title,
+            "topic_count": len(topics_by_chapter.get(ch.id, [])),
+        }
+        for ch in chapters
+    ]
+
+    # --- LLM client -------------------------------------------------------
+    if not _settings.anthropic_api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY is not configured.")
+
+    anthropic_client = _anthropic.AsyncAnthropic(api_key=_settings.anthropic_api_key)
+
+    # --- Step A: chapter day allocation -----------------------------------
+    try:
+        allocations: list[ChapterAllocation] = await plan_chapter_days(
+            chapter_summaries, total_days, anthropic_client
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Step A (chapter planner) failed: {exc}",
+        ) from exc
+
+    alloc_map: dict[int, int] = {a.chapter_id: a.days for a in allocations}
+
+    # --- Step B: per-chapter topic/LP planner ----------------------------
+    all_stubs: list[tuple[Topic, LpStub]] = []
+    day_pointer = 0
+
+    for chapter in chapters:
+        allocated_days = alloc_map.get(chapter.id, 1)
+        chapter_topics = topics_by_chapter.get(chapter.id, [])
+
+        if not chapter_topics:
+            day_pointer += allocated_days
+            continue
+
+        topics_for_llm = [
+            {
+                "id": str(t.id),
+                "title": t.title,
+                "sub_slos": [
+                    tslo.sub_slo.statement
+                    for tslo in t.sub_slos
+                    if tslo.sub_slo and tslo.sub_slo.statement
+                ],
+            }
+            for t in chapter_topics
+        ]
+
+        remaining_dates = teaching_days[day_pointer:]
+
+        try:
+            stubs = await plan_topic_stubs(
+                chapter_title=chapter.title,
+                topics=topics_for_llm,
+                days=allocated_days,
+                teaching_dates=remaining_dates,
+                anthropic_client=anthropic_client,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Step B (topic planner) failed for chapter '{chapter.title}': {exc}",
+            ) from exc
+
+        topic_map_local = {str(t.id): t for t in chapter_topics}
+        for stub in stubs:
+            topic_orm = topic_map_local.get(stub.topic_id)
+            if topic_orm is None:
+                continue
+            all_stubs.append((topic_orm, stub))
+
+        day_pointer += allocated_days
+
+    # --- Persist in a single transaction ----------------------------------
+    new_curriculum = Curriculum(
+        id=_uuid_module.uuid4(),
+        name=body.name,
+        book_id=body.book_id,
+        provider_id=body.provider_id,
+        is_default=body.is_default,
+        teacher_id=None,
+        client_id=None,
+        is_active=True,
+    )
+    db.add(new_curriculum)
+    await db.flush()
+
+    # Group stubs by topic_id preserving order of first appearance
+    topic_ct_map: dict[str, CurriculumTopic] = {}
+    global_seq = 0
+
+    for topic_orm, stub in all_stubs:
+        topic_id_str = str(topic_orm.id)
+        if topic_id_str not in topic_ct_map:
+            global_seq += 1
+            ct = CurriculumTopic(
+                id=_uuid_module.uuid4(),
+                curriculum_id=new_curriculum.id,
+                topic_id=topic_orm.id,
+                sequence=global_seq,
+                planned_date=stub.planned_date,
+            )
+            db.add(ct)
+            await db.flush()
+            topic_ct_map[topic_id_str] = ct
+
+    topic_stub_seq: dict[str, int] = {}
+    for topic_orm, stub in all_stubs:
+        topic_id_str = str(topic_orm.id)
+        ct = topic_ct_map.get(topic_id_str)
+        if ct is None:
+            continue
+        topic_stub_seq[topic_id_str] = topic_stub_seq.get(topic_id_str, 0) + 1
+        lp_stub = CurriculumLpStub(
+            id=_uuid_module.uuid4(),
+            curriculum_topic_id=ct.id,
+            skill_type=stub.skill_type,
+            cpa_phase=stub.cpa_phase,
+            blooms_level=stub.blooms_level,
+            sequence=topic_stub_seq[topic_id_str],
+            planned_date=stub.planned_date,
+            status="pending",
+            lesson_plan_id=None,
+        )
+        db.add(lp_stub)
+
+    await db.commit()
+    return await _build_curriculum_detail(db, new_curriculum.id)

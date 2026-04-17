@@ -826,3 +826,215 @@ async def test_delete_teacher_topic_on_default_curriculum_returns_403(http_clien
 
     resp = await c.delete(f"/api/v1/curriculums/{curriculum.id}/topics/{ct.id}")
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — POST /api/admin/curriculums/generate
+# ---------------------------------------------------------------------------
+
+from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import date as _date
+
+
+def _make_tool_use_block(name: str, input_data: dict):
+    """Build a mock tool_use content block."""
+    block = MagicMock()
+    block.type = "tool_use"
+    block.name = name
+    block.input = input_data
+    return block
+
+
+def _make_message_response(tool_block):
+    """Wrap a tool block in a mock Anthropic message response."""
+    resp = MagicMock()
+    resp.content = [tool_block]
+    return resp
+
+
+async def _seed_book_with_topics(db: AsyncSession) -> tuple[Book, SloProvider]:
+    """Seed a book with 2 chapters, 2 topics each, and a provider."""
+    book = Book(id=20, title="Eng Grade 3", grade=3, subject="English", board="NCP")
+    db.add(book)
+    ch1 = BookChapter(id=201, book_id=20, title="Chapter One", chapter_number=1)
+    ch2 = BookChapter(id=202, book_id=20, title="Chapter Two", chapter_number=2)
+    db.add(ch1)
+    db.add(ch2)
+
+    t1 = Topic(id=uuid.uuid4(), chapter_id=201, title="Topic A", sequence=1)
+    t2 = Topic(id=uuid.uuid4(), chapter_id=201, title="Topic B", sequence=2)
+    t3 = Topic(id=uuid.uuid4(), chapter_id=202, title="Topic C", sequence=1)
+    t4 = Topic(id=uuid.uuid4(), chapter_id=202, title="Topic D", sequence=2)
+    db.add_all([t1, t2, t3, t4])
+
+    provider = SloProvider(
+        id=uuid.uuid4(),
+        slug="ncp-gen",
+        name="NCP Gen",
+        issuing_body="Government",
+    )
+    db.add(provider)
+    await db.commit()
+    return book, provider, [t1, t2, t3, t4]
+
+
+async def test_generate_curriculum_success(admin_http_client, db_session):
+    """Full happy-path: mocked Step A + Step B return valid stubs → curriculum created."""
+    c, client_obj = admin_http_client
+    book, provider, topics = await _seed_book_with_topics(db_session)
+    t1, t2, t3, t4 = topics
+
+    # Step A mock: 5 days for ch1, 5 days for ch2
+    step_a_block = _make_tool_use_block("allocate_chapter_days", {
+        "allocations": [
+            {"chapter_id": 201, "days": 5},
+            {"chapter_id": 202, "days": 5},
+        ]
+    })
+    step_a_resp = _make_message_response(step_a_block)
+
+    # Step B mock for ch1: 2 stubs
+    step_b1_block = _make_tool_use_block("plan_lp_stubs", {
+        "stubs": [
+            {
+                "topic_id": str(t1.id),
+                "planned_date": "2025-09-01",
+                "skill_type": "reading",
+                "cpa_phase": "concrete",
+                "blooms_level": "remember",
+                "sequence": 1,
+            },
+            {
+                "topic_id": str(t2.id),
+                "planned_date": "2025-09-02",
+                "skill_type": "writing",
+                "cpa_phase": "pictorial",
+                "blooms_level": "understand",
+                "sequence": 2,
+            },
+        ]
+    })
+    step_b1_resp = _make_message_response(step_b1_block)
+
+    # Step B mock for ch2: 2 stubs
+    step_b2_block = _make_tool_use_block("plan_lp_stubs", {
+        "stubs": [
+            {
+                "topic_id": str(t3.id),
+                "planned_date": "2025-09-08",
+                "skill_type": "comprehension",
+                "cpa_phase": "abstract",
+                "blooms_level": "apply",
+                "sequence": 1,
+            },
+            {
+                "topic_id": str(t4.id),
+                "planned_date": "2025-09-09",
+                "skill_type": "revision",
+                "cpa_phase": "abstract",
+                "blooms_level": "analyze",
+                "sequence": 2,
+            },
+        ]
+    })
+    step_b2_resp = _make_message_response(step_b2_block)
+
+    mock_create = AsyncMock(side_effect=[step_a_resp, step_b1_resp, step_b2_resp])
+
+    with patch("dars.config.settings.anthropic_api_key", "test-key"), \
+         patch("anthropic.AsyncAnthropic") as MockAnthropic:
+        mock_instance = MagicMock()
+        mock_instance.messages.create = mock_create
+        MockAnthropic.return_value = mock_instance
+
+        resp = await c.post("/api/admin/curriculums/generate", json={
+            "book_id": 20,
+            "provider_id": str(provider.id),
+            "name": "Grade 3 NCP 2025-26",
+            "start_date": "2025-09-01",
+            "end_date": "2025-09-30",
+            "days_per_week": 5,
+            "is_default": True,
+        })
+
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["name"] == "Grade 3 NCP 2025-26"
+    assert data["is_default"] is True
+    assert len(data["topics"]) == 4
+    # All stubs should be pending
+    for topic in data["topics"]:
+        for stub in topic["lp_stubs"]:
+            assert stub["status"] == "pending"
+
+    # Check LLM was called 3 times: once for Step A, twice for Step B
+    assert mock_create.call_count == 3
+
+
+async def test_generate_curriculum_invalid_book(admin_http_client, db_session):
+    provider = await _seed_provider(db_session)
+    c, _ = admin_http_client
+
+    with patch("dars.config.settings.anthropic_api_key", "test-key"):
+        resp = await c.post("/api/admin/curriculums/generate", json={
+            "book_id": 9999,
+            "provider_id": str(provider.id),
+            "name": "Test",
+            "start_date": "2025-09-01",
+            "end_date": "2025-09-30",
+            "days_per_week": 5,
+            "is_default": True,
+        })
+    assert resp.status_code == 422
+
+
+async def test_generate_curriculum_invalid_provider(admin_http_client, db_session):
+    await _seed_book(db_session)
+    c, _ = admin_http_client
+
+    with patch("dars.config.settings.anthropic_api_key", "test-key"):
+        resp = await c.post("/api/admin/curriculums/generate", json={
+            "book_id": 1,
+            "provider_id": str(uuid.uuid4()),
+            "name": "Test",
+            "start_date": "2025-09-01",
+            "end_date": "2025-09-30",
+            "days_per_week": 5,
+            "is_default": True,
+        })
+    assert resp.status_code == 422
+
+
+async def test_generate_curriculum_no_api_key(admin_http_client, db_session):
+    book, provider, _ = await _seed_book_with_topics(db_session)
+    c, _ = admin_http_client
+
+    with patch("dars.config.settings.anthropic_api_key", ""):
+        resp = await c.post("/api/admin/curriculums/generate", json={
+            "book_id": book.id,
+            "provider_id": str(provider.id),
+            "name": "Test",
+            "start_date": "2025-09-01",
+            "end_date": "2025-09-30",
+            "days_per_week": 5,
+            "is_default": True,
+        })
+    assert resp.status_code == 500
+    assert "ANTHROPIC_API_KEY" in resp.json()["detail"]
+
+
+async def test_generate_curriculum_requires_admin(http_client, db_session):
+    """Non-admin client must get 403."""
+    c, _ = http_client
+    resp = await c.post("/api/admin/curriculums/generate", json={
+        "book_id": 1,
+        "provider_id": str(uuid.uuid4()),
+        "name": "Test",
+        "start_date": "2025-09-01",
+        "end_date": "2025-09-30",
+        "days_per_week": 5,
+        "is_default": True,
+    })
+    assert resp.status_code == 403
+
+
