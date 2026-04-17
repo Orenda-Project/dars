@@ -11,6 +11,7 @@ owner: hataf
 - **One concern per file.** Don't mix company context with API specs or implementation plans.
 - **L1 routes, L3 contains.** CLAUDE.md is a routing table — zero substantive content. Details live in L3 docs.
 - **Link don't duplicate.** If something is in an ADR, point to it.
+- **Markdown links, not bare paths.** Always use `[label](path)` when referencing another file — never a bare backtick path like `` `docs/foo.md` ``.
 - **Stable vs. volatile.** Long-lived context goes in `docs/context/`. In-flight work goes in `docs/specs/` and `docs/plans/`.
 
 ## Directory layout
