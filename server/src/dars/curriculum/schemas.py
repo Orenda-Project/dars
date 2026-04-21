@@ -26,9 +26,6 @@ class CurriculumResponse(BaseModel):
     name: str
     book_id: int
     provider_id: uuid.UUID
-    is_default: bool
-    teacher_id: uuid.UUID | None
-    client_id: uuid.UUID | None
     is_active: bool
     created_at: datetime
 
@@ -104,8 +101,6 @@ class CurriculumListItem(BaseModel):
     book_id: int
     book_title: str
     provider_name: str
-    is_default: bool
-    teacher_id: uuid.UUID | None
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -131,7 +126,6 @@ class CurriculumTopicDetail(BaseModel):
     topic_title: str
     topic_text: str | None
     planned_date: date | None
-    completed_date: date | None
     lp_stubs: list[LpStubSummary]
 
     model_config = {"from_attributes": True}
@@ -143,20 +137,11 @@ class CurriculumDetailResponse(BaseModel):
     book_id: int
     book_title: str
     provider_name: str
-    is_default: bool
-    teacher_id: uuid.UUID | None
     is_active: bool
     created_at: datetime
     topics: list[CurriculumTopicDetail]
 
     model_config = {"from_attributes": True}
-
-
-class CurriculumProgressResponse(BaseModel):
-    total_topics: int
-    completed: int
-    behind: int
-    on_track: int
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +152,6 @@ class CurriculumCreateRequest(BaseModel):
     name: str
     book_id: int
     provider_id: uuid.UUID
-    is_default: bool = False
 
 
 class TopicEntry(BaseModel):
@@ -181,7 +165,6 @@ class CurriculumSetTopicsRequest(BaseModel):
 
 class CurriculumUpdateRequest(BaseModel):
     name: str | None = None
-    is_default: bool | None = None
     is_active: bool | None = None
 
 
@@ -212,15 +195,6 @@ class LpStubResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class GenerateStubResponse(BaseModel):
-    stub_id: uuid.UUID
-    status: str
-
-
-class GenerateAllResponse(BaseModel):
-    queued: int
-
-
 # ---------------------------------------------------------------------------
 # Phase 4 — AI generate request
 # ---------------------------------------------------------------------------
@@ -232,4 +206,3 @@ class CurriculumGenerateRequest(BaseModel):
     start_date: date
     end_date: date
     days_per_week: int = 5
-    is_default: bool = True

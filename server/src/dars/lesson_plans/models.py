@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -14,12 +13,6 @@ class LessonPlan(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    client_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
-    )
-    teacher_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("teachers.id", ondelete="RESTRICT"), nullable=False
     )
     external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     grade: Mapped[str] = mapped_column(String(50), nullable=False)

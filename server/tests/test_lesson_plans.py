@@ -1,13 +1,14 @@
+import uuid
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
+from datetime import datetime, timezone
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dars.main import app
 from dars.database import Base, get_db
 from dars.clients.service import create_client
-from dars.teachers.service import register_teacher
-from dars.teachers.schemas import TeacherRegisterRequest
+from dars.lesson_plans.models import LessonPlan
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
 
@@ -34,62 +35,39 @@ async def http_client(db_session):
 
 
 @pytest.fixture(scope="function")
-async def api_key_and_client(db_session):
-    client, raw_key = await create_client(db_session, name="Test Client")
-    return client, raw_key
-
-
-@pytest.fixture(scope="function")
-async def api_key(api_key_and_client):
-    _, raw_key = api_key_and_client
+async def api_key(db_session):
+    _, raw_key = await create_client(db_session, name="Test Client")
     return raw_key
 
 
-@pytest.fixture(scope="function")
-async def teacher_id(db_session, api_key_and_client):
-    client, _ = api_key_and_client
-    teacher = await register_teacher(
-        db_session,
-        client_id=client.id,
-        request=TeacherRegisterRequest(name="Test Teacher", email="teacher@test.com"),
-    )
-    return str(teacher.id)
-
-
-async def test_create_lesson_plan_returns_202_pending(http_client, api_key, teacher_id):
-    with patch("dars.lesson_plans.router.generate_lesson_plan_task"):
-        response = await http_client.post(
-            "/api/v1/lesson-plans",
-            json={"grade": "3", "subject": "Maths", "page_number": "10"},
-            headers={"X-API-Key": api_key, "X-Teacher-ID": teacher_id},
-        )
-    assert response.status_code == 202
-    data = response.json()
-    assert data["status"] == "PENDING"
-    assert data["content"] is None
-    assert "id" in data
-
-
-async def test_create_lesson_plan_requires_teacher_id(http_client, api_key):
+async def test_create_lesson_plan_returns_202_pending(http_client, api_key):
     with patch("dars.lesson_plans.router.generate_lesson_plan_task"):
         response = await http_client.post(
             "/api/v1/lesson-plans",
             json={"grade": "3", "subject": "Maths", "page_number": "10"},
             headers={"X-API-Key": api_key},
         )
-    assert response.status_code == 422
+    assert response.status_code == 202
+    data = response.json()
+    assert data["status"] == "PENDING"
+    assert data["content"] is None
+    assert "id" in data
+    # No client_id or teacher_id in response
+    assert "client_id" not in data
+    assert "teacher_id" not in data
+
+
+async def test_create_lesson_plan_requires_auth(http_client):
+    response = await http_client.post(
+        "/api/v1/lesson-plans",
+        json={"grade": "3", "subject": "Maths", "page_number": "10"},
+    )
+    assert response.status_code == 401
 
 
 async def test_edit_lesson_plan_returns_updated_content(http_client, api_key):
-    import uuid
-    from datetime import datetime, timezone
-    from unittest.mock import AsyncMock
-    from dars.lesson_plans.models import LessonPlan
-
     mock_lp = LessonPlan(
         id=uuid.uuid4(),
-        client_id=uuid.uuid4(),
-        teacher_id=uuid.uuid4(),
         grade="3",
         subject="Maths",
         topic=None,
@@ -117,7 +95,6 @@ async def test_edit_lesson_plan_returns_updated_content(http_client, api_key):
 
 
 async def test_edit_lesson_plan_404_if_not_found(http_client, api_key):
-    from unittest.mock import AsyncMock
     with patch("dars.lesson_plans.router.edit_lesson_plan", new=AsyncMock(return_value=None)):
         resp = await http_client.patch(
             "/api/v1/lesson-plans/00000000-0000-0000-0000-000000000000",
@@ -128,7 +105,6 @@ async def test_edit_lesson_plan_404_if_not_found(http_client, api_key):
 
 
 async def test_edit_lesson_plan_409_if_not_ready(http_client, api_key):
-    from unittest.mock import AsyncMock
     with patch(
         "dars.lesson_plans.router.edit_lesson_plan",
         new=AsyncMock(side_effect=ValueError("Cannot edit a lesson plan with status 'PENDING'.")),
@@ -149,12 +125,12 @@ async def test_edit_lesson_plan_requires_auth(http_client):
     assert resp.status_code == 401
 
 
-async def test_get_lesson_plan_returns_pending(http_client, api_key, teacher_id):
+async def test_get_lesson_plan_returns_pending(http_client, api_key):
     with patch("dars.lesson_plans.router.generate_lesson_plan_task"):
         create_resp = await http_client.post(
             "/api/v1/lesson-plans",
             json={"grade": "3", "subject": "Maths", "page_number": "10"},
-            headers={"X-API-Key": api_key, "X-Teacher-ID": teacher_id},
+            headers={"X-API-Key": api_key},
         )
     lp_id = create_resp.json()["id"]
     get_resp = await http_client.get(

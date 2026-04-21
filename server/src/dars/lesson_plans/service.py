@@ -81,13 +81,12 @@ async def _call_lp_reviewer(lesson_plan_html: str, subject: str, grade: int) -> 
 
 async def review_lesson_plan(
     db: AsyncSession,
-    client_id: uuid.UUID,
     request: LessonPlanReviewRequest,
 ) -> dict:
     """Review a lesson plan. If lesson_plan_id is given, fetch content, call reviewer, store result.
     If lesson_plan_html is given, call reviewer and return without storing."""
     if request.lesson_plan_id is not None:
-        lp = await get_lesson_plan(db, client_id=client_id, lp_id=request.lesson_plan_id)
+        lp = await get_lesson_plan(db, lp_id=request.lesson_plan_id)
         if lp is None:
             raise LookupError("Lesson plan not found")
         if not lp.content:
@@ -110,14 +109,10 @@ async def review_lesson_plan(
 
 async def queue_lesson_plan(
     db: AsyncSession,
-    client_id: uuid.UUID,
-    teacher_id: uuid.UUID,
     request: LessonPlanCreateRequest,
 ) -> LessonPlan:
     """Create a PENDING lesson plan record. Caller must schedule generate_lesson_plan_task as a background task."""
     lp = LessonPlan(
-        client_id=client_id,
-        teacher_id=teacher_id,
         external_ref=request.external_ref,
         grade=request.grade,
         subject=request.subject,
@@ -134,7 +129,6 @@ async def queue_lesson_plan(
 
 async def generate_lesson_plan_task(
     lp_id: uuid.UUID,
-    client_id: uuid.UUID,
     webhook_url: str | None,
     request: LessonPlanCreateRequest,
 ) -> None:
@@ -145,9 +139,7 @@ async def generate_lesson_plan_task(
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(LessonPlan).where(
-                LessonPlan.id == lp_id, LessonPlan.client_id == client_id
-            )
+            select(LessonPlan).where(LessonPlan.id == lp_id)
         )
         lp = result.scalar_one_or_none()
         if lp is None:
@@ -185,29 +177,11 @@ async def generate_lesson_plan_task(
         await db.commit()
         await db.refresh(lp)
 
-        if webhook_url:
-            from dars.lesson_plans.schemas import LessonPlanResponse
-            from dars.webhooks.service import deliver_webhook
-
-            payload = {
-                "event": event,
-                "lesson_plan": LessonPlanResponse.model_validate(lp).model_dump(
-                    mode="json"
-                ),
-            }
-            await deliver_webhook(
-                db=db,
-                client_id=client_id,
-                lesson_plan_id=lp.id,
-                webhook_url=webhook_url,
-                event=event,
-                payload=payload,
-            )
+        # Webhooks removed: LPs are now master-owned (no client_id), so no per-client delivery.
 
 
 async def edit_lesson_plan(
     db: AsyncSession,
-    client_id: uuid.UUID,
     lp_id: uuid.UUID,
     request: LessonPlanEditRequest,
 ) -> LessonPlan | None:
@@ -219,7 +193,7 @@ async def edit_lesson_plan(
     """
     from dars.lesson_plans.edit_models import LessonPlanEdit
 
-    lp = await get_lesson_plan(db, client_id=client_id, lp_id=lp_id)
+    lp = await get_lesson_plan(db, lp_id=lp_id)
     if lp is None:
         return None
 
@@ -232,7 +206,6 @@ async def edit_lesson_plan(
     # Stage history row before HTTP call — committed atomically with content update below.
     # If the HTTP call raises, the session is never committed and this row is discarded.
     edit_record = LessonPlanEdit(
-        client_id=client_id,
         lp_id=lp_id,
         edit_prompt=request.edit_prompt,
         content_before=lp.content,
@@ -276,25 +249,16 @@ async def edit_lesson_plan(
 
 async def list_lesson_plans(
     db: AsyncSession,
-    client_id: uuid.UUID,
     limit: int = 20,
     offset: int = 0,
-    teacher_id: uuid.UUID | None = None,
 ) -> tuple[list[LessonPlan], int]:
-    base_where = [LessonPlan.client_id == client_id]
-    if teacher_id is not None:
-        base_where.append(LessonPlan.teacher_id == teacher_id)
-
     count_result = await db.execute(
-        select(func.count())
-        .select_from(LessonPlan)
-        .where(*base_where)
+        select(func.count()).select_from(LessonPlan)
     )
     total = count_result.scalar_one()
 
     result = await db.execute(
         select(LessonPlan)
-        .where(*base_where)
         .order_by(LessonPlan.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -305,13 +269,9 @@ async def list_lesson_plans(
 
 async def get_lesson_plan(
     db: AsyncSession,
-    client_id: uuid.UUID,
     lp_id: uuid.UUID,
 ) -> LessonPlan | None:
     result = await db.execute(
-        select(LessonPlan).where(
-            LessonPlan.id == lp_id,
-            LessonPlan.client_id == client_id,
-        )
+        select(LessonPlan).where(LessonPlan.id == lp_id)
     )
     return result.scalar_one_or_none()
