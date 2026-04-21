@@ -26,6 +26,7 @@ async def signup_endpoint(
         name=client.name,
         email=client.email,  # type: ignore[arg-type]
         teacher_id=teacher_id,
+        is_admin=client.is_admin,
     )
 
 
@@ -47,4 +48,5 @@ async def login_endpoint(
         name=client.name,
         email=client.email,  # type: ignore[arg-type]
         teacher_id=teacher_id,
+        is_admin=client.is_admin,
     )
