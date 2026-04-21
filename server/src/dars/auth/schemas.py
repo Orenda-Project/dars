@@ -20,3 +20,4 @@ class AuthResponse(BaseModel):
     name: str
     email: str
     teacher_id: uuid.UUID
+    is_admin: bool

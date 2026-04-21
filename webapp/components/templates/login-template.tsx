@@ -11,6 +11,7 @@ interface AuthResult {
   name: string;
   email: string;
   teacher_id: string;
+  is_admin: boolean;
 }
 
 export function LoginTemplate() {

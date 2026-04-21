@@ -88,7 +88,6 @@ async def _seed_world(db: AsyncSession):
         blooms_level="remember",
         sequence=1,
         planned_date=date(2025, 9, 1),
-        status="generated",
         lesson_plan_id=None,
     )
     db.add(stub)
@@ -113,7 +112,6 @@ async def test_get_stub_returns_correct_fields(http_client, db_session):
     assert data["skill_type"] == "reading"
     assert data["cpa_phase"] == "concrete"
     assert data["blooms_level"] == "remember"
-    assert data["status"] == "generated"
     assert data["lesson_plan_id"] is None
     assert data["sequence"] == 1
 
