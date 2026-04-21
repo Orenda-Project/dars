@@ -29,6 +29,15 @@ owner: hataf
 - `curriculum` is not stored on the `LessonPlan` model — the edit flow defaults to `"ICT"`; fix tracked in roadmap
 - `lesson_plan_edits` is append-only history — each edit saves `content_before` + `content_bilingual_before` before overwriting `lp.content`; last-row wins for current state
 
+## Database migrations
+
+**Never apply migrations via the Supabase MCP or any direct DB tool.**
+Always:
+1. Create a migration file in `supabase/migrations/`
+2. Apply via `make db-push`
+
+This ensures migration history stays in sync with the codebase.
+
 ## Keeping docs current
 
 - When new or corrected information about Taleemabad comes up, update [`docs/context/taleemabad.md`](context/taleemabad.md) immediately

@@ -270,7 +270,7 @@ async def test_get_curriculum_detail_returns_topics(http_client, db_session):
 
     stub = CurriculumLpStub(
         id=uuid.uuid4(), curriculum_topic_id=ct.id, sequence=1,
-        skill_type="reading", status="generating",
+        skill_type="reading",
     )
     db_session.add(stub)
     await db_session.commit()
@@ -640,10 +640,10 @@ async def test_generate_curriculum_success(admin_http_client, db_session):
     data = resp.json()
     assert data["name"] == "Grade 3 NCP 2025-26"
     assert len(data["topics"]) == 4
-    # All stubs should be "generated" since LP assistant was mocked successfully
+    # All stubs should have a lesson_plan_id since LP assistant was mocked successfully
     for topic in data["topics"]:
         for stub in topic["lp_stubs"]:
-            assert stub["status"] == "generated"
+            assert stub["lesson_plan_id"] is not None
 
     assert mock_llm_create.call_count == 3
 

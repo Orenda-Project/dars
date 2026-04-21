@@ -113,7 +113,6 @@ class LpStubSummary(BaseModel):
     cpa_phase: str | None
     blooms_level: str | None
     planned_date: date | None
-    status: str
     lesson_plan_id: uuid.UUID | None
 
     model_config = {"from_attributes": True}
@@ -188,7 +187,6 @@ class LpStubResponse(BaseModel):
     cpa_phase: str | None
     blooms_level: str | None
     planned_date: date | None
-    status: str
     lesson_plan_id: uuid.UUID | None
     sequence: int
 

@@ -257,7 +257,6 @@ async def get_curriculum_detail(
                 cpa_phase=stub.cpa_phase,
                 blooms_level=stub.blooms_level,
                 planned_date=stub.planned_date,
-                status=stub.status,
                 lesson_plan_id=stub.lesson_plan_id,
             )
             for stub in ct.stubs
@@ -379,7 +378,6 @@ async def _build_curriculum_detail(db: AsyncSession, curriculum_id: _uuid_module
                 cpa_phase=stub.cpa_phase,
                 blooms_level=stub.blooms_level,
                 planned_date=stub.planned_date,
-                status=stub.status,
                 lesson_plan_id=stub.lesson_plan_id,
             )
             for stub in ct.stubs
@@ -769,7 +767,6 @@ async def generate_curriculum(
             blooms_level=stub.blooms_level,
             sequence=topic_stub_seq[topic_id_str],
             planned_date=stub.planned_date,
-            status="generating",
             lesson_plan_id=None,
         )
         db.add(lp_stub_orm)
@@ -821,7 +818,6 @@ async def generate_curriculum(
             db.add(lp)
             await db.flush()
             lp_stub_orm.lesson_plan_id = lp.id
-            lp_stub_orm.status = "generated"
         except Exception as exc:
             logger.error(
                 "generate_curriculum: LP generation failed for stub %s topic=%s: %s",
@@ -829,7 +825,6 @@ async def generate_curriculum(
                 topic_orm.title,
                 exc,
             )
-            lp_stub_orm.status = "failed"
 
     await db.commit()
     return await _build_curriculum_detail(db, new_curriculum.id)
@@ -883,7 +878,6 @@ async def get_stub(
         cpa_phase=stub.cpa_phase,
         blooms_level=stub.blooms_level,
         planned_date=stub.planned_date,
-        status=stub.status,
         lesson_plan_id=stub.lesson_plan_id,
         sequence=stub.sequence,
     )
