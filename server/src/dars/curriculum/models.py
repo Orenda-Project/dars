@@ -176,7 +176,7 @@ class CurriculumLpStub(Base):
     blooms_level: Mapped[str | None] = mapped_column(String(30), nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     planned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="generating")
     lesson_plan_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("lesson_plans.id", ondelete="SET NULL"),

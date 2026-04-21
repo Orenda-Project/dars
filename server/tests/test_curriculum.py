@@ -270,7 +270,7 @@ async def test_get_curriculum_detail_returns_topics(http_client, db_session):
 
     stub = CurriculumLpStub(
         id=uuid.uuid4(), curriculum_topic_id=ct.id, sequence=1,
-        skill_type="reading", status="pending",
+        skill_type="reading", status="generating",
     )
     db_session.add(stub)
     await db_session.commit()
