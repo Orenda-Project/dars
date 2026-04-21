@@ -1,17 +1,16 @@
 import logging
 import uuid as _uuid_module
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
-from sqlalchemy import delete, select, update
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from dars.books.models import Book, BookChapter
 from dars.clients.models import Client
 from dars.database import get_db
-from dars.deps import get_admin_client, get_current_client, get_current_teacher, require_teacher
-from dars.teachers.models import Teacher
+from dars.deps import get_admin_client, get_current_client
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +34,9 @@ from .schemas import (
     CurriculumDetailResponse,
     CurriculumGenerateRequest,
     CurriculumListItem,
-    CurriculumProgressResponse,
-    CurriculumResponse,
     CurriculumSetTopicsRequest,
     CurriculumTopicDetail,
-    CurriculumTopicUpdateRequest,
     CurriculumUpdateRequest,
-    GenerateAllResponse,
-    GenerateStubResponse,
     GradeResponse,
     LpStubResponse,
     LpStubSummary,
@@ -110,7 +104,6 @@ async def get_book_detail(
     _client: Client = Depends(get_current_client),
 ) -> BookDetailResponse:
     """Book detail: book + chapters + topics + sub-SLOs per topic."""
-    # Load book with chapters
     result = await db.execute(
         select(Book)
         .where(Book.id == book_id)
@@ -120,7 +113,6 @@ async def get_book_detail(
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found.")
 
-    # Load topics for all chapters (with sub-SLO join)
     chapter_ids = [c.id for c in book.chapters]
     topics_result = await db.execute(
         select(Topic)
@@ -181,21 +173,14 @@ async def get_book_detail(
 @router.get("/api/v1/curriculums", response_model=list[CurriculumListItem])
 async def list_curriculums(
     db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
+    _client: Client = Depends(get_current_client),
 ) -> list[CurriculumListItem]:
-    """
-    Returns:
-    - Admin defaults (is_default=True) for all books
-    - Teacher's own curriculums (client_id = current client)
-    """
+    """Returns all active master curriculums."""
     query = (
         select(Curriculum, Book.title, SloProvider.name)
         .join(Book, Curriculum.book_id == Book.id)
         .join(SloProvider, Curriculum.provider_id == SloProvider.id)
-        .where(
-            Curriculum.is_active == True,  # noqa: E712
-            (Curriculum.is_default == True) | (Curriculum.client_id == client.id),  # noqa: E712
-        )
+        .where(Curriculum.is_active == True)  # noqa: E712
         .order_by(Curriculum.name)
     )
     result = await db.execute(query)
@@ -209,8 +194,6 @@ async def list_curriculums(
             book_id=curriculum.book_id,
             book_title=book_title,
             provider_name=provider_name,
-            is_default=curriculum.is_default,
-            teacher_id=curriculum.teacher_id,
             is_active=curriculum.is_active,
         ))
     return out
@@ -220,7 +203,7 @@ async def list_curriculums(
 async def get_curriculum_detail(
     curriculum_id: str,
     db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
+    _client: Client = Depends(get_current_client),
 ) -> CurriculumDetailResponse:
     """Full curriculum: ordered topics + LP stubs per topic."""
     import uuid as _uuid
@@ -229,7 +212,6 @@ async def get_curriculum_detail(
     except ValueError:
         raise HTTPException(status_code=404, detail="Curriculum not found.")
 
-    # Fetch curriculum with book + provider
     result = await db.execute(
         select(Curriculum, Book.title, SloProvider.name)
         .join(Book, Curriculum.book_id == Book.id)
@@ -237,7 +219,6 @@ async def get_curriculum_detail(
         .where(
             Curriculum.id == cid,
             Curriculum.is_active == True,  # noqa: E712
-            (Curriculum.is_default == True) | (Curriculum.client_id == client.id),  # noqa: E712
         )
     )
     row = result.one_or_none()
@@ -246,7 +227,6 @@ async def get_curriculum_detail(
 
     curriculum, book_title, provider_name = row
 
-    # Load curriculum_topics with their stubs and the linked topic
     ct_result = await db.execute(
         select(CurriculumTopic)
         .where(CurriculumTopic.curriculum_id == cid)
@@ -258,7 +238,6 @@ async def get_curriculum_detail(
     )
     curriculum_topics = ct_result.scalars().all()
 
-    # Bulk-load topics
     topic_ids = [ct.topic_id for ct in curriculum_topics]
     topic_map: dict = {}
     if topic_ids:
@@ -290,7 +269,6 @@ async def get_curriculum_detail(
             topic_title=topic.title if topic else "",
             topic_text=topic.text if topic else None,
             planned_date=ct.planned_date,
-            completed_date=ct.completed_date,
             lp_stubs=stubs_out,
         ))
 
@@ -300,59 +278,9 @@ async def get_curriculum_detail(
         book_id=curriculum.book_id,
         book_title=book_title,
         provider_name=provider_name,
-        is_default=curriculum.is_default,
-        teacher_id=curriculum.teacher_id,
         is_active=curriculum.is_active,
         created_at=curriculum.created_at,
         topics=topics_out,
-    )
-
-
-@router.get("/api/v1/curriculums/{curriculum_id}/progress", response_model=CurriculumProgressResponse)
-async def get_curriculum_progress(
-    curriculum_id: str,
-    db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
-) -> CurriculumProgressResponse:
-    """Progress summary: total, completed, behind (past planned_date, not done), on_track."""
-    import uuid as _uuid
-    try:
-        cid = _uuid.UUID(curriculum_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    # Verify access
-    result = await db.execute(
-        select(Curriculum)
-        .where(
-            Curriculum.id == cid,
-            Curriculum.is_active == True,  # noqa: E712
-            (Curriculum.is_default == True) | (Curriculum.client_id == client.id),  # noqa: E712
-        )
-    )
-    curriculum = result.scalar_one_or_none()
-    if curriculum is None:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    ct_result = await db.execute(
-        select(CurriculumTopic).where(CurriculumTopic.curriculum_id == cid)
-    )
-    topics = ct_result.scalars().all()
-
-    today = date.today()
-    total = len(topics)
-    completed = sum(1 for t in topics if t.completed_date is not None)
-    behind = sum(
-        1 for t in topics
-        if t.completed_date is None and t.planned_date is not None and t.planned_date < today
-    )
-    on_track = total - completed - behind
-
-    return CurriculumProgressResponse(
-        total_topics=total,
-        completed=completed,
-        behind=behind,
-        on_track=on_track,
     )
 
 
@@ -404,7 +332,6 @@ async def list_all_curriculums(
             "book_id": curriculum.book_id,
             "book_title": book_title,
             "provider_name": provider_name,
-            "is_default": curriculum.is_default,
             "is_active": curriculum.is_active,
         }
         for curriculum, book_title, provider_name in rows
@@ -464,7 +391,6 @@ async def _build_curriculum_detail(db: AsyncSession, curriculum_id: _uuid_module
             topic_title=topic.title if topic else "",
             topic_text=topic.text if topic else None,
             planned_date=ct.planned_date,
-            completed_date=ct.completed_date,
             lp_stubs=stubs_out,
         ))
 
@@ -474,8 +400,6 @@ async def _build_curriculum_detail(db: AsyncSession, curriculum_id: _uuid_module
         book_id=curriculum.book_id,
         book_title=book_title,
         provider_name=provider_name,
-        is_default=curriculum.is_default,
-        teacher_id=curriculum.teacher_id,
         is_active=curriculum.is_active,
         created_at=curriculum.created_at,
         topics=topics_out,
@@ -488,13 +412,11 @@ async def create_curriculum(
     db: AsyncSession = Depends(get_db),
     _client: Client = Depends(get_admin_client),
 ) -> CurriculumListItem:
-    """Create a new curriculum. is_default=true → teacher_id and client_id are null."""
-    # Validate book exists
+    """Create a new master curriculum."""
     book = (await db.execute(select(Book).where(Book.id == body.book_id))).scalar_one_or_none()
     if book is None:
         raise HTTPException(status_code=422, detail="book_id does not exist.")
 
-    # Validate provider exists
     provider = (await db.execute(
         select(SloProvider).where(SloProvider.id == body.provider_id)
     )).scalar_one_or_none()
@@ -506,9 +428,6 @@ async def create_curriculum(
         name=body.name,
         book_id=body.book_id,
         provider_id=body.provider_id,
-        is_default=body.is_default,
-        teacher_id=None,
-        client_id=None,
         is_active=True,
     )
     db.add(curriculum)
@@ -521,8 +440,6 @@ async def create_curriculum(
         book_id=curriculum.book_id,
         book_title=book.title,
         provider_name=provider.name,
-        is_default=curriculum.is_default,
-        teacher_id=curriculum.teacher_id,
         is_active=curriculum.is_active,
     )
 
@@ -540,14 +457,12 @@ async def set_curriculum_topics(
     except ValueError:
         raise HTTPException(status_code=404, detail="Curriculum not found.")
 
-    # Check curriculum exists
     curriculum = (await db.execute(
         select(Curriculum).where(Curriculum.id == cid)
     )).scalar_one_or_none()
     if curriculum is None:
         raise HTTPException(status_code=404, detail="Curriculum not found.")
 
-    # Validate all topic_ids exist
     if body.topics:
         requested_ids = [e.topic_id for e in body.topics]
         found = (await db.execute(
@@ -558,10 +473,8 @@ async def set_curriculum_topics(
         if missing:
             raise HTTPException(status_code=422, detail=f"Unknown topic_ids: {missing}")
 
-    # Delete existing topics (cascades to stubs)
     await db.execute(delete(CurriculumTopic).where(CurriculumTopic.curriculum_id == cid))
 
-    # Insert new topics in order
     for seq, entry in enumerate(body.topics, start=1):
         ct = CurriculumTopic(
             id=_uuid_module.uuid4(),
@@ -583,7 +496,7 @@ async def update_curriculum(
     db: AsyncSession = Depends(get_db),
     _client: Client = Depends(get_admin_client),
 ) -> CurriculumListItem:
-    """Update curriculum metadata (name, is_default, is_active)."""
+    """Update curriculum metadata (name, is_active)."""
     try:
         cid = _uuid_module.UUID(curriculum_id)
     except ValueError:
@@ -601,8 +514,6 @@ async def update_curriculum(
 
     if body.name is not None:
         curriculum.name = body.name
-    if body.is_default is not None:
-        curriculum.is_default = body.is_default
     if body.is_active is not None:
         curriculum.is_active = body.is_active
 
@@ -615,8 +526,6 @@ async def update_curriculum(
         book_id=curriculum.book_id,
         book_title=book_title,
         provider_name=provider_name,
-        is_default=curriculum.is_default,
-        teacher_id=curriculum.teacher_id,
         is_active=curriculum.is_active,
     )
 
@@ -635,7 +544,6 @@ async def delete_curriculum_topic(
     except ValueError:
         raise HTTPException(status_code=404, detail="Not found.")
 
-    # Verify curriculum + topic exists
     ct = (await db.execute(
         select(CurriculumTopic).where(
             CurriculumTopic.id == ctid,
@@ -648,7 +556,6 @@ async def delete_curriculum_topic(
     await db.delete(ct)
     await db.flush()
 
-    # Re-sequence remaining topics
     remaining = (await db.execute(
         select(CurriculumTopic)
         .where(CurriculumTopic.curriculum_id == cid)
@@ -662,323 +569,7 @@ async def delete_curriculum_topic(
 
 
 # ---------------------------------------------------------------------------
-# Teacher endpoints — Phase 3
-# ---------------------------------------------------------------------------
-
-def _assert_not_default(curriculum: Curriculum) -> None:
-    if curriculum.is_default:
-        raise HTTPException(
-            status_code=403,
-            detail="Cannot modify a default curriculum — clone it first",
-        )
-
-
-def _assert_client_owns(curriculum: Curriculum, client: Client) -> None:
-    if curriculum.client_id != client.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-
-@router.post("/api/v1/curriculums/{curriculum_id}/clone", response_model=CurriculumDetailResponse, status_code=201)
-async def clone_curriculum(
-    curriculum_id: str,
-    db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
-    teacher: Teacher = Depends(require_teacher),
-) -> CurriculumDetailResponse:
-    """Clone a curriculum into a new teacher-owned curriculum."""
-    try:
-        cid = _uuid_module.UUID(curriculum_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    # Source must be default OR owned by this client
-    source = (await db.execute(
-        select(Curriculum)
-        .where(
-            Curriculum.id == cid,
-            Curriculum.is_active == True,  # noqa: E712
-            (Curriculum.is_default == True) | (Curriculum.client_id == client.id),  # noqa: E712
-        )
-    )).scalar_one_or_none()
-    if source is None:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    # Load topics + stubs from source
-    source_topics = (await db.execute(
-        select(CurriculumTopic)
-        .where(CurriculumTopic.curriculum_id == cid)
-        .options(selectinload(CurriculumTopic.stubs))
-        .order_by(CurriculumTopic.sequence)
-    )).scalars().all()
-
-    # Create new curriculum
-    new_curriculum = Curriculum(
-        id=_uuid_module.uuid4(),
-        name=f"{source.name} (copy)",
-        book_id=source.book_id,
-        provider_id=source.provider_id,
-        is_default=False,
-        teacher_id=teacher.id,
-        client_id=client.id,
-        is_active=True,
-    )
-    db.add(new_curriculum)
-    await db.flush()  # populate new_curriculum.id
-
-    # Copy topics + stubs
-    for ct in source_topics:
-        new_ct = CurriculumTopic(
-            id=_uuid_module.uuid4(),
-            curriculum_id=new_curriculum.id,
-            topic_id=ct.topic_id,
-            sequence=ct.sequence,
-            planned_date=ct.planned_date,
-            completed_date=None,
-        )
-        db.add(new_ct)
-        await db.flush()
-
-        for stub in ct.stubs:
-            new_stub = CurriculumLpStub(
-                id=_uuid_module.uuid4(),
-                curriculum_topic_id=new_ct.id,
-                skill_type=stub.skill_type,
-                cpa_phase=stub.cpa_phase,
-                blooms_level=stub.blooms_level,
-                sequence=stub.sequence,
-                planned_date=stub.planned_date,
-                status="pending",
-                lesson_plan_id=None,
-            )
-            db.add(new_stub)
-
-    await db.commit()
-    return await _build_curriculum_detail(db, new_curriculum.id)
-
-
-@router.patch("/api/v1/curriculums/{curriculum_id}/topics/{ct_id}", response_model=CurriculumTopicDetail)
-async def update_curriculum_topic(
-    curriculum_id: str,
-    ct_id: str,
-    body: CurriculumTopicUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
-    _teacher: Teacher | None = Depends(get_current_teacher),
-) -> CurriculumTopicDetail:
-    """Update planned_date and/or sequence on a single curriculum topic (teacher's own only)."""
-    try:
-        cid = _uuid_module.UUID(curriculum_id)
-        ctid = _uuid_module.UUID(ct_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Not found.")
-
-    curriculum = (await db.execute(
-        select(Curriculum).where(Curriculum.id == cid)
-    )).scalar_one_or_none()
-    if curriculum is None:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    _assert_not_default(curriculum)
-    _assert_client_owns(curriculum, client)
-
-    ct = (await db.execute(
-        select(CurriculumTopic)
-        .where(CurriculumTopic.id == ctid, CurriculumTopic.curriculum_id == cid)
-        .options(selectinload(CurriculumTopic.stubs))
-    )).scalar_one_or_none()
-    if ct is None:
-        raise HTTPException(status_code=404, detail="Curriculum topic not found.")
-
-    if body.planned_date is not None:
-        ct.planned_date = body.planned_date
-
-    if body.sequence is not None and body.sequence != ct.sequence:
-        old_seq = ct.sequence
-        new_seq = body.sequence
-
-        # Load all other topics
-        others = (await db.execute(
-            select(CurriculumTopic)
-            .where(
-                CurriculumTopic.curriculum_id == cid,
-                CurriculumTopic.id != ctid,
-            )
-            .order_by(CurriculumTopic.sequence)
-        )).scalars().all()
-
-        # Build the full desired ordering in Python first
-        # All topics in order (others already excludes ct)
-        all_others_sorted = sorted(others, key=lambda o: o.sequence)
-        # Remove ct from its old position and insert at new_seq
-        # others were fetched without ct, so just need to insert ct
-        # Build a new ordered list of (ct_obj, desired_seq)
-        # Insert ct into the list at position new_seq (1-based)
-        ordered = list(all_others_sorted)
-        ordered.insert(new_seq - 1, ct)
-        desired = {row.id: idx + 1 for idx, row in enumerate(ordered)}
-
-        # Step 1: move all rows to unique large negatives to clear out the unique constraint
-        temp_base = -100000
-        all_rows = [ct] + others
-        for i, row in enumerate(all_rows):
-            row.sequence = temp_base - i
-        await db.flush()
-
-        # Step 2: apply desired sequences
-        for row in all_rows:
-            row.sequence = desired[row.id]
-
-    await db.commit()
-    await db.refresh(ct)
-
-    # Load topic title/text
-    topic = (await db.execute(select(Topic).where(Topic.id == ct.topic_id))).scalar_one_or_none()
-
-    # Reload stubs
-    stubs_result = (await db.execute(
-        select(CurriculumLpStub)
-        .where(CurriculumLpStub.curriculum_topic_id == ctid)
-        .order_by(CurriculumLpStub.sequence)
-    )).scalars().all()
-
-    return CurriculumTopicDetail(
-        id=ct.id,
-        sequence=ct.sequence,
-        topic_id=ct.topic_id,
-        topic_title=topic.title if topic else "",
-        topic_text=topic.text if topic else None,
-        planned_date=ct.planned_date,
-        completed_date=ct.completed_date,
-        lp_stubs=[
-            LpStubSummary(
-                id=s.id,
-                sequence=s.sequence,
-                skill_type=s.skill_type,
-                cpa_phase=s.cpa_phase,
-                blooms_level=s.blooms_level,
-                planned_date=s.planned_date,
-                status=s.status,
-                lesson_plan_id=s.lesson_plan_id,
-            )
-            for s in stubs_result
-        ],
-    )
-
-
-@router.post("/api/v1/curriculums/{curriculum_id}/topics/{ct_id}/complete", response_model=CurriculumTopicDetail)
-async def complete_curriculum_topic(
-    curriculum_id: str,
-    ct_id: str,
-    db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
-    _teacher: Teacher | None = Depends(get_current_teacher),
-) -> CurriculumTopicDetail:
-    """Mark a curriculum topic as completed (sets completed_date=today UTC)."""
-    try:
-        cid = _uuid_module.UUID(curriculum_id)
-        ctid = _uuid_module.UUID(ct_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Not found.")
-
-    curriculum = (await db.execute(
-        select(Curriculum).where(Curriculum.id == cid)
-    )).scalar_one_or_none()
-    if curriculum is None:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    _assert_not_default(curriculum)
-    _assert_client_owns(curriculum, client)
-
-    ct = (await db.execute(
-        select(CurriculumTopic)
-        .where(CurriculumTopic.id == ctid, CurriculumTopic.curriculum_id == cid)
-    )).scalar_one_or_none()
-    if ct is None:
-        raise HTTPException(status_code=404, detail="Curriculum topic not found.")
-
-    ct.completed_date = date.today()
-    await db.commit()
-    await db.refresh(ct)
-
-    topic = (await db.execute(select(Topic).where(Topic.id == ct.topic_id))).scalar_one_or_none()
-    stubs_result = (await db.execute(
-        select(CurriculumLpStub)
-        .where(CurriculumLpStub.curriculum_topic_id == ctid)
-        .order_by(CurriculumLpStub.sequence)
-    )).scalars().all()
-
-    return CurriculumTopicDetail(
-        id=ct.id,
-        sequence=ct.sequence,
-        topic_id=ct.topic_id,
-        topic_title=topic.title if topic else "",
-        topic_text=topic.text if topic else None,
-        planned_date=ct.planned_date,
-        completed_date=ct.completed_date,
-        lp_stubs=[
-            LpStubSummary(
-                id=s.id,
-                sequence=s.sequence,
-                skill_type=s.skill_type,
-                cpa_phase=s.cpa_phase,
-                blooms_level=s.blooms_level,
-                planned_date=s.planned_date,
-                status=s.status,
-                lesson_plan_id=s.lesson_plan_id,
-            )
-            for s in stubs_result
-        ],
-    )
-
-
-@router.delete("/api/v1/curriculums/{curriculum_id}/topics/{ct_id}", status_code=204)
-async def delete_teacher_curriculum_topic(
-    curriculum_id: str,
-    ct_id: str,
-    db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
-    _teacher: Teacher | None = Depends(get_current_teacher),
-) -> Response:
-    """Remove a topic from teacher's own curriculum. Cascades to stubs. Re-sequences remaining."""
-    try:
-        cid = _uuid_module.UUID(curriculum_id)
-        ctid = _uuid_module.UUID(ct_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Not found.")
-
-    curriculum = (await db.execute(
-        select(Curriculum).where(Curriculum.id == cid)
-    )).scalar_one_or_none()
-    if curriculum is None:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    _assert_not_default(curriculum)
-    _assert_client_owns(curriculum, client)
-
-    ct = (await db.execute(
-        select(CurriculumTopic)
-        .where(CurriculumTopic.id == ctid, CurriculumTopic.curriculum_id == cid)
-    )).scalar_one_or_none()
-    if ct is None:
-        raise HTTPException(status_code=404, detail="Curriculum topic not found.")
-
-    await db.delete(ct)
-    await db.flush()
-
-    remaining = (await db.execute(
-        select(CurriculumTopic)
-        .where(CurriculumTopic.curriculum_id == cid)
-        .order_by(CurriculumTopic.sequence)
-    )).scalars().all()
-    for new_seq, remaining_ct in enumerate(remaining, start=1):
-        remaining_ct.sequence = new_seq
-
-    await db.commit()
-    return Response(status_code=204)
-
-
-# ---------------------------------------------------------------------------
-# Phase 4 — AI breakdown pipeline
+# Phase 4 — AI breakdown pipeline (now also generates LPs inline)
 # ---------------------------------------------------------------------------
 
 @router.post("/api/admin/curriculums/generate", response_model=CurriculumDetailResponse, status_code=201)
@@ -988,13 +579,18 @@ async def generate_curriculum(
     _client: Client = Depends(get_admin_client),
 ) -> CurriculumDetailResponse:
     """
-    Run the two-step AI pipeline and persist a fully scheduled curriculum.
+    Run the two-step AI pipeline, persist a fully scheduled curriculum, and
+    generate LPs for every stub inline (synchronous).
 
     Step A: Allocate teaching days across chapters (one LLM call).
     Step B: For each chapter, generate ordered LP stubs with dates (one LLM call per chapter).
+    Step C: For each stub, call LP Assistant and create a LessonPlan record.
     """
     import anthropic as _anthropic
     from dars.config import settings as _settings
+    from dars.lesson_plans.models import LessonPlan
+    from dars.lesson_plans.schemas import LessonPlanCreateRequest
+    from dars.lesson_plans.service import _call_lp_assistant
     from .breakdown import (
         ChapterAllocation,
         LpStub,
@@ -1048,7 +644,6 @@ async def generate_curriculum(
             detail=f"Only {total_days} teaching days for {len(chapters)} chapters — need at least one day per chapter.",
         )
 
-    # Build chapter summaries for Step A
     chapter_summaries = [
         {
             "id": ch.id,
@@ -1128,15 +723,12 @@ async def generate_curriculum(
 
         day_pointer += allocated_days
 
-    # --- Persist in a single transaction ----------------------------------
+    # --- Step C: persist curriculum + generate LPs inline ----------------
     new_curriculum = Curriculum(
         id=_uuid_module.uuid4(),
         name=body.name,
         book_id=body.book_id,
         provider_id=body.provider_id,
-        is_default=body.is_default,
-        teacher_id=None,
-        client_id=None,
         is_active=True,
     )
     db.add(new_curriculum)
@@ -1168,7 +760,8 @@ async def generate_curriculum(
         if ct is None:
             continue
         topic_stub_seq[topic_id_str] = topic_stub_seq.get(topic_id_str, 0) + 1
-        lp_stub = CurriculumLpStub(
+
+        lp_stub_orm = CurriculumLpStub(
             id=_uuid_module.uuid4(),
             curriculum_topic_id=ct.id,
             skill_type=stub.skill_type,
@@ -1176,174 +769,46 @@ async def generate_curriculum(
             blooms_level=stub.blooms_level,
             sequence=topic_stub_seq[topic_id_str],
             planned_date=stub.planned_date,
-            status="pending",
+            status="generating",
             lesson_plan_id=None,
         )
-        db.add(lp_stub)
+        db.add(lp_stub_orm)
+        await db.flush()  # populate lp_stub_orm.id
 
-    await db.commit()
-    return await _build_curriculum_detail(db, new_curriculum.id)
+        # Build custom_prompt
+        sub_slo_statements = [
+            tslo.sub_slo.statement
+            for tslo in topic_orm.sub_slos
+            if tslo.sub_slo and tslo.sub_slo.statement
+        ]
+        parts = [f"Topic: {topic_orm.title}"]
+        if sub_slo_statements:
+            parts.append(f"Sub-SLOs: {', '.join(sub_slo_statements)}")
+        if stub.skill_type:
+            parts.append(f"Skill type: {stub.skill_type}")
+        if stub.cpa_phase:
+            parts.append(f"CPA phase: {stub.cpa_phase}")
+        if stub.blooms_level:
+            parts.append(f"Bloom's level: {stub.blooms_level}")
+        custom_prompt = "\n".join(parts)
 
-
-# ---------------------------------------------------------------------------
-# Phase 5 — LP generation from stubs
-# ---------------------------------------------------------------------------
-
-async def _verify_curriculum_access(
-    db: AsyncSession,
-    curriculum_id_str: str,
-    client: Client,
-):
-    """Return the Curriculum if accessible, raise 404 otherwise."""
-    try:
-        cid = _uuid_module.UUID(curriculum_id_str)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-
-    result = await db.execute(
-        select(Curriculum)
-        .where(
-            Curriculum.id == cid,
-            Curriculum.is_active == True,  # noqa: E712
-            (Curriculum.is_default == True) | (Curriculum.client_id == client.id),  # noqa: E712
+        lp_request = LessonPlanCreateRequest(
+            grade=str(book.grade),
+            subject=book.subject,
+            page_number="1",
+            curriculum=book.board,
+            class_strength=30,
+            topic=topic_orm.title,
+            custom_prompt=custom_prompt,
+            generate_bilingual=False,
         )
-    )
-    curriculum = result.scalar_one_or_none()
-    if curriculum is None:
-        raise HTTPException(status_code=404, detail="Curriculum not found.")
-    return curriculum
-
-
-async def _generate_stub_background(
-    stub_id: _uuid_module.UUID,
-    client_id: _uuid_module.UUID,
-) -> None:
-    """
-    Background task: fetch stub + related data, call LP Assistant, update stub.
-
-    Opens its own DB session (no request-scoped session available in background).
-    """
-    from dars.clients.models import Client as _Client
-    from dars.database import AsyncSessionLocal
-    from dars.lesson_plans.models import LessonPlan
-    from dars.lesson_plans.schemas import LessonPlanCreateRequest
-    from dars.lesson_plans.service import _call_lp_assistant
-    from dars.teachers.models import Teacher as _Teacher
-
-    async with AsyncSessionLocal() as db:
-        # Load stub
-        stub_result = await db.execute(
-            select(CurriculumLpStub).where(CurriculumLpStub.id == stub_id)
-        )
-        stub = stub_result.scalar_one_or_none()
-        if stub is None:
-            logger.error("_generate_stub_background: stub not found stub_id=%s", stub_id)
-            return
 
         try:
-            # Load curriculum_topic -> curriculum -> book + provider
-            ct_result = await db.execute(
-                select(CurriculumTopic)
-                .where(CurriculumTopic.id == stub.curriculum_topic_id)
-                .options(selectinload(CurriculumTopic.curriculum))
-            )
-            ct = ct_result.scalar_one_or_none()
-            if ct is None:
-                raise RuntimeError("CurriculumTopic not found")
-
-            curriculum = ct.curriculum
-
-            # Load book
-            book_result = await db.execute(
-                select(Book).where(Book.id == curriculum.book_id)
-            )
-            book = book_result.scalar_one_or_none()
-            if book is None:
-                raise RuntimeError("Book not found")
-
-            # Load topic + sub-SLOs
-            topic_result = await db.execute(
-                select(Topic)
-                .where(Topic.id == ct.topic_id)
-                .options(
-                    selectinload(Topic.sub_slos).selectinload(TopicSubSlo.sub_slo)
-                )
-            )
-            topic = topic_result.scalar_one_or_none()
-            if topic is None:
-                raise RuntimeError("Topic not found")
-
-            # Load provider (name not used directly but kept for future use)
-            provider_result = await db.execute(
-                select(SloProvider).where(SloProvider.id == curriculum.provider_id)
-            )
-            _provider = provider_result.scalar_one_or_none()
-
-            # Resolve teacher_id: use client's default_teacher_id if available
-            client_result = await db.execute(
-                select(_Client).where(_Client.id == client_id)
-            )
-            _client_obj = client_result.scalar_one_or_none()
-            teacher_id_for_lp = _client_obj.default_teacher_id if _client_obj else None
-
-            # If no default teacher, try to find any teacher for this client
-            if teacher_id_for_lp is None:
-                teacher_result = await db.execute(
-                    select(_Teacher).where(_Teacher.client_id == client_id).limit(1)
-                )
-                any_teacher = teacher_result.scalar_one_or_none()
-                if any_teacher:
-                    teacher_id_for_lp = any_teacher.id
-
-            if teacher_id_for_lp is None:
-                raise RuntimeError(
-                    f"No teacher found for client_id={client_id}. "
-                    "Cannot create LessonPlan without a teacher."
-                )
-
-            # Build custom_prompt
-            sub_slo_statements = [
-                tslo.sub_slo.statement
-                for tslo in topic.sub_slos
-                if tslo.sub_slo and tslo.sub_slo.statement
-            ]
-            parts = [f"Topic: {topic.title}"]
-            if sub_slo_statements:
-                parts.append(f"Sub-SLOs: {', '.join(sub_slo_statements)}")
-            if stub.skill_type:
-                parts.append(f"Skill type: {stub.skill_type}")
-            if stub.cpa_phase:
-                parts.append(f"CPA phase: {stub.cpa_phase}")
-            if stub.blooms_level:
-                parts.append(f"Bloom's level: {stub.blooms_level}")
-            custom_prompt = "\n".join(parts)
-
-            # Build LP Assistant request
-            lp_request = LessonPlanCreateRequest(
-                grade=str(book.grade),
-                subject=book.subject,
-                page_number="1",
-                curriculum=book.board,
-                class_strength=30,
-                topic=topic.title,
-                custom_prompt=custom_prompt,
-                generate_bilingual=False,
-            )
-
-            logger.info(
-                "_generate_stub_background: calling LP assistant for stub_id=%s topic=%s",
-                stub_id,
-                topic.title,
-            )
             result_data = await _call_lp_assistant(lp_request)
-
-            # Create LessonPlan record
             lp = LessonPlan(
-                client_id=client_id,
-                teacher_id=teacher_id_for_lp,
                 grade=str(book.grade),
                 subject=book.subject,
-                topic=topic.title,
+                topic=topic_orm.title,
                 page_number="1",
                 class_strength=30,
                 status="READY",
@@ -1354,20 +819,25 @@ async def _generate_stub_background(
                 updated_at=datetime.now(timezone.utc),
             )
             db.add(lp)
-            await db.flush()  # populate lp.id
-
-            # Update stub
-            stub.lesson_plan_id = lp.id
-            stub.status = "generated"
-
+            await db.flush()
+            lp_stub_orm.lesson_plan_id = lp.id
+            lp_stub_orm.status = "generated"
         except Exception as exc:
             logger.error(
-                "_generate_stub_background: failed for stub_id=%s: %s", stub_id, exc
+                "generate_curriculum: LP generation failed for stub %s topic=%s: %s",
+                lp_stub_orm.id,
+                topic_orm.title,
+                exc,
             )
-            stub.status = "failed"
+            lp_stub_orm.status = "failed"
 
-        await db.commit()
+    await db.commit()
+    return await _build_curriculum_detail(db, new_curriculum.id)
 
+
+# ---------------------------------------------------------------------------
+# Stub status endpoint (Phase 5, kept)
+# ---------------------------------------------------------------------------
 
 @router.get(
     "/api/v1/curriculums/{curriculum_id}/stubs/{stub_id}",
@@ -1377,15 +847,22 @@ async def get_stub(
     curriculum_id: str,
     stub_id: str,
     db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
+    _client: Client = Depends(get_current_client),
 ) -> LpStubResponse:
     """Get a single stub's current status + lesson_plan_id."""
-    curriculum = await _verify_curriculum_access(db, curriculum_id, client)
-
     try:
+        cid = _uuid_module.UUID(curriculum_id)
         sid = _uuid_module.UUID(stub_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Stub not found.")
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    # Verify curriculum exists and is accessible
+    curriculum = (await db.execute(
+        select(Curriculum)
+        .where(Curriculum.id == cid, Curriculum.is_active == True)  # noqa: E712
+    )).scalar_one_or_none()
+    if curriculum is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
 
     result = await db.execute(
         select(CurriculumLpStub)
@@ -1410,85 +887,3 @@ async def get_stub(
         lesson_plan_id=stub.lesson_plan_id,
         sequence=stub.sequence,
     )
-
-
-@router.post(
-    "/api/v1/curriculums/{curriculum_id}/stubs/{stub_id}/generate",
-    response_model=GenerateStubResponse,
-    status_code=202,
-)
-async def generate_stub(
-    curriculum_id: str,
-    stub_id: str,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
-) -> GenerateStubResponse:
-    """Trigger LP generation for a single stub (async — returns 202)."""
-    curriculum = await _verify_curriculum_access(db, curriculum_id, client)
-
-    # For default curriculums the caller's client_id is used (they own the LP).
-    lp_client_id = client.id
-
-    try:
-        sid = _uuid_module.UUID(stub_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Stub not found.")
-
-    result = await db.execute(
-        select(CurriculumLpStub)
-        .join(CurriculumTopic, CurriculumLpStub.curriculum_topic_id == CurriculumTopic.id)
-        .where(
-            CurriculumLpStub.id == sid,
-            CurriculumTopic.curriculum_id == curriculum.id,
-        )
-    )
-    stub = result.scalar_one_or_none()
-    if stub is None:
-        raise HTTPException(status_code=404, detail="Stub not found.")
-
-    stub.status = "generating"
-    await db.commit()
-
-    background_tasks.add_task(_generate_stub_background, stub_id=sid, client_id=lp_client_id)
-
-    return GenerateStubResponse(stub_id=sid, status="generating")
-
-
-@router.post(
-    "/api/v1/curriculums/{curriculum_id}/generate-all",
-    response_model=GenerateAllResponse,
-)
-async def generate_all_stubs(
-    curriculum_id: str,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    client: Client = Depends(get_current_client),
-) -> GenerateAllResponse:
-    """Queue LP generation for all pending stubs in a curriculum."""
-    curriculum = await _verify_curriculum_access(db, curriculum_id, client)
-    lp_client_id = client.id
-
-    # Find all pending stubs in this curriculum
-    pending_result = await db.execute(
-        select(CurriculumLpStub)
-        .join(CurriculumTopic, CurriculumLpStub.curriculum_topic_id == CurriculumTopic.id)
-        .where(
-            CurriculumTopic.curriculum_id == curriculum.id,
-            CurriculumLpStub.status == "pending",
-        )
-    )
-    pending_stubs = pending_result.scalars().all()
-
-    for stub in pending_stubs:
-        stub.status = "generating"
-    await db.commit()
-
-    for stub in pending_stubs:
-        background_tasks.add_task(
-            _generate_stub_background,
-            stub_id=stub.id,
-            client_id=lp_client_id,
-        )
-
-    return GenerateAllResponse(queued=len(pending_stubs))

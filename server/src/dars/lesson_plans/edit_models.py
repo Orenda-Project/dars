@@ -14,9 +14,6 @@ class LessonPlanEdit(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    client_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
-    )
     lp_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("lesson_plans.id", ondelete="CASCADE"), nullable=False
     )
