@@ -1,4 +1,4 @@
-CREATE TABLE books (
+CREATE TABLE IF NOT EXISTS books (
     id integer PRIMARY KEY,
     title text NOT NULL,
     grade integer NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE books (
     synced_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE book_chapters (
+CREATE TABLE IF NOT EXISTS book_chapters (
     id integer PRIMARY KEY,
     book_id integer NOT NULL REFERENCES books(id) ON DELETE CASCADE,
     title text NOT NULL,
