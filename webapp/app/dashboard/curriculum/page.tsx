@@ -211,6 +211,7 @@ export default function CurriculumPage() {
   const [error, setError] = useState<string | null>(null);
   const [noAssignment, setNoAssignment] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"topics" | "schedule">("topics");
 
   const fetchCurriculum = useCallback(
     (apiKey: string) => {
@@ -272,6 +273,27 @@ export default function CurriculumPage() {
   }, [fetchCurriculum]);
 
   const selectedTopic = curriculum?.topics.find((t) => t.id === selectedTopicId) ?? null;
+
+  // Derive flat stub list for Schedule tab
+  interface ScheduleRow {
+    stub: LpStub;
+    topic: CurriculumTopic;
+  }
+  const scheduleRows: ScheduleRow[] = curriculum
+    ? curriculum.topics.flatMap((topic) =>
+        topic.lp_stubs.map((stub) => ({ stub, topic }))
+      ).sort((a, b) => {
+        if (!a.stub.planned_date && !b.stub.planned_date) return 0;
+        if (!a.stub.planned_date) return 1;
+        if (!b.stub.planned_date) return -1;
+        return a.stub.planned_date.localeCompare(b.stub.planned_date);
+      })
+    : [];
+
+  function formatDate(dateStr: string): string {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-PK", { day: "numeric", month: "short" });
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -386,70 +408,165 @@ export default function CurriculumPage() {
             </ul>
           </div>
 
-          {/* Right panel — topic detail */}
-          <div className="flex-1 overflow-y-auto bg-white">
-            {!selectedTopic ? (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-sm text-dars-muted">Select a topic from the list.</p>
-              </div>
-            ) : (
-              <div className="px-8 py-6 max-w-3xl">
-                {/* Topic header */}
-                <div className="mb-6">
-                  <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest mb-1">
-                    Topic {selectedTopic.sequence}
-                  </p>
-                  <h2 className="text-xl font-serif font-bold text-dars-ink">
-                    {selectedTopic.topic_title}
-                  </h2>
-                  {selectedTopic.planned_date && (
-                    <p className="text-xs text-dars-muted mt-1">
-                      Planned:{" "}
-                      {new Date(selectedTopic.planned_date).toLocaleDateString("en-PK", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </p>
-                  )}
-                </div>
+          {/* Right panel — tab switcher + content */}
+          <div className="flex-1 flex flex-col overflow-hidden bg-white">
+            {/* Tab switcher */}
+            <div className="px-8 py-3 border-b border-dars-rule-light shrink-0 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab("topics")}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors border-none cursor-pointer ${
+                  activeTab === "topics"
+                    ? "bg-dars-terra text-white"
+                    : "text-dars-muted hover:text-dars-ink"
+                }`}
+              >
+                Topics
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("schedule")}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors border-none cursor-pointer ${
+                  activeTab === "schedule"
+                    ? "bg-dars-terra text-white"
+                    : "text-dars-muted hover:text-dars-ink"
+                }`}
+              >
+                Schedule
+              </button>
+            </div>
 
-                {/* Topic text */}
-                {selectedTopic.topic_text && (
-                  <div className="mb-8 border border-dars-rule-light rounded-lg bg-dars-parchment p-5">
-                    <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest mb-3">
-                      Textbook Passage
-                    </p>
-                    <div className="prose prose-sm max-w-none text-dars-ink leading-relaxed font-serif text-sm whitespace-pre-wrap">
-                      {selectedTopic.topic_text}
+            {/* Topics tab */}
+            {activeTab === "topics" && (
+              <div className="flex-1 overflow-y-auto">
+                {!selectedTopic ? (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-sm text-dars-muted">Select a topic from the list.</p>
+                  </div>
+                ) : (
+                  <div className="px-8 py-6 max-w-3xl">
+                    {/* Topic header */}
+                    <div className="mb-6">
+                      <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest mb-1">
+                        Topic {selectedTopic.sequence}
+                      </p>
+                      <h2 className="text-xl font-serif font-bold text-dars-ink">
+                        {selectedTopic.topic_title}
+                      </h2>
+                      {selectedTopic.planned_date && (
+                        <p className="text-xs text-dars-muted mt-1">
+                          Planned:{" "}
+                          {new Date(selectedTopic.planned_date).toLocaleDateString("en-PK", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Topic text */}
+                    {selectedTopic.topic_text && (
+                      <div className="mb-8 border border-dars-rule-light rounded-lg bg-dars-parchment p-5">
+                        <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest mb-3">
+                          Textbook Passage
+                        </p>
+                        <div className="prose prose-sm max-w-none text-dars-ink leading-relaxed font-serif text-sm whitespace-pre-wrap">
+                          {selectedTopic.topic_text}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* LP stubs */}
+                    <div>
+                      <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest mb-3">
+                        Lesson Plans
+                      </p>
+                      {selectedTopic.lp_stubs.length === 0 ? (
+                        <p className="text-sm text-dars-muted">
+                          No lesson plan stubs for this topic.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {selectedTopic.lp_stubs.map((stub) =>
+                            session ? (
+                              <StubCard
+                                key={stub.id}
+                                stub={stub}
+                                apiBase={apiBase}
+                                apiKey={session.api_key}
+                              />
+                            ) : null
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
+              </div>
+            )}
 
-                {/* LP stubs */}
-                <div>
-                  <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest mb-3">
-                    Lesson Plans
-                  </p>
-                  {selectedTopic.lp_stubs.length === 0 ? (
-                    <p className="text-sm text-dars-muted">
-                      No lesson plan stubs for this topic.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {selectedTopic.lp_stubs.map((stub) =>
-                        session ? (
-                          <StubCard
-                            key={stub.id}
-                            stub={stub}
-                            apiBase={apiBase}
-                            apiKey={session.api_key}
-                          />
-                        ) : null
-                      )}
-                    </div>
-                  )}
-                </div>
+            {/* Schedule tab */}
+            {activeTab === "schedule" && (
+              <div className="flex-1 overflow-y-auto">
+                {scheduleRows.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-sm text-dars-muted">No lesson plan stubs scheduled.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-dars-parchment border-b border-dars-rule-light">
+                        <th className="text-left px-6 py-3 text-xs font-semibold text-dars-muted uppercase tracking-widest w-24">Date</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-widest">Topic</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-widest">Lesson</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-dars-muted uppercase tracking-widest w-24">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        let lastDate: string | null = null;
+                        return scheduleRows.map((row) => {
+                          const dateKey = row.stub.planned_date ?? null;
+                          const showDate = dateKey !== lastDate;
+                          lastDate = dateKey;
+                          const lessonLabel = row.stub.skill_type
+                            ? `${capitalize(row.stub.skill_type)}${row.stub.cpa_phase ? " · " + row.stub.cpa_phase.toUpperCase() : ""}${row.stub.blooms_level ? " · " + capitalize(row.stub.blooms_level) : ""}`
+                            : "Revision";
+                          return (
+                            <tr
+                              key={row.stub.id}
+                              onClick={() => {
+                                setSelectedTopicId(row.topic.id);
+                                setActiveTab("topics");
+                              }}
+                              className="border-b border-dars-rule-light hover:bg-dars-parchment/60 cursor-pointer transition-colors"
+                            >
+                              <td className="px-6 py-3 text-dars-ink font-medium whitespace-nowrap">
+                                {showDate
+                                  ? dateKey
+                                    ? formatDate(dateKey)
+                                    : <span className="text-dars-muted">—</span>
+                                  : ""}
+                              </td>
+                              <td className="px-4 py-3 text-dars-ink">{row.topic.topic_title}</td>
+                              <td className="px-4 py-3 text-dars-muted">{lessonLabel}</td>
+                              <td className="px-4 py-3">
+                                {row.stub.lesson_plan_id ? (
+                                  <span className="inline-block text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded bg-green-100 text-green-800">
+                                    Ready
+                                  </span>
+                                ) : (
+                                  <span className="text-dars-muted">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
           </div>
