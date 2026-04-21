@@ -96,12 +96,12 @@ const adminItems: NavItem[] = [
 const clientItems: NavItem[] = [
   { label: "Lesson Plans", href: "/dashboard/lesson-plans", disabled: false, icon: IconLessonPlan },
   { label: "Analytics", href: "/dashboard/analytics", disabled: false, icon: IconAnalytics },
+  { label: "Teachers", href: "/dashboard/teachers", disabled: false, icon: IconUsers },
 ];
 
 const teacherItems: NavItem[] = [
   { label: "Curriculum", href: "/dashboard/curriculum", disabled: false, icon: IconBook },
   { label: "Exam Generator", href: null, disabled: true, icon: IconExam },
-  { label: "Teachers", href: "/dashboard/teachers", disabled: false, icon: IconUsers },
 ];
 
 // ── NavEntry ──────────────────────────────────────────────────────────────────
