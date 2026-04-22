@@ -14,7 +14,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY ./pyproject.toml ./uv.lock /app/
 
 # Install Python dependencies
-RUN uv sync --frozen
+RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY . /app
@@ -26,5 +26,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
+# Add uv virtual env to PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
 # Run the application
-CMD ["uv", "run", "uvicorn", "dars.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "dars.main:app", "--host", "0.0.0.0", "--port", "8000"]
