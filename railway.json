@@ -1,0 +1,30 @@
+{
+  "$schema": "https://railway.app/schema.json",
+  "build": {
+    "builder": "dockerfile"
+  },
+  "deploy": {
+    "startCommand": "cd server && uvicorn dars.main:app --host 0.0.0.0 --port $PORT",
+    "numReplicas": 1,
+    "restartPolicyType": "always",
+    "restartPolicyMaxRetries": 5
+  },
+  "envs": {
+    "DEBUG": {
+      "description": "Enable debug mode",
+      "default": "false"
+    },
+    "ADMIN_SECRET": {
+      "description": "Admin secret for API",
+      "default": ""
+    },
+    "CORS_ORIGINS": {
+      "description": "Comma-separated list of allowed origins",
+      "default": ""
+    },
+    "LP_ASSISTANT_URL": {
+      "description": "LP Assistant microservice URL",
+      "default": "https://lp-assistant.taleemabad.com"
+    }
+  }
+}
