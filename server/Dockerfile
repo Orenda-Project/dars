@@ -11,13 +11,13 @@ RUN apt-get update && apt-get install -y \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy project files
-COPY ./server/pyproject.toml ./server/uv.lock /app/
+COPY ./pyproject.toml ./uv.lock /app/
 
 # Install Python dependencies
 RUN uv sync --frozen
 
 # Copy application code
-COPY ./server /app
+COPY . /app
 
 # Expose port
 EXPOSE 8000
