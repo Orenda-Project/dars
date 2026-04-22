@@ -4,7 +4,7 @@
     "builder": "dockerfile"
   },
   "deploy": {
-    "startCommand": "cd server && uvicorn dars.main:app --host 0.0.0.0 --port $PORT",
+    "startCommand": "uvicorn dars.main:app --host 0.0.0.0 --port $PORT",
     "numReplicas": 1,
     "restartPolicyType": "always",
     "restartPolicyMaxRetries": 5
