@@ -14,18 +14,20 @@ import {
 } from "@/components/atoms/illustrations";
 
 const FEATURES = [
-  { num: "i.", chapterLabel: "ch. i", title: "AI Generation", desc: "One API call returns a complete, structured lesson plan — objectives, activities, assessment. Pass grade, subject, page number, curriculum. No prompts to write.", annotation: "See also: structured output →", Illus: IllusQuill },
-  { num: "ii.", chapterLabel: "ch. ii", title: "Versioned Storage", desc: "Every plan is stored per client, versioned, and retrievable. Build edit flows, approvals, or history views on top of a clean data model.", annotation: "cf. library card catalogue", Illus: IllusBooks },
-  { num: "iii.", chapterLabel: "ch. iii", title: "Structured Output", desc: "Plans return as clean JSON or pre-rendered HTML — ready to publish. Pipe to your UI, your WhatsApp channel, or anywhere you need it.", annotation: "render-ready, always", Illus: IllusOpenBook },
+  { num: "i.", chapterLabel: "ch. i", title: "AI Generation", desc: "One API call returns a complete, structured lesson plan — objectives, activities, assessment. Pass grade, subject, page, curriculum. No prompts to write.", annotation: "See also: structured output →", Illus: IllusQuill },
+  { num: "ii.", chapterLabel: "ch. ii", title: "Curriculum-Driven Plans", desc: "Pick a book, grade, and subject. Dars breaks every topic into a sequence of lesson plan stubs — skill type, CPA phase, Bloom's level — then generates them all.", annotation: "full term, one request", Illus: IllusBooks },
+  { num: "iii.", chapterLabel: "ch. iii", title: "Structured Output", desc: "Plans return as clean JSON or pre-rendered bilingual HTML — ready to publish. Pipe to your UI, your teacher app, or anywhere you need it.", annotation: "render-ready, bilingual", Illus: IllusOpenBook },
   { num: "iv.", chapterLabel: "ch. iv", title: "API Key Auth", desc: "Per-client keys with scoped access. Each institution gets their own key, their own plan catalogue — fully isolated.", annotation: "hashed, shown once on creation", Illus: IllusKey },
-  { num: "v.", chapterLabel: "ch. v", title: "Curriculum Alignment", desc: "Pass your curriculum spec and Dars maps plans to your learning standards. Punjab Board, Sindh Board, AKU-EB, ICT — and more.", annotation: "Punjab Board, AKU, custom specs", Illus: IllusCompass },
-  { num: "vi.", chapterLabel: "ch. vi", title: "React Components", desc: "Drop-in @dars/react components for rendering and generating plans in your UI. Works alongside @dars/node middleware — API key stays server-side.", annotation: "npm install @dars/react", Illus: IllusComponents },
+  { num: "v.", chapterLabel: "ch. v", title: "SLO Alignment", desc: "Plans are mapped to learning outcomes from NCP, SNC Punjab, and other Pakistani curriculum authorities. Sub-SLO granularity, per topic.", annotation: "NCP · SNC Punjab · AKU-EB", Illus: IllusCompass },
+  { num: "vi.", chapterLabel: "ch. vi", title: "Async + Webhooks", desc: "LP generation is fully async. Request a plan, get a webhook when it's ready. Retry logic and delivery receipts built in — no polling required.", annotation: "reliable delivery, every time", Illus: IllusComponents },
 ] as const;
 
 const STEPS = [
-  { num: "i.", title: "Connect your product", desc: "Get an API key from the dashboard. One header, any language or framework.", code: `POST /api/v1/lesson-plans\nX-API-Key: dars_••••••••` },
-  { num: "ii.", title: "Request a lesson plan", desc: "Pass grade, subject, page number, and curriculum. Dars generates, aligns, and stores the plan.", code: `{\n  "grade": "4",\n  "subject": "Science",\n  "page_number": "38",\n  "curriculum": "Punjab"\n}` },
-  { num: "iii.", title: "Deliver it your way", desc: "Get back structured JSON or pre-rendered HTML. Use the Dars React components, pipe to WhatsApp, or build your own UI entirely.", code: null },
+  { num: "i.", title: "Build your edtech app — borrow our engine", desc: "You don't need to build LP generation, curriculum data, or SLO mapping from scratch. Add @dars/mcp to your coding agent (Claude, Cursor, or your own) and it can pull Dars functionality directly into your codebase — generating lesson plans, querying the curriculum catalogue, and wiring up webhooks, all as part of building your app.", code: `// Agent building your app can call:\nuse_mcp_tool("dars", "generate_lesson_plan", { ... })\nuse_mcp_tool("dars", "get_curriculum_topics", { ... })\nuse_mcp_tool("dars", "get_slos", { ... })\n\n// ...and scaffold the integration for you` },
+  { num: "ii.", title: "Curriculum and SLO data, ready to use", desc: "Dars holds a structured catalogue of Pakistani textbooks — books, chapters, topics, and the sub-SLOs each topic maps to across NCP, SNC Punjab, and AKU-EB. Your agent can browse it, filter by grade and subject, and use it to ground lesson plans in real textbook content and learning outcomes. No data pipeline to build.", code: `use_mcp_tool("dars", "get_curriculum_topics", {\n  book: "Taleemabad English Grade 5",\n  provider: "NCP"\n})\n\n→ returns ordered topics, each with\n   textbook passage + mapped sub-SLOs` },
+  { num: "iii.", title: "One plan or a full term", desc: "Ask the agent for a single lesson plan or hand it an entire curriculum. For each topic, Dars decides the right sequence of plans — skill type, CPA phase, Bloom's level — queues them all async, and fires webhooks as they complete. A term's worth of structured, bilingual LPs, grounded in the textbook.", code: `use_mcp_tool("dars", "generate_curriculum", {\n  curriculum_id: "..."\n})\n\n→ stubs created per topic\n→ each generates async\n→ webhooks fire on completion` },
+  { num: "iv.", title: "Or integrate directly via API", desc: "Prefer to wire it up yourself? One API key, one header. Pass grade, subject, page number, and curriculum. Dars generates async and fires a webhook when ready — same engine, no agent required.", code: `POST /api/v1/lesson-plans\nX-API-Key: dars_••••••••\n\n{\n  "grade": "4",\n  "subject": "Science",\n  "page_number": "38",\n  "curriculum": "Punjab"\n}` },
+  { num: "v.", title: "Ship it your way", desc: "Plans come back as structured JSON or pre-rendered bilingual HTML — via agent tool response, webhook, or direct API poll. Drop them into your teacher app, your portal, your WhatsApp bot, or anywhere your teachers are.", code: null },
 ] as const;
 
 export function LandingTemplate() {
@@ -75,21 +77,21 @@ export function LandingTemplate() {
           </h1>
 
           <p className="text-lg sm:text-base text-dars-muted-light leading-[1.7] max-w-[480px] mx-auto mb-11 relative z-10">
-            Dars generates structured, curriculum-aligned lesson plans in seconds — for any subject, any grade, any board. Your teachers ask, Dars delivers.
+            Dars turns textbooks into full-term lesson plans — structured, bilingual, and aligned to NCP and provincial curricula. Your teachers ask, Dars delivers.
           </p>
 
           <div className="flex gap-3.5 items-center justify-center relative z-10 flex-wrap">
             <a
-              href="/docs"
+              href="/login"
               className="bg-dars-terra text-dars-parchment px-7 py-3.5 rounded-md text-sm font-semibold no-underline hover:opacity-90 transition-opacity"
             >
-              Start generating plans →
+              Log in →
             </a>
             <a
               href="#how"
               className="text-dars-muted-light text-[13px] no-underline border-b border-dars-rule-dark pb-0.5 hover:text-dars-parchment transition-colors"
             >
-              For edtech teams ↓
+              How it works ↓
             </a>
           </div>
         </div>
@@ -145,10 +147,10 @@ export function LandingTemplate() {
           <div className="lg:sticky lg:top-[100px]">
             <span className="block font-serif text-[13px] text-dars-terra italic mb-2">II.</span>
             <h2 className="font-serif text-2xl lg:text-[30px] font-bold text-dars-ink tracking-[-0.5px]">
-              From request to classroom.
+              Don&apos;t build it. Borrow it.
             </h2>
             <p className="text-sm text-dars-muted mt-3 leading-[1.7]">
-              Three steps. No infrastructure to manage, no prompts to maintain.
+              LP generation, curriculum data, SLO mapping — it&apos;s all here. Connect via MCP and your agent can pull it straight into your app. Or wire up the API yourself.
             </p>
           </div>
           <div>
@@ -207,13 +209,13 @@ export function LandingTemplate() {
             <em className="text-dars-terra italic">better plan?</em>
           </h2>
           <p className="text-base text-dars-muted max-w-[380px] mx-auto mb-9 leading-[1.65] relative">
-            Get API access and ship curriculum features in days, not months.
+            Log in to your dashboard and start generating curriculum-aligned lesson plans today.
           </p>
           <a
             href="/login"
             className="bg-dars-terra text-dars-parchment px-8 py-3.5 rounded-md text-[15px] font-semibold no-underline relative inline-block hover:opacity-90 transition-opacity"
           >
-            Get API access →
+            Log in →
           </a>
         </div>
       </section>
@@ -222,14 +224,7 @@ export function LandingTemplate() {
       <footer className="border-t border-dars-rule-light py-7 bg-dars-parchment-mid">
         <div className="w-full max-w-7xl mx-auto px-14 sm:px-6 flex justify-between items-center text-xs text-dars-muted sm:flex-col sm:gap-4 sm:text-center">
           <Logo size="sm" />
-          <div className="flex gap-6">
-            {[["Docs", "/docs"], ["For Teams", "#"], ["Privacy", "#"], ["Contact", "#"]].map(([label, href]) => (
-              <a key={label} href={href} className="text-dars-muted no-underline hover:text-dars-ink transition-colors">
-                {label}
-              </a>
-            ))}
-          </div>
-          <div>© 2026 Taleemabad | LP Team</div>
+          <div>© 2026 Taleemabad</div>
         </div>
       </footer>
 
