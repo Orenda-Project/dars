@@ -1,7 +1,7 @@
 {
-  "$schema": "https://railway.app/schema.json",
+  "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "dockerfile"
+    "builder": "DOCKERFILE"
   },
   "deploy": {
     "startCommand": "uvicorn dars.main:app --host 0.0.0.0 --port $PORT",
