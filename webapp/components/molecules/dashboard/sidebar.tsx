@@ -93,14 +93,16 @@ const adminItems: NavItem[] = [
   { label: "Clients", href: null, disabled: true, icon: IconUsers },
 ];
 
+const dashboardEnabled = process.env.NEXT_PUBLIC_DASHBOARD_ENABLED === "true";
+
 const clientItems: NavItem[] = [
-  { label: "Lesson Plans", href: null, disabled: true, icon: IconLessonPlan },
-  { label: "Analytics", href: null, disabled: true, icon: IconAnalytics },
-  { label: "Teachers", href: null, disabled: true, icon: IconUsers },
+  { label: "Lesson Plans", href: dashboardEnabled ? "/dashboard/lesson-plans" : null, disabled: !dashboardEnabled, icon: IconLessonPlan },
+  { label: "Analytics", href: dashboardEnabled ? "/dashboard/analytics" : null, disabled: !dashboardEnabled, icon: IconAnalytics },
+  { label: "Teachers", href: dashboardEnabled ? "/dashboard/teachers" : null, disabled: !dashboardEnabled, icon: IconUsers },
 ];
 
 const teacherItems: NavItem[] = [
-  { label: "Curriculum", href: null, disabled: true, icon: IconBook },
+  { label: "Curriculum", href: dashboardEnabled ? "/dashboard/curriculum" : null, disabled: !dashboardEnabled, icon: IconBook },
   { label: "Exam Generator", href: null, disabled: true, icon: IconExam },
 ];
 

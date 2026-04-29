@@ -1,4 +1,10 @@
+import { redirect } from "next/navigation";
+
 export default function DashboardPage() {
+  if (process.env.NEXT_PUBLIC_DASHBOARD_ENABLED === "true") {
+    redirect("/dashboard/lesson-plans");
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-dars-parchment text-center px-6">
       <span className="font-serif text-[13px] text-dars-terra italic mb-4">Dars</span>
