@@ -102,7 +102,7 @@ const clientItems: NavItem[] = [
 ];
 
 const teacherItems: NavItem[] = [
-  { label: "Curriculum", href: dashboardEnabled ? "/dashboard/curriculum" : null, disabled: !dashboardEnabled, icon: IconBook },
+  { label: "Curriculum", href: "/dashboard/curriculum", disabled: false, icon: IconBook },
   { label: "Exam Generator", href: null, disabled: true, icon: IconExam },
 ];
 
