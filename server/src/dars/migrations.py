@@ -15,7 +15,7 @@ import asyncpg
 
 log = logging.getLogger("migrations")
 
-MIGRATIONS_DIR = Path(__file__).parents[3] / "supabase" / "migrations"
+MIGRATIONS_DIR = Path(__file__).parents[3] / "migrations"
 
 
 def _asyncpg_url(database_url: str) -> str:
