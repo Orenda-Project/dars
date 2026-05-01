@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -42,3 +43,56 @@ class BookChapterResponse(BaseModel):
 
 class BookChapterListResponse(BaseModel):
     items: list[BookChapterResponse]
+
+
+# ---------------------------------------------------------------------------
+# Topics
+# ---------------------------------------------------------------------------
+
+
+class TopicResponse(BaseModel):
+    id: uuid.UUID
+    chapter_id: uuid.UUID
+    topic_number: int
+    title: str
+    page_number: str | None
+    sub_slos: Any | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopicListResponse(BaseModel):
+    items: list[TopicResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# Lesson Slots
+# ---------------------------------------------------------------------------
+
+
+class LessonSlotResponse(BaseModel):
+    id: uuid.UUID
+    topic_id: uuid.UUID
+    day_number: int
+    scheduled_date: str | None
+    topic_subtopic: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LessonSlotListResponse(BaseModel):
+    items: list[LessonSlotResponse]
+
+
+# ---------------------------------------------------------------------------
+# Admin
+# ---------------------------------------------------------------------------
+
+
+class BreakdownResponse(BaseModel):
+    chapter_id: str
+    topics_count: int
+    slots_count: int

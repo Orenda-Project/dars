@@ -20,6 +20,7 @@ from dars.clients.router import admin_router, client_router
 from dars.config import settings
 from dars.lesson_plans.router import router as lesson_plans_router
 from dars.exam_generations.router import router as exam_generations_router
+from dars.curriculum.router import admin_router as curriculum_admin_router
 from dars.curriculum.router import router as curriculum_router
 
 app = FastAPI(
@@ -44,6 +45,7 @@ app.include_router(client_router)
 app.include_router(lesson_plans_router)
 app.include_router(exam_generations_router)
 app.include_router(curriculum_router)
+app.include_router(curriculum_admin_router)
 
 
 @app.get("/health")
