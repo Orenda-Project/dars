@@ -18,7 +18,7 @@ class WebhookDelivery(Base):
         Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
     )
     lesson_plan_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("lesson_plans.id", ondelete="CASCADE"), nullable=False
+        Uuid(as_uuid=True), nullable=False
     )
     event: Mapped[str] = mapped_column(String(50), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)

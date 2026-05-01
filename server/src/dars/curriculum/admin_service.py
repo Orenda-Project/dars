@@ -29,22 +29,42 @@ async def breakdown_chapter(db: AsyncSession, chapter_id: uuid.UUID) -> dict:
     6. Insert lesson slots per topic.
     7. Return summary {chapter_id, topics_count, slots_count}.
     """
-    # 1. Load chapter_text via raw SQL (JSONB column not on ORM)
+    # 1. Load start_page, end_page and book_text via raw SQL
     result = await db.execute(
-        text("SELECT chapter_text, start_page FROM book_chapters WHERE id = :id"),
+        text("""
+            SELECT bc.start_page, bc.end_page, b.book_text
+            FROM book_chapters bc
+            JOIN books b ON b.id = bc.book_id
+            WHERE bc.id = :id
+        """),
         {"id": str(chapter_id)},
     )
     row = result.fetchone()
     if row is None:
         raise ValueError(f"Chapter not found: {chapter_id}")
 
-    raw_chapter_text, start_page = row[0], row[1]
+    start_page, end_page, raw_book_text = row[0], row[1], row[2]
 
-    # chapter_text may be stored as a JSONB dict {"text": "..."} or a plain string
-    if isinstance(raw_chapter_text, dict):
-        chapter_text: str = raw_chapter_text.get("text", "") or ""
-    else:
-        chapter_text = str(raw_chapter_text) if raw_chapter_text else ""
+    def extract_from_book_text(book_text_raw, s_page, e_page) -> str:
+        if not book_text_raw or not isinstance(book_text_raw, list):
+            return ""
+        pages = []
+        for page_data in book_text_raw:
+            if not isinstance(page_data, dict):
+                continue
+            page_no = page_data.get("book_page_no")
+            if page_no is None:
+                continue
+            if s_page is not None and e_page is not None:
+                if s_page <= int(page_no) <= e_page:
+                    pages.append(f"Page {page_no}:\n{page_data.get('text', '')}")
+            else:
+                pages.append(f"Page {page_no}:\n{page_data.get('text', '')}")
+        return "\n\n".join(pages)
+
+    chapter_text = extract_from_book_text(raw_book_text, start_page, end_page)
+    if chapter_text:
+        log.info("Extracted chapter text from book_text pages %s-%s for chapter %s", start_page, end_page, chapter_id)
 
     if not chapter_text.strip():
         raise ValueError(f"Chapter {chapter_id} has no text content")
@@ -82,7 +102,6 @@ async def breakdown_chapter(db: AsyncSession, chapter_id: uuid.UUID) -> dict:
             topic_number=td["topic_number"],
             title=td["title"],
             page_number=td.get("page_number"),
-            sub_slos=None,  # sub-SLO mapping is a separate step
         )
         db.add(topic)
         topic_objects.append(topic)

@@ -34,6 +34,12 @@
 
 ---
 
+## Agent usage
+
+Use the Agent tool for any self-contained backend or frontend build that would otherwise pollute the main conversation context with implementation detail. Good signals: building a new module end-to-end, large deletions/rewrites, anything that touches >4 files. Return a summary to the main conversation; don't narrate every file change inline.
+
+---
+
 ## Critical Rules
 
 1. **Always work on a feature branch** — never commit directly to `main`; branch naming: `feature/<slug>` or `fix/<slug>`

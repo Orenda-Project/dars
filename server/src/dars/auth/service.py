@@ -14,8 +14,6 @@ from dars.clients.service import (
     rotate_api_key,
 )
 from dars.config import settings
-from dars.teachers.schemas import TeacherRegisterRequest
-from dars.teachers.service import register_teacher
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +33,10 @@ def get_supabase() -> SupabaseClient:
 
 async def signup(
     db: AsyncSession, email: str, password: str, name: str
-) -> tuple[Client, str, uuid.UUID]:
+) -> tuple[Client, str]:
     """
     Register a new client via Supabase Auth, then create a DB Client row.
-    Returns (client, raw_api_key, teacher_id). The raw key is shown once and never stored.
-
-    Uses a deferred FK transaction: client is flushed with default_teacher_id=None,
-    teacher is flushed next, then client.default_teacher_id is set and the transaction
-    is committed. The DEFERRABLE INITIALLY DEFERRED FK constraint passes at commit time.
+    Returns (client, raw_api_key). The raw key is shown once and never stored.
     """
     sb = get_supabase()
 
@@ -79,29 +73,16 @@ async def signup(
     supabase_user_id = str(response.user.id)
     logger.info("Signup: supabase_user_id=%s email=%s", supabase_user_id, email)
 
-    # create_db_client commits the client row (default_teacher_id is nullable, so this is safe)
     client, raw_key = await create_db_client(db, name)
     client.email = email
     client.supabase_user_id = supabase_user_id
-
-    # register_teacher now only flushes (not commits)
-    teacher = await register_teacher(
-        db,
-        client_id=client.id,
-        request=TeacherRegisterRequest(name=name, email=email),
-    )
-    logger.info("Signup: created teacher=%s for client=%s", teacher.id, client.id)
-
-    # Wire the FK and commit everything in one shot
-    client.default_teacher_id = teacher.id
     await db.commit()
     await db.refresh(client)
-    await db.refresh(teacher)
 
-    return client, raw_key, teacher.id
+    return client, raw_key
 
 
-async def login(db: AsyncSession, email: str, password: str) -> tuple[Client, str, uuid.UUID]:
+async def login(db: AsyncSession, email: str, password: str) -> tuple[Client, str]:
     """
     Authenticate via Supabase Auth, rotate the client's API key, and return the new raw key.
 
@@ -126,7 +107,7 @@ async def login(db: AsyncSession, email: str, password: str) -> tuple[Client, st
         )
 
     supabase_user_id = str(response.user.id)
-    logger.info("Login: supabase_user_id=%s email=%s", supabase_user_id, response.user.email)
+    logger.info("Login: supabase_user_id=%s email=%s", supabase_user_id, email)
     client = await get_client_by_supabase_user_id(db, supabase_user_id)
     logger.info("Login: client lookup result=%s", client)
 
@@ -144,4 +125,4 @@ async def login(db: AsyncSession, email: str, password: str) -> tuple[Client, st
 
     new_raw_key = await rotate_api_key(db, client)
 
-    return client, new_raw_key, client.default_teacher_id
+    return client, new_raw_key

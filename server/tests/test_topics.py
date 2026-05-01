@@ -91,7 +91,6 @@ async def _make_topic(db: AsyncSession, chapter_id: uuid.UUID, **kwargs) -> Topi
         "topic_number": 1,
         "title": "Topic One",
         "page_number": "5-10",
-        "sub_slos": None,
     }
     defaults.update(kwargs)
     topic = Topic(**defaults)
@@ -196,7 +195,6 @@ async def test_list_topics_response_fields(authed_client, db_session):
         topic_number=1,
         title="Basic Numbers",
         page_number="7-9",
-        sub_slos=[{"code": "A-01", "statement": "Count to 100"}],
     )
 
     response = await http.get(
@@ -210,7 +208,6 @@ async def test_list_topics_response_fields(authed_client, db_session):
     assert item["topic_number"] == 1
     assert item["title"] == "Basic Numbers"
     assert item["page_number"] == "7-9"
-    assert item["sub_slos"] == [{"code": "A-01", "statement": "Count to 100"}]
     assert "created_at" in item
     # topic_text must NOT be in the response
     assert "topic_text" not in item

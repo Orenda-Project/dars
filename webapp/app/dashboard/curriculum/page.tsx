@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { BookLoader } from "@/components/atoms/book-loader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+const ADMIN_SECRET = process.env.NEXT_PUBLIC_ADMIN_SECRET ?? "";
 
 function getApiKey(): string {
   if (typeof window === "undefined") return "";
@@ -19,7 +21,6 @@ function getApiKey(): string {
 
 interface Book {
   id: string;
-  core_id: string;
   curriculum: string;
   grade: string;
   subject: string;
@@ -30,7 +31,6 @@ interface Book {
 
 interface Chapter {
   id: string;
-  core_id: string;
   book_id: string;
   title: string;
   chapter_number: number;
@@ -44,7 +44,6 @@ interface Topic {
   topic_number: number;
   title: string;
   page_number: number | null;
-  sub_slos: string[];
 }
 
 interface Slot {
@@ -53,6 +52,115 @@ interface Slot {
   day_number: number;
   scheduled_date: string | null;
   topic_subtopic: string;
+  lesson_plan_id: string | null;
+}
+
+interface LessonPlan {
+  id: string;
+  topic: string | null;
+  grade: string;
+  subject: string;
+  curriculum: string;
+  status: string;
+  content: string | null;
+  content_bilingual: string | null;
+}
+
+// ── Spinner ───────────────────────────────────────────────────────────────────
+
+function Spinner() {
+  return (
+    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+    </svg>
+  );
+}
+
+// ── LP Panel (slide-over) ─────────────────────────────────────────────────────
+
+function LPPanel({ lpId, onClose }: { lpId: string; onClose: () => void }) {
+  const [lp, setLp] = useState<LessonPlan | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [bilingual, setBilingual] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/lesson-plans/${lpId}`, {
+      headers: { "X-API-Key": getApiKey() },
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: LessonPlan) => setLp(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [lpId]);
+
+  const html = bilingual ? lp?.content_bilingual : lp?.content;
+
+  // Poll until READY if status is PENDING
+  useEffect(() => {
+    if (!lp || lp.status === "READY" || lp.status === "ERROR") return;
+    const timer = setInterval(() => {
+      fetch(`${API_URL}/api/v1/lesson-plans/${lpId}`, {
+        headers: { "X-API-Key": getApiKey() },
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((data: LessonPlan) => setLp(data))
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [lp, lpId]);
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-dars-rule-light shrink-0">
+          <div>
+            <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest">Lesson Plan</p>
+            {lp && <p className="text-sm font-semibold text-dars-ink mt-0.5">{lp.topic}</p>}
+          </div>
+          <div className="flex items-center gap-3">
+            {lp?.content_bilingual && (
+              <button
+                type="button"
+                onClick={() => setBilingual((b) => !b)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                  bilingual
+                    ? "bg-dars-terra text-white border-dars-terra"
+                    : "bg-white text-dars-muted border-dars-rule-light hover:border-dars-terra hover:text-dars-terra"
+                }`}
+              >
+                {bilingual ? "English" : "Bilingual"}
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="text-dars-muted hover:text-dars-ink cursor-pointer text-xl leading-none">✕</button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {loading && <div className="flex justify-center py-16"><BookLoader size={40} label="Loading lesson plan" /></div>}
+          {!loading && lp?.status === "PENDING" && (
+            <div className="flex flex-col items-center gap-3 py-16">
+              <BookLoader size={40} label="Generating lesson plan…" />
+              <p className="text-xs text-dars-muted">This takes about 30 seconds</p>
+            </div>
+          )}
+          {!loading && lp?.status === "ERROR" && (
+            <p className="text-sm text-red-500">Generation failed. Try again.</p>
+          )}
+          {!loading && lp?.status === "READY" && !html && (
+            <p className="text-sm text-dars-muted">No content available.</p>
+          )}
+          {!loading && lp?.status === "READY" && html && (
+            <div
+              className="text-sm text-dars-ink [&_h2]:font-bold [&_h2]:text-base [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3 [&_li]:mb-1 [&_table]:w-full [&_table]:text-xs [&_table]:border-collapse [&_td]:border [&_td]:border-dars-rule-light [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-dars-rule-light [&_th]:px-2 [&_th]:py-1 [&_th]:bg-dars-parchment [&_th]:font-semibold"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )}
+        </div>
+      </div>
+    </>
+  );
 }
 
 // ── Column header ─────────────────────────────────────────────────────────────
@@ -65,29 +173,22 @@ function ColHeader({ label }: { label: string }) {
   );
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-
 function EmptyState({ message }: { message: string }) {
-  return (
-    <p className="px-4 py-6 text-sm text-dars-muted">{message}</p>
-  );
+  return <p className="px-4 py-6 text-sm text-dars-muted">{message}</p>;
 }
 
 // ── Books column ──────────────────────────────────────────────────────────────
 
 function BooksColumn({
-  books,
-  selectedId,
-  onSelect,
+  books, selectedId, onSelect, loading,
 }: {
-  books: Book[];
-  selectedId: string | null;
-  onSelect: (book: Book) => void;
+  books: Book[]; selectedId: string | null; onSelect: (b: Book) => void; loading: boolean;
 }) {
   return (
     <div className="flex flex-col">
       <ColHeader label="Books" />
-      {books.length === 0 && <EmptyState message="No books found." />}
+      {loading && <div className="px-4 py-8 flex justify-center"><BookLoader size={36} label="Loading books" /></div>}
+      {!loading && books.length === 0 && <EmptyState message="Select curriculum, grade and subject." />}
       <ul>
         {books.map((book) => {
           const active = selectedId === book.id;
@@ -96,18 +197,10 @@ function BooksColumn({
               <button
                 type="button"
                 onClick={() => onSelect(book)}
-                className={`w-full text-left px-4 py-3 border-b border-dars-rule-light transition-colors cursor-pointer border-x-0 border-t-0 ${
-                  active
-                    ? "bg-dars-terra text-white"
-                    : "bg-white hover:bg-dars-parchment text-dars-ink"
-                }`}
+                className={`w-full text-left px-4 py-3 border-b border-dars-rule-light transition-colors cursor-pointer border-x-0 border-t-0 ${active ? "bg-dars-terra text-white" : "bg-white hover:bg-dars-parchment text-dars-ink"}`}
               >
-                <p className={`text-sm font-semibold leading-tight ${active ? "text-white" : "text-dars-ink"}`}>
-                  {book.title}
-                </p>
-                <p className={`text-xs mt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>
-                  {book.curriculum} · Grade {book.grade} · {book.subject}
-                </p>
+                <p className={`text-sm font-semibold leading-tight ${active ? "text-white" : "text-dars-ink"}`}>{book.title}</p>
+                <p className={`text-xs mt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{book.curriculum} · Grade {book.grade} · {book.subject}</p>
               </button>
             </li>
           );
@@ -120,62 +213,32 @@ function BooksColumn({
 // ── Chapters column ───────────────────────────────────────────────────────────
 
 function ChaptersColumn({
-  chapters,
-  selectedId,
-  onSelect,
+  chapters, selectedId, onSelect, loading,
 }: {
-  chapters: Chapter[];
-  selectedId: string | null;
-  onSelect: (chapter: Chapter) => void;
+  chapters: Chapter[]; selectedId: string | null; onSelect: (c: Chapter) => void; loading: boolean;
 }) {
   const sorted = [...chapters].sort((a, b) => a.chapter_number - b.chapter_number);
   return (
     <div className="flex flex-col">
       <ColHeader label="Chapters" />
-      {sorted.length === 0 && <EmptyState message="Select a book to see chapters." />}
+      {loading && <div className="px-4 py-8 flex justify-center"><BookLoader size={36} label="Loading chapters" /></div>}
+      {!loading && sorted.length === 0 && <EmptyState message="Select a book to see chapters." />}
       <ul>
         {sorted.map((ch) => {
           const active = selectedId === ch.id;
-          const pages =
-            ch.start_page != null && ch.end_page != null
-              ? `pp. ${ch.start_page}–${ch.end_page}`
-              : null;
+          const pages = ch.start_page != null && ch.end_page != null ? `pp. ${ch.start_page}–${ch.end_page}` : null;
           return (
             <li key={ch.id}>
               <button
                 type="button"
                 onClick={() => onSelect(ch)}
-                className={`w-full text-left px-4 py-3 border-b border-dars-rule-light transition-colors cursor-pointer border-x-0 border-t-0 ${
-                  active
-                    ? "bg-dars-terra text-white"
-                    : "bg-white hover:bg-dars-parchment text-dars-ink"
-                }`}
+                className={`w-full text-left px-4 py-3 border-b border-dars-rule-light transition-colors cursor-pointer border-x-0 border-t-0 ${active ? "bg-dars-terra text-white" : "bg-white hover:bg-dars-parchment text-dars-ink"}`}
               >
                 <div className="flex items-start gap-2">
-                  <span
-                    className={`text-xs font-bold shrink-0 w-5 pt-0.5 ${
-                      active ? "text-white/80" : "text-dars-muted"
-                    }`}
-                  >
-                    {ch.chapter_number}
-                  </span>
+                  <span className={`text-xs font-bold shrink-0 w-5 pt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{ch.chapter_number}</span>
                   <div className="min-w-0">
-                    <p
-                      className={`text-sm font-semibold leading-tight ${
-                        active ? "text-white" : "text-dars-ink"
-                      }`}
-                    >
-                      {ch.title}
-                    </p>
-                    {pages && (
-                      <p
-                        className={`text-xs mt-0.5 ${
-                          active ? "text-white/80" : "text-dars-muted"
-                        }`}
-                      >
-                        {pages}
-                      </p>
-                    )}
+                    <p className={`text-sm font-semibold leading-tight ${active ? "text-white" : "text-dars-ink"}`}>{ch.title}</p>
+                    {pages && <p className={`text-xs mt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{pages}</p>}
                   </div>
                 </div>
               </button>
@@ -190,14 +253,57 @@ function ChaptersColumn({
 // ── Topics & Slots column ─────────────────────────────────────────────────────
 
 function TopicSlotsColumn({
-  topics,
-  slots,
-  chapterSelected,
+  topics, slots, chapterSelected, selectedChapterId, loading, onViewLP, onSlotsRefresh,
 }: {
   topics: Topic[];
   slots: Record<string, Slot[]>;
   chapterSelected: boolean;
+  selectedChapterId: string | null;
+  loading: boolean;
+  onViewLP: (lpId: string) => void;
+  onSlotsRefresh: () => void;
 }) {
+  const [breakingDown, setBreakingDown] = useState(false);
+  const [generatingLp, setGeneratingLp] = useState<Record<string, boolean>>({});
+
+  // Reset breakdown state when chapter changes
+  useEffect(() => { setBreakingDown(false); }, [selectedChapterId]);
+
+  const handleBreakdown = useCallback(async () => {
+    if (!selectedChapterId) return;
+    setBreakingDown(true);
+    try {
+      const r = await fetch(`${API_URL}/api/v1/chapters/${selectedChapterId}/breakdown`, {
+        method: "POST",
+        headers: { "X-Admin-Secret": ADMIN_SECRET, "Content-Type": "application/json" },
+      });
+      if (r.ok) onSlotsRefresh();
+    } catch {
+      // swallow
+    } finally {
+      setBreakingDown(false);
+    }
+  }, [selectedChapterId, onSlotsRefresh]);
+
+  const handleGenerateLp = useCallback(async (slotId: string) => {
+    setGeneratingLp((prev) => ({ ...prev, [slotId]: true }));
+    try {
+      const r = await fetch(`${API_URL}/api/v1/slots/${slotId}/generate-lp`, {
+        method: "POST",
+        headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
+      });
+      if (r.ok) {
+        const data: LessonPlan = await r.json();
+        onViewLP(data.id);
+        onSlotsRefresh();
+      }
+    } catch {
+      // swallow
+    } finally {
+      setGeneratingLp((prev) => ({ ...prev, [slotId]: false }));
+    }
+  }, [onViewLP, onSlotsRefresh]);
+
   if (!chapterSelected) {
     return (
       <div className="flex flex-col">
@@ -207,14 +313,29 @@ function TopicSlotsColumn({
     );
   }
 
+  if (loading) {
+    return (
+      <div className="flex flex-col">
+        <ColHeader label="Topics & Slots" />
+        <div className="px-4 py-8 flex justify-center"><BookLoader size={36} label="Loading topics" /></div>
+      </div>
+    );
+  }
+
   if (topics.length === 0) {
     return (
       <div className="flex flex-col">
         <ColHeader label="Topics & Slots" />
-        <div className="px-4 py-6">
-          <p className="text-sm text-dars-muted">
-            No breakdown yet. Run the admin breakdown endpoint to generate topics for this chapter.
-          </p>
+        <div className="px-4 py-6 flex flex-col gap-3">
+          <p className="text-sm text-dars-muted">No breakdown yet for this chapter.</p>
+          <button
+            type="button"
+            onClick={handleBreakdown}
+            disabled={breakingDown}
+            className="flex items-center gap-2 self-start px-4 py-2 rounded-md bg-dars-terra text-white text-sm font-semibold hover:bg-dars-terra/90 disabled:opacity-60 cursor-pointer transition-colors"
+          >
+            {breakingDown ? <><Spinner /> Generating…</> : "Generate AI Breakdown"}
+          </button>
         </div>
       </div>
     );
@@ -224,7 +345,18 @@ function TopicSlotsColumn({
 
   return (
     <div className="flex flex-col">
-      <ColHeader label="Topics & Slots" />
+      <div className="flex items-center justify-between pr-3 border-b border-dars-rule-light">
+        <p className="text-[10px] font-semibold text-dars-muted uppercase tracking-widest px-4 py-3">Topics & Slots</p>
+        <button
+          type="button"
+          onClick={handleBreakdown}
+          disabled={breakingDown}
+          title="Regenerate breakdown (overwrites existing topics and slots)"
+          className="flex items-center gap-1 text-[10px] font-semibold text-dars-muted hover:text-dars-terra disabled:opacity-50 cursor-pointer transition-colors"
+        >
+          {breakingDown ? <Spinner /> : "↺"} Regenerate
+        </button>
+      </div>
       <ul>
         {sorted.map((topic) => {
           const topicSlots = slots[topic.id] ?? [];
@@ -232,41 +364,45 @@ function TopicSlotsColumn({
             <li key={topic.id} className="border-b border-dars-rule-light last:border-0">
               <div className="px-4 py-3">
                 <div className="flex items-start gap-2 mb-2">
-                  <span className="text-xs font-bold text-dars-muted shrink-0 w-5 pt-0.5">
-                    {topic.topic_number}
-                  </span>
+                  <span className="text-xs font-bold text-dars-muted shrink-0 w-5 pt-0.5">{topic.topic_number}</span>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-dars-ink leading-tight">
-                      {topic.title}
-                    </p>
-                    {topic.page_number != null && (
-                      <p className="text-xs text-dars-muted mt-0.5">p. {topic.page_number}</p>
-                    )}
+                    <p className="text-sm font-semibold text-dars-ink leading-tight">{topic.title}</p>
+                    {topic.page_number != null && <p className="text-xs text-dars-muted mt-0.5">p. {topic.page_number}</p>}
                   </div>
                 </div>
 
                 {topicSlots.length > 0 && (
                   <ul className="ml-7 space-y-1">
                     {topicSlots.map((slot) => (
-                      <li
-                        key={slot.id}
-                        className="flex items-start gap-2 bg-dars-parchment border border-dars-rule-light rounded-md px-2.5 py-1.5"
-                      >
-                        <span className="text-[10px] font-bold text-dars-muted shrink-0 pt-0.5 w-4">
-                          D{slot.day_number}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-xs text-dars-ink leading-tight">
-                            {slot.topic_subtopic}
-                          </p>
+                      <li key={slot.id} className="flex items-start gap-2 bg-dars-parchment border border-dars-rule-light rounded-md px-2.5 py-1.5">
+                        <span className="text-[10px] font-bold text-dars-muted shrink-0 pt-0.5 w-4">D{slot.day_number}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-dars-ink leading-tight">{slot.topic_subtopic}</p>
                           {slot.scheduled_date && (
                             <p className="text-[10px] text-dars-muted mt-0.5">
-                              {new Date(slot.scheduled_date + "T00:00:00").toLocaleDateString(
-                                "en-PK",
-                                { day: "numeric", month: "short", year: "numeric" }
-                              )}
+                              {new Date(slot.scheduled_date + "T00:00:00").toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}
                             </p>
                           )}
+                        </div>
+                        <div className="shrink-0 flex items-center gap-1">
+                          {slot.lesson_plan_id && (
+                            <button
+                              type="button"
+                              onClick={() => onViewLP(slot.lesson_plan_id!)}
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded bg-dars-terra text-white hover:bg-dars-terra/90 cursor-pointer transition-colors"
+                            >
+                              LP
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateLp(slot.id)}
+                            disabled={!!generatingLp[slot.id]}
+                            title={slot.lesson_plan_id ? "Regenerate LP (overwrites existing)" : "Generate LP"}
+                            className="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border border-dars-terra text-dars-terra hover:bg-dars-terra hover:text-white disabled:opacity-60 cursor-pointer transition-colors"
+                          >
+                            {generatingLp[slot.id] ? <Spinner /> : slot.lesson_plan_id ? "↺" : "Gen LP"}
+                          </button>
                         </div>
                       </li>
                     ))}
@@ -281,113 +417,132 @@ function TopicSlotsColumn({
   );
 }
 
+const GRADES = [1, 2, 3, 4, 5];
+const SUBJECTS = ["Eng", "Maths", "Urdu"];
+const CURRICULUMS = ["ICT", "Punjab"];
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CurriculumPage() {
+  const [curriculum, setCurriculum] = useState<string | null>(null);
+  const [grade, setGrade] = useState<number | null>(null);
+  const [subject, setSubject] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
+  const [loadingBooks, setLoadingBooks] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [loadingChapters, setLoadingChapters] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
-  // slots keyed by topic_id
+  const [loadingTopics, setLoadingTopics] = useState(false);
   const [slots, setSlots] = useState<Record<string, Slot[]>>({});
+  const [activeLpId, setActiveLpId] = useState<string | null>(null);
 
-  // Load all books on mount
   useEffect(() => {
-    const apiKey = getApiKey();
-    fetch(`${API_URL}/api/v1/books`, {
-      headers: { "X-API-Key": apiKey },
+    if (curriculum === null || grade === null || subject === null) {
+      setBooks([]); setSelectedBook(null); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({});
+      return;
+    }
+    setLoadingBooks(true);
+    setBooks([]); setSelectedBook(null); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({});
+    fetch(`${API_URL}/api/v1/books?curriculum=${encodeURIComponent(curriculum)}&grade=${grade}&subject=${encodeURIComponent(subject)}`, {
+      headers: { "X-API-Key": getApiKey() },
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { items: Book[] }) => setBooks(data.items ?? []))
-      .catch(() => {});
-  }, []);
+      .catch(() => {})
+      .finally(() => setLoadingBooks(false));
+  }, [curriculum, grade, subject]);
 
-  // Load chapters when a book is selected
   const handleSelectBook = useCallback((book: Book) => {
-    setSelectedBook(book);
-    setChapters([]);
-    setSelectedChapter(null);
-    setTopics([]);
-    setSlots({});
-
-    const apiKey = getApiKey();
-    fetch(`${API_URL}/api/v1/books/${book.id}/chapters`, {
-      headers: { "X-API-Key": apiKey },
-    })
+    setSelectedBook(book); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({});
+    setLoadingChapters(true);
+    fetch(`${API_URL}/api/v1/books/${book.id}/chapters`, { headers: { "X-API-Key": getApiKey() } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { items: Chapter[] }) => setChapters(data.items ?? []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoadingChapters(false));
   }, []);
 
-  // Load topics + slots when a chapter is selected
-  const handleSelectChapter = useCallback(
-    (chapter: Chapter) => {
-      setSelectedChapter(chapter);
-      setTopics([]);
-      setSlots({});
+  const loadTopicsAndSlots = useCallback((book: Book, chapter: Chapter) => {
+    setTopics([]); setSlots({}); setLoadingTopics(true);
+    const apiKey = getApiKey();
+    fetch(`${API_URL}/api/v1/books/${book.id}/chapters/${chapter.id}/topics`, { headers: { "X-API-Key": apiKey } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(async (data: { items: Topic[] }) => {
+        const fetchedTopics = data.items ?? [];
+        setTopics(fetchedTopics);
+        const slotResults = await Promise.all(
+          fetchedTopics.map((t) =>
+            fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, { headers: { "X-API-Key": apiKey } })
+              .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] })))
+              .then((d: { items: Slot[] }) => ({ topicId: t.id, slots: d.items ?? [] }))
+              .catch(() => ({ topicId: t.id, slots: [] }))
+          )
+        );
+        const slotMap: Record<string, Slot[]> = {};
+        for (const { topicId, slots: s } of slotResults) slotMap[topicId] = s;
+        setSlots(slotMap);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTopics(false));
+  }, []);
 
-      if (!selectedBook) return;
-      const apiKey = getApiKey();
+  const handleSelectChapter = useCallback((chapter: Chapter) => {
+    setSelectedChapter(chapter);
+    if (selectedBook) loadTopicsAndSlots(selectedBook, chapter);
+  }, [selectedBook, loadTopicsAndSlots]);
 
-      fetch(
-        `${API_URL}/api/v1/books/${selectedBook.id}/chapters/${chapter.id}/topics`,
-        { headers: { "X-API-Key": apiKey } }
-      )
-        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-        .then(async (data: { items: Topic[] }) => {
-          const fetchedTopics = data.items ?? [];
-          setTopics(fetchedTopics);
-
-          // Fetch slots for each topic in parallel
-          const slotResults = await Promise.all(
-            fetchedTopics.map((t) =>
-              fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, {
-                headers: { "X-API-Key": apiKey },
-              })
-                .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] })))
-                .then((d: { items: Slot[] }) => ({ topicId: t.id, slots: d.items ?? [] }))
-                .catch(() => ({ topicId: t.id, slots: [] }))
-            )
-          );
-
-          const slotMap: Record<string, Slot[]> = {};
-          for (const { topicId, slots: s } of slotResults) {
-            slotMap[topicId] = s;
-          }
-          setSlots(slotMap);
-        })
-        .catch(() => {});
-    },
-    [selectedBook]
-  );
+  const handleSlotsRefresh = useCallback(() => {
+    if (selectedBook && selectedChapter) loadTopicsAndSlots(selectedBook, selectedChapter);
+  }, [selectedBook, selectedChapter, loadTopicsAndSlots]);
 
   return (
     <div className="p-8 max-w-6xl">
       <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Curriculum</h1>
 
+      <div className="flex items-center gap-4 mb-6">
+        <select
+          value={curriculum ?? ""}
+          onChange={(e) => setCurriculum(e.target.value || null)}
+          className="border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+        >
+          <option value="">Curriculum</option>
+          {CURRICULUMS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={grade ?? ""}
+          onChange={(e) => setGrade(e.target.value ? Number(e.target.value) : null)}
+          className="border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+        >
+          <option value="">Grade</option>
+          {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+        </select>
+        <select
+          value={subject ?? ""}
+          onChange={(e) => setSubject(e.target.value || null)}
+          className="border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+        >
+          <option value="">Subject</option>
+          {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
       <div className="border border-dars-rule-light rounded-lg overflow-hidden grid grid-cols-3 divide-x divide-dars-rule-light bg-white min-h-[400px]">
-        {/* Column 1 — Books */}
-        <BooksColumn
-          books={books}
-          selectedId={selectedBook?.id ?? null}
-          onSelect={handleSelectBook}
-        />
-
-        {/* Column 2 — Chapters */}
-        <ChaptersColumn
-          chapters={chapters}
-          selectedId={selectedChapter?.id ?? null}
-          onSelect={handleSelectChapter}
-        />
-
-        {/* Column 3 — Topics & Slots */}
+        <BooksColumn books={books} selectedId={selectedBook?.id ?? null} onSelect={handleSelectBook} loading={loadingBooks} />
+        <ChaptersColumn chapters={chapters} selectedId={selectedChapter?.id ?? null} onSelect={handleSelectChapter} loading={loadingChapters} />
         <TopicSlotsColumn
           topics={topics}
           slots={slots}
           chapterSelected={selectedChapter !== null}
+          selectedChapterId={selectedChapter?.id ?? null}
+          loading={loadingTopics}
+          onViewLP={setActiveLpId}
+          onSlotsRefresh={handleSlotsRefresh}
         />
       </div>
+
+      {activeLpId && <LPPanel lpId={activeLpId} onClose={() => setActiveLpId(null)} />}
     </div>
   );
 }

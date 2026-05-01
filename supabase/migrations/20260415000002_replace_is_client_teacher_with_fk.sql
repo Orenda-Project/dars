@@ -1,3 +1,0 @@
-ALTER TABLE teachers DROP COLUMN IF EXISTS is_client_teacher;
-
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS default_teacher_id UUID REFERENCES teachers(id) DEFERRABLE INITIALLY DEFERRED;

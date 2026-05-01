@@ -20,7 +20,7 @@ log = logging.getLogger("curriculum.breakdown")
 # Prompts (copied verbatim from Schema repo)
 # ---------------------------------------------------------------------------
 
-TOPIC_BREAKDOWN_PROMPT = """Perform the following tasks on text of a Maths Chapter: test
+TOPIC_BREAKDOWN_PROMPT = """Perform the following tasks on text of a Chapter:
 - Find the chapter number and chapter name from the text. Chapter info is usually at the start of the chapter.
 - Find the SLOs(Students' Learning Outcomes) of the chapter. SLOs are usually at the start of the chapter after the chapter title. Maintain the formatting of the SLOs, don't change it, e.g., newlines, indentation, etc. DO NOT add the line prefix "Line: x - " to the SLOs, just maintain the formatting of the SLOs as it is in the chapter text.
 

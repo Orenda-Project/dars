@@ -5,7 +5,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import dars.clients.models  # noqa — register FK targets
-import dars.lesson_plans.models  # noqa
 import dars.webhooks.models  # noqa
 from dars.database import Base
 from dars.webhooks.service import deliver_webhook

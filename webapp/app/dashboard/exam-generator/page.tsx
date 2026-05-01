@@ -4,17 +4,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-interface LessonPlan {
+interface ExamGeneration {
   id: string;
-  grade: string;
+  curriculum: string;
+  grade: string | number;
   subject: string;
   status: "PENDING" | "READY" | "ERROR" | string;
   created_at: string;
-  content_html?: string | null;
+  result?: unknown | null;
 }
 
 interface PaginatedResponse {
-  items: LessonPlan[];
+  items: ExamGeneration[];
   total: number;
   limit: number;
   offset: number;
@@ -31,39 +32,49 @@ function getApiKey(): string {
   }
 }
 
-// ─── Curriculum data (derived from LP Assistant config) ──────────────────────
+// ─── Curriculum data (from UG_EG config.py) ──────────────────────────────────
 
 const CURRICULUM_DATA: Record<string, Record<string, number[]>> = {
   ICT: {
-    Eng:     [1, 2, 3, 4, 5],
-    Maths:   [1, 2, 3, 4, 5],
-    Urdu:    [1, 2, 3, 4, 5],
-    Science: [4, 5],
+    Eng:      [1, 2, 3, 4, 5],
+    Maths:    [1, 2, 3, 4, 5],
+    Urdu:     [1, 2, 3, 4, 5],
+    Islamiat: [1, 2, 3, 4, 5],
+    GenSci:   [4, 5],
+    GenK:     [1, 2, 3],
+    SST:      [4, 5],
   },
   Punjab: {
     Eng:   [1, 2, 3, 4, 5],
     Maths: [1, 2, 3, 4, 5],
     Urdu:  [1, 2, 3, 4, 5],
   },
-  Sindh: {
-    Eng:     [1, 2, 3, 4, 5],
-    Maths:   [1, 2, 3, 4, 5],
-    Urdu:    [1, 2, 3, 4, 5],
-    Science: [5],
-    GK:      [1, 2],
-  },
 };
+
+const SUBJECT_DISPLAY: Record<string, string> = {
+  Eng:      "English",
+  Maths:    "Mathematics",
+  Urdu:     "Urdu",
+  Islamiat: "Islamiat",
+  GenSci:   "Science",
+  GenK:     "General Knowledge",
+  SST:      "Social Studies",
+};
+
+const GENERATION_TYPES = [
+  { value: "exam", label: "Exam" },
+  { value: "class_assessment", label: "Class Assessment" },
+];
 
 // ─── Generate Form ────────────────────────────────────────────────────────────
 
-function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }) {
+function GenerateForm({ onGenerated }: { onGenerated: (eg: ExamGeneration) => void }) {
   const [curriculum, setCurriculum] = useState("ICT");
   const [subject, setSubject] = useState("");
   const [grade, setGrade] = useState("");
-  const [pageNumber, setPageNumber] = useState("");
-  const [topic, setTopic] = useState("");
-  const [classStrength, setClassStrength] = useState("");
-  const [generateBilingual, setGenerateBilingual] = useState(false);
+  const [pageRanges, setPageRanges] = useState("");
+  const [generationType, setGenerationType] = useState("exam");
+  const [includeAnswerKey, setIncludeAnswerKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -86,18 +97,23 @@ function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }
     setLoading(true);
     const apiKey = getApiKey();
 
-    const body: Record<string, unknown> = {
-      grade: Number(grade),
-      subject,
-      page_number: pageNumber,
+    const body = {
       curriculum,
-      generate_bilingual: generateBilingual,
+      subject,
+      grade: Number(grade),
+      page_ranges: pageRanges,
+      generation_type: generationType,
+      include_answer_key: includeAnswerKey,
+      // fixed backend defaults
+      question_types: ["seen", "unseen"],
+      seen_categories: ["objective", "subjective"],
+      unseen_categories: ["objective", "subjective"],
+      image_generation_enabled: false,
+      enable_review: false,
     };
-    if (topic.trim()) body.topic = topic.trim();
-    if (classStrength.trim()) body.class_strength = Number(classStrength);
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/lesson-plans`, {
+      const res = await fetch(`${API_URL}/api/v1/exam-generations`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -109,8 +125,8 @@ function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }
         const text = await res.text();
         throw new Error(text || `HTTP ${res.status}`);
       }
-      const lp: LessonPlan = await res.json();
-      onGenerated(lp);
+      const eg: ExamGeneration = await res.json();
+      onGenerated(eg);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -125,12 +141,17 @@ function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }
 
   return (
     <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8">
-      <h2 className="font-serif text-lg font-bold text-dars-ink mb-4">Generate Lesson Plan</h2>
+      <h2 className="font-serif text-lg font-bold text-dars-ink mb-4">Generate Exam</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Curriculum *</label>
-            <select required value={curriculum} onChange={(e) => handleCurriculumChange(e.target.value)} className={selectClass}>
+            <select
+              required
+              value={curriculum}
+              onChange={(e) => handleCurriculumChange(e.target.value)}
+              className={selectClass}
+            >
               {Object.keys(CURRICULUM_DATA).map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -138,16 +159,27 @@ function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }
           </div>
           <div>
             <label className={labelClass}>Subject *</label>
-            <select required value={subject} onChange={(e) => handleSubjectChange(e.target.value)} className={selectClass}>
+            <select
+              required
+              value={subject}
+              onChange={(e) => handleSubjectChange(e.target.value)}
+              className={selectClass}
+            >
               <option value="">Select subject</option>
               {subjects.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{SUBJECT_DISPLAY[s] ?? s}</option>
               ))}
             </select>
           </div>
           <div>
             <label className={labelClass}>Grade *</label>
-            <select required value={grade} onChange={(e) => setGrade(e.target.value)} className={selectClass} disabled={!subject}>
+            <select
+              required
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              className={selectClass}
+              disabled={!subject}
+            >
               <option value="">Select grade</option>
               {grades.map((g) => (
                 <option key={g} value={g}>Grade {g}</option>
@@ -155,47 +187,39 @@ function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }
             </select>
           </div>
           <div>
-            <label className={labelClass}>Page Number *</label>
+            <label className={labelClass}>Page Ranges *</label>
             <input
               type="text"
               required
-              value={pageNumber}
-              onChange={(e) => setPageNumber(e.target.value)}
+              value={pageRanges}
+              onChange={(e) => setPageRanges(e.target.value)}
               className={inputClass}
-              placeholder="e.g. 42"
+              placeholder="e.g. 1-5, 10, 15-20"
             />
           </div>
           <div>
-            <label className={labelClass}>Topic</label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className={inputClass}
-              placeholder="Optional"
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Class Strength</label>
-            <input
-              type="number"
-              min={1}
-              value={classStrength}
-              onChange={(e) => setClassStrength(e.target.value)}
-              className={inputClass}
-              placeholder="Optional"
-            />
+            <label className={labelClass}>Generation Type *</label>
+            <select
+              required
+              value={generationType}
+              onChange={(e) => setGenerationType(e.target.value)}
+              className={selectClass}
+            >
+              {GENERATION_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
           </div>
         </div>
 
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={generateBilingual}
-            onChange={(e) => setGenerateBilingual(e.target.checked)}
+            checked={includeAnswerKey}
+            onChange={(e) => setIncludeAnswerKey(e.target.checked)}
             className="accent-dars-terra w-4 h-4"
           />
-          <span className="text-sm text-dars-ink">Generate Bilingual</span>
+          <span className="text-sm text-dars-ink">Include Answer Key</span>
         </label>
 
         {error && (
@@ -218,8 +242,8 @@ function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }
 
 // ─── Generation Status / Result ───────────────────────────────────────────────
 
-function GenerationResult({ initial }: { initial: LessonPlan }) {
-  const [lp, setLp] = useState<LessonPlan>(initial);
+function GenerationResult({ initial }: { initial: ExamGeneration }) {
+  const [eg, setEg] = useState<ExamGeneration>(initial);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAt = useRef(Date.now());
   const MAX_POLL_MS = 120_000;
@@ -234,12 +258,12 @@ function GenerationResult({ initial }: { initial: LessonPlan }) {
   const fetchStatus = useCallback(async () => {
     const apiKey = getApiKey();
     try {
-      const res = await fetch(`${API_URL}/api/v1/lesson-plans/${initial.id}`, {
+      const res = await fetch(`${API_URL}/api/v1/exam-generations/${initial.id}`, {
         headers: { "X-API-Key": apiKey },
       });
       if (!res.ok) return;
-      const data: LessonPlan = await res.json();
-      setLp(data);
+      const data: ExamGeneration = await res.json();
+      setEg(data);
       if (data.status === "READY" || data.status === "ERROR") {
         stopPolling();
       }
@@ -252,16 +276,16 @@ function GenerationResult({ initial }: { initial: LessonPlan }) {
   }, [initial.id, stopPolling]);
 
   useEffect(() => {
-    if (lp.status !== "READY" && lp.status !== "ERROR") {
+    if (eg.status !== "READY" && eg.status !== "ERROR") {
       intervalRef.current = setInterval(fetchStatus, 3000);
     }
     return stopPolling;
-  }, [fetchStatus, stopPolling, lp.status]);
+  }, [fetchStatus, stopPolling, eg.status]);
 
   const statusColor =
-    lp.status === "READY"
+    eg.status === "READY"
       ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-      : lp.status === "ERROR"
+      : eg.status === "ERROR"
       ? "text-red-700 bg-red-50 border-red-200"
       : "text-dars-muted bg-dars-parchment border-dars-rule-light";
 
@@ -269,35 +293,37 @@ function GenerationResult({ initial }: { initial: LessonPlan }) {
     <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8">
       <div className="flex items-center gap-3 mb-4">
         <h2 className="font-serif text-lg font-bold text-dars-ink">Latest Generation</h2>
-        <span
-          className={`text-xs font-semibold uppercase tracking-wide border rounded px-2 py-0.5 ${statusColor}`}
-        >
-          {lp.status}
+        <span className={`text-xs font-semibold uppercase tracking-wide border rounded px-2 py-0.5 ${statusColor}`}>
+          {eg.status}
         </span>
       </div>
       <p className="text-xs text-dars-muted mb-1">
-        ID: <span className="font-mono">{lp.id}</span>
+        ID: <span className="font-mono">{eg.id}</span>
       </p>
-      {lp.status !== "READY" && lp.status !== "ERROR" && (
+      {eg.status !== "READY" && eg.status !== "ERROR" && (
         <p className="text-sm text-dars-muted mt-2 animate-pulse">Polling for result…</p>
       )}
-      {lp.status === "ERROR" && (
+      {eg.status === "ERROR" && (
         <p className="text-sm text-red-600 mt-2">Generation failed. Please try again.</p>
       )}
-      {lp.status === "READY" && lp.content_html && (
-        <div
-          className="mt-4 prose prose-sm max-w-none border-t border-dars-rule-light pt-4"
-          dangerouslySetInnerHTML={{ __html: lp.content_html }}
-        />
+      {eg.status === "READY" && eg.result != null && (
+        <div className="mt-4 border-t border-dars-rule-light pt-4">
+          <p className="text-xs text-dars-muted mb-2 font-semibold uppercase tracking-wide">Result JSON</p>
+          <div className="max-h-96 overflow-auto rounded-lg border border-dars-rule-light bg-dars-parchment p-4">
+            <pre className="text-xs text-dars-ink whitespace-pre-wrap break-all">
+              {JSON.stringify(eg.result, null, 2)}
+            </pre>
+          </div>
+        </div>
       )}
-      {lp.status === "READY" && !lp.content_html && (
-        <p className="text-sm text-dars-muted mt-2">No HTML content returned.</p>
+      {eg.status === "READY" && eg.result == null && (
+        <p className="text-sm text-dars-muted mt-2">No result data returned.</p>
       )}
     </section>
   );
 }
 
-// ─── Past Lesson Plans ────────────────────────────────────────────────────────
+// ─── Past Exams ───────────────────────────────────────────────────────────────
 
 const LIMIT = 10;
 
@@ -315,8 +341,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
-  const [items, setItems] = useState<LessonPlan[]>([]);
+function PastExams({ refreshTrigger }: { refreshTrigger: number }) {
+  const [items, setItems] = useState<ExamGeneration[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -329,7 +355,7 @@ function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
     const apiKey = getApiKey();
     try {
       const res = await fetch(
-        `${API_URL}/api/v1/lesson-plans?limit=${LIMIT}&offset=${off}`,
+        `${API_URL}/api/v1/exam-generations?limit=${LIMIT}&offset=${off}`,
         { headers: { "X-API-Key": apiKey } }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -337,7 +363,7 @@ function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
       setItems(data.items);
       setTotal(data.total);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load lesson plans");
+      setError(err instanceof Error ? err.message : "Failed to load exam generations");
     } finally {
       setLoading(false);
     }
@@ -357,7 +383,7 @@ function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
   return (
     <section className="bg-white border border-dars-rule-light rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-serif text-lg font-bold text-dars-ink">Past Lesson Plans</h2>
+        <h2 className="font-serif text-lg font-bold text-dars-ink">Past Exams</h2>
         {total > 0 && (
           <span className="text-xs text-dars-muted">
             {total} total · page {currentPage} of {totalPages}
@@ -374,42 +400,43 @@ function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
       )}
 
       {!loading && !error && items.length === 0 && (
-        <p className="text-sm text-dars-muted">No lesson plans yet.</p>
+        <p className="text-sm text-dars-muted">No exam generations yet.</p>
       )}
 
       {items.length > 0 && (
         <ul className="divide-y divide-dars-rule-light">
-          {items.map((lp) => (
-            <li key={lp.id}>
+          {items.map((eg) => (
+            <li key={eg.id}>
               <button
-                onClick={() => toggleExpand(lp.id)}
+                onClick={() => toggleExpand(eg.id)}
                 className="w-full text-left py-3 px-1 hover:bg-dars-parchment transition-colors rounded cursor-pointer bg-transparent border-none"
               >
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-mono text-xs text-dars-muted shrink-0">
-                    {lp.id.slice(0, 8)}…
+                    {eg.id.slice(0, 8)}…
                   </span>
                   <span className="text-sm text-dars-ink font-medium">
-                    {lp.grade} · {lp.subject}
+                    {eg.curriculum} · Grade {eg.grade} · {SUBJECT_DISPLAY[eg.subject] ?? eg.subject}
                   </span>
-                  <StatusBadge status={lp.status} />
+                  <StatusBadge status={eg.status} />
                   <span className="ml-auto text-xs text-dars-muted shrink-0">
-                    {new Date(lp.created_at).toLocaleDateString()}
+                    {new Date(eg.created_at).toLocaleDateString()}
                   </span>
                 </div>
               </button>
-              {expandedId === lp.id && (
+              {expandedId === eg.id && (
                 <div className="px-1 pb-4">
-                  {lp.status === "READY" && lp.content_html ? (
-                    <div
-                      className="prose prose-sm max-w-none border border-dars-rule-light rounded-lg p-4 bg-dars-parchment"
-                      dangerouslySetInnerHTML={{ __html: lp.content_html }}
-                    />
-                  ) : lp.status === "READY" ? (
-                    <p className="text-sm text-dars-muted">No HTML content.</p>
+                  {eg.status === "READY" && eg.result != null ? (
+                    <div className="max-h-96 overflow-auto rounded-lg border border-dars-rule-light bg-dars-parchment p-4">
+                      <pre className="text-xs text-dars-ink whitespace-pre-wrap break-all">
+                        {JSON.stringify(eg.result, null, 2)}
+                      </pre>
+                    </div>
+                  ) : eg.status === "READY" ? (
+                    <p className="text-sm text-dars-muted">No result data.</p>
                   ) : (
                     <p className="text-sm text-dars-muted">
-                      Content not available — status is {lp.status}.
+                      Result not available — status is {eg.status}.
                     </p>
                   )}
                 </div>
@@ -446,21 +473,21 @@ function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function LessonPlansPage() {
-  const [latestLp, setLatestLp] = useState<LessonPlan | null>(null);
+export default function PefExamGeneratorPage() {
+  const [latestEg, setLatestEg] = useState<ExamGeneration | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  function handleGenerated(lp: LessonPlan) {
-    setLatestLp(lp);
+  function handleGenerated(eg: ExamGeneration) {
+    setLatestEg(eg);
     setTimeout(() => setRefreshTrigger((n) => n + 1), 1500);
   }
 
   return (
     <div className="p-8 max-w-4xl">
-      <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Lesson Plans</h1>
+      <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Exam Generator</h1>
       <GenerateForm onGenerated={handleGenerated} />
-      {latestLp && <GenerationResult key={latestLp.id} initial={latestLp} />}
-      <PastLessonPlans refreshTrigger={refreshTrigger} />
+      {latestEg && <GenerationResult key={latestEg.id} initial={latestEg} />}
+      <PastExams refreshTrigger={refreshTrigger} />
     </div>
   );
 }

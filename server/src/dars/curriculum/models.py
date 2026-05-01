@@ -1,12 +1,49 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Any
-
 from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.types import JSON, Uuid
+from sqlalchemy.types import Uuid
 
 from dars.database import Base
+
+
+# ---------------------------------------------------------------------------
+# Lookup tables
+# ---------------------------------------------------------------------------
+
+
+class Curriculum(Base):
+    __tablename__ = "curriculums"
+
+    code: Mapped[str] = mapped_column(Text, primary_key=True)
+
+
+class Subject(Base):
+    __tablename__ = "subjects"
+
+    code: Mapped[str] = mapped_column(Text, primary_key=True)
+
+
+class Grade(Base):
+    __tablename__ = "grades"
+
+    grade: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+
+class CurriculumSubject(Base):
+    __tablename__ = "curriculum_subjects"
+
+    curriculum_code: Mapped[str] = mapped_column(
+        Text, ForeignKey("curriculums.code", ondelete="CASCADE"), primary_key=True
+    )
+    subject_code: Mapped[str] = mapped_column(
+        Text, ForeignKey("subjects.code", ondelete="CASCADE"), primary_key=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Books
+# ---------------------------------------------------------------------------
 
 
 class Book(Base):
@@ -16,9 +53,9 @@ class Book(Base):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     core_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    curriculum: Mapped[str] = mapped_column(Text, nullable=False)
-    grade: Mapped[int] = mapped_column(Integer, nullable=False)
-    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    curriculum: Mapped[str] = mapped_column(Text, ForeignKey("curriculums.code"), nullable=False)
+    grade: Mapped[int] = mapped_column(Integer, ForeignKey("grades.grade"), nullable=False)
+    subject: Mapped[str] = mapped_column(Text, ForeignKey("subjects.code"), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     publisher: Mapped[str | None] = mapped_column(Text, nullable=True)
     edition: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -80,8 +117,7 @@ class Topic(Base):
     topic_number: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     page_number: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # topic_text not in ORM — loaded separately for AI calls (raw SQL)
-    sub_slos: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    # topic_text not in ORM — stored/loaded via raw SQL
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -109,6 +145,11 @@ class LessonSlot(Base):
     day_number: Mapped[int] = mapped_column(Integer, nullable=False)
     scheduled_date: Mapped[str | None] = mapped_column(Text, nullable=True)
     topic_subtopic: Mapped[str] = mapped_column(Text, nullable=False)
+    lesson_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("lesson_plans.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

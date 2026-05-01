@@ -8,8 +8,8 @@ from sqlalchemy.types import JSON, Uuid
 from dars.database import Base
 
 
-class LessonPlan(Base):
-    __tablename__ = "lesson_plans"
+class ExamGeneration(Base):
+    __tablename__ = "exam_generations"
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -18,17 +18,14 @@ class LessonPlan(Base):
         Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
     )
     webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    grade: Mapped[str] = mapped_column(String(50), nullable=False)
+    curriculum: Mapped[str] = mapped_column(String(50), ForeignKey("curriculums.code"), nullable=False)
+    grade: Mapped[int] = mapped_column(Integer, ForeignKey("grades.grade"), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), ForeignKey("subjects.code"), nullable=False)
-    topic: Mapped[str | None] = mapped_column(Text, nullable=True)
-    curriculum: Mapped[str] = mapped_column(String(50), ForeignKey("curriculums.code"), nullable=False, default="ICT")
-    page_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    class_strength: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_ranges: Mapped[str] = mapped_column(Text, nullable=False)
+    generation_type: Mapped[str] = mapped_column(String(50), nullable=False, default="exam")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
-    content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    content_bilingual: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    metadata_: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

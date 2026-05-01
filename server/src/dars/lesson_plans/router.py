@@ -6,99 +6,115 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dars.clients.models import Client
 from dars.database import get_db
 from dars.deps import get_current_client
+from dars.exam_generations.schemas import ExamGenerationCreateRequest, ExamGenerationResponse
+from dars.exam_generations.service import generate_exam_task, queue_exam_generation
 from dars.lesson_plans.schemas import (
     LessonPlanCreateRequest,
-    LessonPlanEditRequest,
     LessonPlanListResponse,
     LessonPlanResponse,
-    LessonPlanReviewRequest,
-    LessonPlanReviewResponse,
 )
 from dars.lesson_plans.service import (
-    edit_lesson_plan,
     generate_lesson_plan_task,
     get_lesson_plan,
     list_lesson_plans,
     queue_lesson_plan,
-    review_lesson_plan,
 )
 
 router = APIRouter(prefix="/api/v1/lesson-plans", tags=["lesson-plans"])
 
 
-@router.post("/review", response_model=LessonPlanReviewResponse)
-async def review_lesson_plan_endpoint(
-    body: LessonPlanReviewRequest,
-    _current_client: Client = Depends(get_current_client),
-    db: AsyncSession = Depends(get_db),
-) -> LessonPlanReviewResponse:
-    try:
-        review = await review_lesson_plan(db, request=body)
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    return LessonPlanReviewResponse(review=review)
-
-
-@router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=LessonPlanResponse)
-async def create_lesson_plan_endpoint(
+@router.post(
+    "",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=LessonPlanResponse,
+)
+async def create_lesson_plan(
     body: LessonPlanCreateRequest,
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:
-    lp = await queue_lesson_plan(db, request=body)
+    """
+    Queue a lesson plan for async generation.
+
+    Returns immediately with status=PENDING and a lesson plan id.
+    Poll GET /api/v1/lesson-plans/{id} or wait for the webhook.
+    """
+    lp = await queue_lesson_plan(db, client_id=current_client.id, request=body)
     background_tasks.add_task(
         generate_lesson_plan_task,
         lp_id=lp.id,
-        webhook_url=current_client.webhook_url,
+        client_id=current_client.id,
         request=body,
     )
     return LessonPlanResponse.model_validate(lp)
 
 
-@router.get("", response_model=LessonPlanListResponse)
+@router.get(
+    "",
+    response_model=LessonPlanListResponse,
+)
 async def list_lesson_plans_endpoint(
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    _current_client: Client = Depends(get_current_client),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanListResponse:
-    items, total = await list_lesson_plans(
-        db,
-        limit=limit,
-        offset=offset,
-    )
+    """List all lesson plans for the authenticated client."""
+    items, total = await list_lesson_plans(db, client_id=current_client.id, offset=offset, limit=limit)
     return LessonPlanListResponse(
         items=[LessonPlanResponse.model_validate(lp) for lp in items],
         total=total,
     )
 
 
-@router.patch("/{lp_id}", response_model=LessonPlanResponse)
-async def edit_lesson_plan_endpoint(
-    lp_id: uuid.UUID,
-    body: LessonPlanEditRequest,
-    _current_client: Client = Depends(get_current_client),
-    db: AsyncSession = Depends(get_db),
-) -> LessonPlanResponse:
-    try:
-        lp = await edit_lesson_plan(db, lp_id=lp_id, request=body)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    if lp is None:
-        raise HTTPException(status_code=404, detail="Lesson plan not found")
-    return LessonPlanResponse.model_validate(lp)
-
-
-@router.get("/{lp_id}", response_model=LessonPlanResponse)
+@router.get(
+    "/{lp_id}",
+    response_model=LessonPlanResponse,
+)
 async def get_lesson_plan_endpoint(
     lp_id: uuid.UUID,
-    _current_client: Client = Depends(get_current_client),
+    current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:
-    lp = await get_lesson_plan(db, lp_id=lp_id)
+    """Get a single lesson plan by id. Only accessible to the owning client."""
+    lp = await get_lesson_plan(db, lp_id=lp_id, client_id=current_client.id)
     if lp is None:
-        raise HTTPException(status_code=404, detail="Lesson plan not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
     return LessonPlanResponse.model_validate(lp)
+
+
+@router.post(
+    "/{lp_id}/generate-exam",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ExamGenerationResponse,
+)
+async def generate_exam_from_lp(
+    lp_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> ExamGenerationResponse:
+    """Queue an exam generation derived from an existing lesson plan.
+
+    Uses the LP's curriculum, grade, subject, and page_number as inputs.
+    All other exam generation settings use sensible defaults.
+    """
+    lp = await get_lesson_plan(db, client_id=current_client.id, lp_id=lp_id)
+    if lp is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
+    if not lp.page_number:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Lesson plan has no page number — cannot derive exam page ranges.")
+
+    request = ExamGenerationCreateRequest(
+        curriculum=lp.curriculum,
+        grade=int(lp.grade),
+        subject=lp.subject,
+        page_ranges=lp.page_number,
+        question_types=["seen", "unseen"],
+        seen_categories=["objective", "subjective"],
+        unseen_categories=["objective", "subjective"],
+    )
+    eg = await queue_exam_generation(db, client_id=current_client.id, request=request)
+    background_tasks.add_task(generate_exam_task, eg_id=eg.id, client_id=current_client.id, request=request)
+    return ExamGenerationResponse.model_validate(eg)

@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -56,7 +55,6 @@ class TopicResponse(BaseModel):
     topic_number: int
     title: str
     page_number: str | None
-    sub_slos: Any | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -78,6 +76,7 @@ class LessonSlotResponse(BaseModel):
     day_number: int
     scheduled_date: str | None
     topic_subtopic: str
+    lesson_plan_id: uuid.UUID | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

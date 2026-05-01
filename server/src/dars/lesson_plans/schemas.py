@@ -1,40 +1,15 @@
 import uuid
 from datetime import datetime
-from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator
 
-
-class LessonPlanEditRequest(BaseModel):
-    edit_prompt: str
-
-
-class LessonPlanReviewRequest(BaseModel):
-    lesson_plan_id: uuid.UUID | None = None
-    lesson_plan_html: str | None = None
-    subject: str | None = None
-    grade: int | None = None
-
-    @model_validator(mode="after")
-    def validate_source_and_fields(self) -> "LessonPlanReviewRequest":
-        has_id = self.lesson_plan_id is not None
-        has_html = self.lesson_plan_html is not None
-        if has_id == has_html:
-            raise ValueError(
-                "Provide exactly one of 'lesson_plan_id' or 'lesson_plan_html'."
-            )
-        if has_html:
-            if self.subject is None or self.grade is None:
-                raise ValueError(
-                    "'subject' and 'grade' are required when 'lesson_plan_html' is provided."
-                )
-        return self
+from dars.mapping import canonical_curriculum, canonical_grade, canonical_subject
 
 
 class LessonPlanCreateRequest(BaseModel):
-    grade: str
+    grade: int
     subject: str
-    page_number: str
+    page_number: str = ""
     curriculum: str = "ICT"
     class_strength: int | None = None
     topic: str | None = None
@@ -42,30 +17,44 @@ class LessonPlanCreateRequest(BaseModel):
     exercise_page_number: str = ""
     custom_prompt: str = ""
     generate_bilingual: bool = False
+    webhook_url: str | None = None
+
+    @field_validator("subject", mode="before")
+    @classmethod
+    def normalise_subject(cls, v: str) -> str:
+        return canonical_subject(v)
+
+    @field_validator("curriculum", mode="before")
+    @classmethod
+    def normalise_curriculum(cls, v: str) -> str:
+        return canonical_curriculum(v)
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalise_grade(cls, v: int | str) -> int:
+        return canonical_grade(v)
 
 
 class LessonPlanResponse(BaseModel):
     id: uuid.UUID
-    external_ref: str | None
+    client_id: uuid.UUID
+    status: str
     grade: str
     subject: str
-    topic: str | None
-    page_number: str | None
-    class_strength: int | None
-    content: str | None
-    content_bilingual: str | None
-    status: str
-    metadata_: dict[str, Any]
-    tags: dict[str, Any]
-    review: dict[str, Any] | None = None
+    curriculum: str = "ICT"
+    topic: str | None = None
+    page_number: str | None = None
+    class_strength: int | None = None
+    webhook_url: str | None = None
+    content: str | None = None
+    content_bilingual: str | None = None
+    tags: dict = {}
+    metadata_: dict = {}
+    external_ref: str | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class LessonPlanReviewResponse(BaseModel):
-    review: dict[str, Any]
 
 
 class LessonPlanListResponse(BaseModel):
