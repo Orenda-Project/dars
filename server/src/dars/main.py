@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 import colorlog
 from fastapi import FastAPI
@@ -18,13 +19,21 @@ import dars.curriculum.models  # noqa: F401 — registers Book and BookChapter w
 from dars.auth.router import auth_router
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
+from dars.migrations import run_migrations
 from dars.lesson_plans.router import router as lesson_plans_router
 from dars.exam_generations.router import router as exam_generations_router
 from dars.curriculum.router import admin_router as curriculum_admin_router
 from dars.curriculum.router import router as curriculum_router
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await run_migrations(settings.database_url)
+    yield
+
+
 app = FastAPI(
     title="Dars API",
+    lifespan=lifespan,
     description="Lesson plan infrastructure for Taleemabad internal teams",
     version="0.1.0",
     docs_url="/docs",
