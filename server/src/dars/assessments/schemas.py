@@ -11,6 +11,7 @@ class AssessmentResponse(BaseModel):
     status: str
     content: str | None = None
     content_json: list[Any] | None = None
+    answers_json: list[Any] | None = None
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime

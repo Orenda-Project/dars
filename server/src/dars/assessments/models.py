@@ -20,6 +20,7 @@ class Assessment(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="PENDING")
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     content_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    answers_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

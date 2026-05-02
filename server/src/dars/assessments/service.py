@@ -59,31 +59,20 @@ def _extract_json_array(response: str) -> list:
     return []
 
 
-def _render_html(mcqs: list) -> str:
-    """Render MCQ list to clean readable HTML."""
-    parts = []
-    for i, mcq in enumerate(mcqs, start=1):
-        question = mcq.get("question", "")
-        options = mcq.get("options", {})
-        answer = mcq.get("answer", "")
-        explanation = mcq.get("explanation", "")
-
-        option_items = []
-        for letter in ("a", "b", "c", "d"):
-            text_val = options.get(letter, "")
-            if letter == answer:
-                option_items.append(f'<li><strong>{letter}) {text_val}</strong> &#10003;</li>')
-            else:
-                option_items.append(f"<li>{letter}) {text_val}</li>")
-
-        parts.append(
-            f'<div class="mcq">'
-            f"<p><strong>Q{i}.</strong> {question}</p>"
-            f"<ul>{''.join(option_items)}</ul>"
-            f"<p><em>Explanation: {explanation}</em></p>"
-            f"</div>"
-        )
-    return "\n".join(parts)
+def _split_mcqs(mcqs: list) -> tuple[list, list]:
+    """Split MCQs into questions-only and answers-only parallel lists."""
+    questions = []
+    answers = []
+    for mcq in mcqs:
+        questions.append({
+            "question": mcq.get("question", ""),
+            "options": mcq.get("options", {}),
+        })
+        answers.append({
+            "answer": mcq.get("answer", ""),
+            "explanation": mcq.get("explanation", ""),
+        })
+    return questions, answers
 
 
 async def generate_assessment(
@@ -159,8 +148,10 @@ async def generate_assessment(
             if not mcqs:
                 raise ValueError(f"No JSON array found in LLM response: {raw[:200]}")
 
-            record.content_json = mcqs
-            record.content = _render_html(mcqs)
+            questions, answers = _split_mcqs(mcqs)
+            record.content_json = questions
+            record.answers_json = answers
+            record.content = None
             record.status = "READY"
         except Exception:
             logger.error("generate_assessment: failed assessment_id=%s", assessment_id, exc_info=True)

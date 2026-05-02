@@ -58,12 +58,22 @@ interface LessonPlan {
   content_bilingual: string | null;
 }
 
+interface MCQQuestion {
+  question: string;
+  options: Record<string, string>;
+}
+
+interface MCQAnswer {
+  answer: string;
+  explanation: string;
+}
+
 interface Assessment {
   id: string;
   lesson_plan_id: string;
   status: string;
-  content: string | null;
-  content_json: object[] | null;
+  content_json: MCQQuestion[] | null;
+  answers_json: MCQAnswer[] | null;
 }
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
@@ -168,6 +178,7 @@ function LPPanel({ lpId, onClose }: { lpId: string; onClose: () => void }) {
 function AssessmentPanel({ assessmentId, onClose }: { assessmentId: string; onClose: () => void }) {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAnswers, setShowAnswers] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -193,30 +204,75 @@ function AssessmentPanel({ assessmentId, onClose }: { assessmentId: string; onCl
     return () => clearInterval(timer);
   }, [assessment, assessmentId]);
 
+  const questions = assessment?.content_json ?? [];
+  const answers = assessment?.answers_json ?? [];
+
   return (
     <>
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
       <div className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-dars-rule-light shrink-0">
-          <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest">Assessment</p>
-          <button type="button" onClick={onClose} className="text-dars-muted hover:text-dars-ink cursor-pointer text-xl leading-none">✕</button>
+          <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest">Quiz</p>
+          <div className="flex items-center gap-3">
+            {assessment?.status === "READY" && (
+              <button
+                type="button"
+                onClick={() => setShowAnswers((s) => !s)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                  showAnswers
+                    ? "bg-dars-terra text-white border-dars-terra"
+                    : "bg-white text-dars-muted border-dars-rule-light hover:border-dars-terra hover:text-dars-terra"
+                }`}
+              >
+                {showAnswers ? "Hide Answers" : "Reveal Answers"}
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="text-dars-muted hover:text-dars-ink cursor-pointer text-xl leading-none">✕</button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {loading && <div className="flex justify-center py-16"><BookLoader size={40} label="Loading assessment" /></div>}
+          {loading && <div className="flex justify-center py-16"><BookLoader size={40} label="Loading quiz" /></div>}
           {!loading && assessment?.status === "PENDING" && (
             <div className="flex flex-col items-center gap-3 py-16">
-              <BookLoader size={40} label="Generating assessment…" />
+              <BookLoader size={40} label="Generating quiz…" />
               <p className="text-xs text-dars-muted">This takes about 15 seconds</p>
             </div>
           )}
           {!loading && assessment?.status === "ERROR" && (
             <p className="text-sm text-red-500">Generation failed. Try again.</p>
           )}
-          {!loading && assessment?.status === "READY" && assessment.content && (
-            <div
-              className="text-sm text-dars-ink [&_.mcq]:mb-6 [&_.mcq_p]:mb-2 [&_.mcq_ul]:list-none [&_.mcq_ul]:pl-0 [&_.mcq_li]:py-0.5"
-              dangerouslySetInnerHTML={{ __html: assessment.content }}
-            />
+          {!loading && assessment?.status === "READY" && (
+            <ol className="space-y-6">
+              {questions.map((q, i) => {
+                const ans = answers[i];
+                return (
+                  <li key={i} className="text-sm text-dars-ink">
+                    <p className="font-semibold mb-2">Q{i + 1}. {q.question}</p>
+                    <ul className="space-y-1 mb-2">
+                      {(["a", "b", "c", "d"] as const).map((letter) => {
+                        const isCorrect = showAnswers && ans?.answer === letter;
+                        return (
+                          <li
+                            key={letter}
+                            className={`px-3 py-1.5 rounded text-xs ${
+                              isCorrect
+                                ? "bg-green-50 border border-green-300 font-semibold text-green-800"
+                                : "border border-dars-rule-light"
+                            }`}
+                          >
+                            {letter}) {q.options[letter]}
+                            {isCorrect && <span className="ml-2">✓</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {showAnswers && ans?.explanation && (
+                      <p className="text-xs text-dars-muted italic">{ans.explanation}</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
           )}
         </div>
       </div>

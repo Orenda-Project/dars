@@ -1,0 +1,1 @@
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS answers_json JSONB;

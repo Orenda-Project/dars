@@ -256,8 +256,8 @@ def test_extract_json_array_empty_on_garbage():
     assert result == []
 
 
-def test_render_html_marks_correct_answer():
-    from dars.assessments.service import _render_html
+def test_split_mcqs_separates_questions_and_answers():
+    from dars.assessments.service import _split_mcqs
 
     mcqs = [
         {
@@ -267,8 +267,11 @@ def test_render_html_marks_correct_answer():
             "explanation": "Basic arithmetic.",
         }
     ]
-    html = _render_html(mcqs)
-    assert "Q1." in html
-    assert "What is 2+2?" in html
-    assert "<strong>b) 4</strong>" in html
-    assert "Basic arithmetic." in html
+    questions, answers = _split_mcqs(mcqs)
+    assert len(questions) == 1
+    assert len(answers) == 1
+    assert "answer" not in questions[0]
+    assert "explanation" not in questions[0]
+    assert questions[0]["question"] == "What is 2+2?"
+    assert answers[0]["answer"] == "b"
+    assert answers[0]["explanation"] == "Basic arithmetic."
