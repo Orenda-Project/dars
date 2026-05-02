@@ -6,8 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dars.clients.models import Client
 from dars.database import get_db
 from dars.deps import get_current_client
-from dars.exam_generations.schemas import ExamGenerationCreateRequest, ExamGenerationResponse
-from dars.exam_generations.service import generate_exam_task, queue_exam_generation
 from dars.lesson_plans.schemas import (
     LessonPlanCreateRequest,
     LessonPlanListResponse,
@@ -83,37 +81,3 @@ async def get_lesson_plan_endpoint(
     return LessonPlanResponse.model_validate(lp)
 
 
-@router.post(
-    "/{lp_id}/generate-exam",
-    status_code=status.HTTP_202_ACCEPTED,
-    response_model=ExamGenerationResponse,
-)
-async def generate_exam_from_lp(
-    lp_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
-    current_client: Client = Depends(get_current_client),
-    db: AsyncSession = Depends(get_db),
-) -> ExamGenerationResponse:
-    """Queue an exam generation derived from an existing lesson plan.
-
-    Uses the LP's curriculum, grade, subject, and page_number as inputs.
-    All other exam generation settings use sensible defaults.
-    """
-    lp = await get_lesson_plan(db, lp_id=lp_id)
-    if lp is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
-    if not lp.page_number:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Lesson plan has no page number — cannot derive exam page ranges.")
-
-    request = ExamGenerationCreateRequest(
-        curriculum=lp.curriculum,
-        grade=int(lp.grade),
-        subject=lp.subject,
-        page_ranges=lp.page_number,
-        question_types=["seen", "unseen"],
-        seen_categories=["objective", "subjective"],
-        unseen_categories=["objective", "subjective"],
-    )
-    eg = await queue_exam_generation(db, client_id=current_client.id, request=request)
-    background_tasks.add_task(generate_exam_task, eg_id=eg.id, client_id=current_client.id, request=request)
-    return ExamGenerationResponse.model_validate(eg)

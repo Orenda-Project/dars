@@ -112,7 +112,7 @@ function GenerateForm({ onGenerated }: { onGenerated: (eg: ExamGeneration) => vo
     };
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/exam-generations`, {
+      const res = await fetch(`${API_URL}/api/v1/custom-exam-generations`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -251,7 +251,7 @@ function GenerationResult({ initial }: { initial: ExamGeneration }) {
   const fetchStatus = useCallback(async () => {
     const apiKey = getApiKey();
     try {
-      const res = await fetch(`${API_URL}/api/v1/exam-generations/${initial.id}`, {
+      const res = await fetch(`${API_URL}/api/v1/custom-exam-generations/${initial.id}`, {
         headers: { "X-API-Key": apiKey },
       });
       if (!res.ok) return;
@@ -346,7 +346,7 @@ function PastExams({ refreshTrigger }: { refreshTrigger: number }) {
     const apiKey = getApiKey();
     try {
       const res = await fetch(
-        `${API_URL}/api/v1/exam-generations?limit=${LIMIT}&offset=${off}`,
+        `${API_URL}/api/v1/custom-exam-generations?limit=${LIMIT}&offset=${off}`,
         { headers: { "X-API-Key": apiKey } }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
