@@ -93,10 +93,10 @@ class LessonSlotListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class CurriculumSlot(BaseModel):
+class CurriculumLesson(BaseModel):
     id: uuid.UUID
     day_number: int
-    topic_subtopic: str
+    title: str
     lesson_plan_id: uuid.UUID | None
     assessment_id: uuid.UUID | None
 
@@ -107,7 +107,7 @@ class CurriculumTopic(BaseModel):
     title: str
     start_page: int | None
     end_page: int | None
-    slots: list[CurriculumSlot]
+    lessons: list[CurriculumLesson]
 
 
 class CurriculumChapter(BaseModel):

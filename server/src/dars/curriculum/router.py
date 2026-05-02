@@ -22,7 +22,7 @@ from dars.curriculum.schemas import (
     BreakdownResponse,
     ChapterPreview,
     CurriculumChapter,
-    CurriculumSlot,
+    CurriculumLesson,
     CurriculumTopic,
     ImportBooksRequest,
     ImportBooksResponse,
@@ -194,17 +194,17 @@ async def get_book_curriculum(
                 title=r["topic_title"],
                 start_page=r["topic_start_page"],
                 end_page=r["topic_end_page"],
-                slots=[],
+                lessons=[],
             )
             topics[t_id] = topic
             chapters[ch_id].topics.append(topic)
 
         if r["slot_id"] is None:
             continue
-        topics[t_id].slots.append(CurriculumSlot(
+        topics[t_id].lessons.append(CurriculumLesson(
             id=uuid.UUID(str(r["slot_id"])),
             day_number=r["day_number"],
-            topic_subtopic=r["topic_subtopic"],
+            title=r["topic_subtopic"],
             lesson_plan_id=uuid.UUID(str(r["lesson_plan_id"])) if r["lesson_plan_id"] else None,
             assessment_id=uuid.UUID(str(r["assessment_id"])) if r["assessment_id"] else None,
         ))
