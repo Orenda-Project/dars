@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 class AssessmentResponse(BaseModel):
     id: uuid.UUID
-    topic_id: uuid.UUID
+    lesson_plan_id: uuid.UUID
     status: str
     content: str | None = None
     content_json: list[Any] | None = None

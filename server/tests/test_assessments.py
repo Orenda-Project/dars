@@ -13,10 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import dars.assessments.models  # noqa — register with Base
 import dars.clients.models  # noqa — register with Base
 import dars.curriculum.models  # noqa — register with Base
+import dars.lesson_plans.models  # noqa — register with Base
 from dars.assessments.models import Assessment
 from dars.clients.service import create_client
-from dars.curriculum.models import Book, BookChapter, Topic
 from dars.database import Base, get_db
+from dars.lesson_plans.models import LessonPlan
 from dars.main import app
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
@@ -69,113 +70,74 @@ async def authed_client(db_session):
 # ---------------------------------------------------------------------------
 
 
-async def _make_book(db: AsyncSession, **kwargs) -> Book:
+async def _make_lp(db: AsyncSession, **kwargs) -> LessonPlan:
     defaults = {
-        "core_id": 1,
+        "client_id": uuid.uuid4(),
         "curriculum": "ICT",
-        "grade": 5,
+        "grade": "5",
         "subject": "Math",
-        "title": "Math Book Grade 5",
+        "topic": "Fractions",
+        "status": "READY",
+        "content": "<p>Lesson content about fractions.</p>",
     }
     defaults.update(kwargs)
-    book = Book(**defaults)
-    db.add(book)
+    lp = LessonPlan(**defaults)
+    db.add(lp)
     await db.commit()
-    await db.refresh(book)
-    return book
-
-
-async def _make_chapter(db: AsyncSession, book_id: uuid.UUID, **kwargs) -> BookChapter:
-    defaults = {
-        "core_id": 1,
-        "book_id": book_id,
-        "title": "Chapter 1",
-        "chapter_number": 1,
-    }
-    defaults.update(kwargs)
-    chapter = BookChapter(**defaults)
-    db.add(chapter)
-    await db.commit()
-    await db.refresh(chapter)
-    return chapter
-
-
-async def _make_topic(db: AsyncSession, chapter_id: uuid.UUID, **kwargs) -> Topic:
-    defaults = {
-        "chapter_id": chapter_id,
-        "topic_number": 1,
-        "title": "Topic One",
-        "start_page": 5,
-        "end_page": 10,
-    }
-    defaults.update(kwargs)
-    topic = Topic(**defaults)
-    db.add(topic)
-    await db.commit()
-    await db.refresh(topic)
-    return topic
+    await db.refresh(lp)
+    return lp
 
 
 def _mock_anthropic_response(mcqs: list = None):
-    """Patch anthropic so the API call returns a successful MCQ response."""
     import json as _json
-
     if mcqs is None:
         mcqs = MOCK_MCQS
-
     mock_content = MagicMock()
     mock_content.text = _json.dumps(mcqs)
-
     mock_message = MagicMock()
     mock_message.content = [mock_content]
-
     mock_client = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=mock_message)
-
     return mock_client
 
 
 # ---------------------------------------------------------------------------
-# POST /api/v1/topics/{topic_id}/assessment
+# POST /api/v1/lesson-plans/{lp_id}/assessment
 # ---------------------------------------------------------------------------
 
 
 async def test_create_assessment_returns_201_pending(authed_client, db_session):
-    http, api_key, _ = authed_client
-    book = await _make_book(db_session, core_id=1)
-    chapter = await _make_chapter(db_session, book.id, core_id=1)
-    topic = await _make_topic(db_session, chapter.id)
+    http, api_key, client_obj = authed_client
+    lp = await _make_lp(db_session, client_id=client_obj.id)
 
     with patch("dars.assessments.service.anthropic.AsyncAnthropic", return_value=_mock_anthropic_response()):
         response = await http.post(
-            f"/api/v1/topics/{topic.id}/assessment",
+            f"/api/v1/lesson-plans/{lp.id}/assessment",
             headers={"X-API-Key": api_key},
         )
 
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "PENDING"
-    assert data["topic_id"] == str(topic.id)
+    assert data["lesson_plan_id"] == str(lp.id)
     assert "id" in data
     assert data["content"] is None
     assert data["content_json"] is None
 
 
 async def test_create_assessment_requires_auth(authed_client, db_session):
-    http, _, _ = authed_client
-    book = await _make_book(db_session, core_id=1)
-    chapter = await _make_chapter(db_session, book.id, core_id=1)
-    topic = await _make_topic(db_session, chapter.id)
+    http, _, client_obj = authed_client
+    lp = await _make_lp(db_session, client_id=client_obj.id)
 
-    response = await http.post(f"/api/v1/topics/{topic.id}/assessment")
+    response = await http.post(f"/api/v1/lesson-plans/{lp.id}/assessment")
     assert response.status_code == 401
 
 
-async def test_create_assessment_topic_not_found(authed_client):
+async def test_create_assessment_lp_not_found(authed_client):
     http, api_key, _ = authed_client
     fake_id = str(uuid.uuid4())
     response = await http.post(
-        f"/api/v1/topics/{fake_id}/assessment",
+        f"/api/v1/lesson-plans/{fake_id}/assessment",
         headers={"X-API-Key": api_key},
     )
     assert response.status_code == 404
@@ -187,14 +149,12 @@ async def test_create_assessment_topic_not_found(authed_client):
 
 
 async def test_get_assessment_by_id(authed_client, db_session):
-    http, api_key, _ = authed_client
-    book = await _make_book(db_session, core_id=1)
-    chapter = await _make_chapter(db_session, book.id, core_id=1)
-    topic = await _make_topic(db_session, chapter.id)
+    http, api_key, client_obj = authed_client
+    lp = await _make_lp(db_session, client_id=client_obj.id)
 
     with patch("dars.assessments.service.anthropic.AsyncAnthropic", return_value=_mock_anthropic_response()):
         create_resp = await http.post(
-            f"/api/v1/topics/{topic.id}/assessment",
+            f"/api/v1/lesson-plans/{lp.id}/assessment",
             headers={"X-API-Key": api_key},
         )
     assert create_resp.status_code == 201
@@ -207,7 +167,7 @@ async def test_get_assessment_by_id(authed_client, db_session):
     assert get_resp.status_code == 200
     data = get_resp.json()
     assert data["id"] == assessment_id
-    assert data["topic_id"] == str(topic.id)
+    assert data["lesson_plan_id"] == str(lp.id)
 
 
 async def test_get_assessment_not_found(authed_client):
@@ -221,8 +181,9 @@ async def test_get_assessment_not_found(authed_client):
 
 
 async def test_get_assessment_requires_auth(authed_client, db_session):
-    http, _, _ = authed_client
-    assessment = Assessment(topic_id=uuid.uuid4(), status="PENDING")
+    http, _, client_obj = authed_client
+    lp = await _make_lp(db_session, client_id=client_obj.id)
+    assessment = Assessment(lesson_plan_id=lp.id, status="PENDING")
     db_session.add(assessment)
     await db_session.commit()
     await db_session.refresh(assessment)
@@ -232,19 +193,17 @@ async def test_get_assessment_requires_auth(authed_client, db_session):
 
 
 # ---------------------------------------------------------------------------
-# Regeneration — creating again for same topic replaces the old one
+# Regeneration
 # ---------------------------------------------------------------------------
 
 
 async def test_create_assessment_replaces_existing(authed_client, db_session):
-    http, api_key, _ = authed_client
-    book = await _make_book(db_session, core_id=1)
-    chapter = await _make_chapter(db_session, book.id, core_id=1)
-    topic = await _make_topic(db_session, chapter.id)
+    http, api_key, client_obj = authed_client
+    lp = await _make_lp(db_session, client_id=client_obj.id)
 
     with patch("dars.assessments.service.anthropic.AsyncAnthropic", return_value=_mock_anthropic_response()):
         first_resp = await http.post(
-            f"/api/v1/topics/{topic.id}/assessment",
+            f"/api/v1/lesson-plans/{lp.id}/assessment",
             headers={"X-API-Key": api_key},
         )
     assert first_resp.status_code == 201
@@ -252,7 +211,7 @@ async def test_create_assessment_replaces_existing(authed_client, db_session):
 
     with patch("dars.assessments.service.anthropic.AsyncAnthropic", return_value=_mock_anthropic_response()):
         second_resp = await http.post(
-            f"/api/v1/topics/{topic.id}/assessment",
+            f"/api/v1/lesson-plans/{lp.id}/assessment",
             headers={"X-API-Key": api_key},
         )
     assert second_resp.status_code == 201
@@ -260,21 +219,15 @@ async def test_create_assessment_replaces_existing(authed_client, db_session):
 
     assert first_id != second_id
 
-    old_get = await http.get(
-        f"/api/v1/assessments/{first_id}",
-        headers={"X-API-Key": api_key},
-    )
+    old_get = await http.get(f"/api/v1/assessments/{first_id}", headers={"X-API-Key": api_key})
     assert old_get.status_code == 404
 
-    new_get = await http.get(
-        f"/api/v1/assessments/{second_id}",
-        headers={"X-API-Key": api_key},
-    )
+    new_get = await http.get(f"/api/v1/assessments/{second_id}", headers={"X-API-Key": api_key})
     assert new_get.status_code == 200
 
 
 # ---------------------------------------------------------------------------
-# Service unit tests — _render_html and _extract_json_array
+# Service unit tests
 # ---------------------------------------------------------------------------
 
 

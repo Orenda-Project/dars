@@ -14,8 +14,8 @@ class Assessment(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    topic_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("topics.id", ondelete="CASCADE"), nullable=False
+    lesson_plan_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("lesson_plans.id", ondelete="CASCADE"), nullable=False
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default="PENDING")
     content: Mapped[str | None] = mapped_column(Text, nullable=True)

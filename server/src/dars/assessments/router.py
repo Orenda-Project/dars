@@ -10,9 +10,9 @@ from dars.assessments.schemas import AssessmentResponse
 from dars.assessments.service import generate_assessment
 from dars.clients.models import Client
 from dars.config import settings
-from dars.curriculum.models import Topic
 from dars.database import get_db
 from dars.deps import get_current_client
+from dars.lesson_plans.models import LessonPlan
 
 logger = logging.getLogger(__name__)
 
@@ -20,25 +20,25 @@ router = APIRouter(tags=["assessments"])
 
 
 @router.post(
-    "/api/v1/topics/{topic_id}/assessment",
+    "/api/v1/lesson-plans/{lp_id}/assessment",
     response_model=AssessmentResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_or_replace_assessment(
-    topic_id: uuid.UUID,
+    lp_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> AssessmentResponse:
-    """Generate (or regenerate) an assessment for a topic. Replaces any existing one."""
-    logger.info("create_or_replace_assessment: topic_id=%s client_id=%s", topic_id, current_client.id)
+    """Generate (or regenerate) an assessment for a lesson plan. Replaces any existing one."""
+    logger.info("create_or_replace_assessment: lp_id=%s client_id=%s", lp_id, current_client.id)
 
-    topic = await db.get(Topic, topic_id)
-    if topic is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+    lp = await db.get(LessonPlan, lp_id)
+    if lp is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
 
     existing_result = await db.execute(
-        select(Assessment).where(Assessment.topic_id == topic_id)
+        select(Assessment).where(Assessment.lesson_plan_id == lp_id)
     )
     existing = existing_result.scalar_one_or_none()
     if existing is not None:
@@ -46,7 +46,7 @@ async def create_or_replace_assessment(
         await db.delete(existing)
         await db.flush()
 
-    assessment = Assessment(topic_id=topic_id, status="PENDING")
+    assessment = Assessment(lesson_plan_id=lp_id, status="PENDING")
     db.add(assessment)
     await db.flush()
     assessment_id = assessment.id
@@ -56,7 +56,7 @@ async def create_or_replace_assessment(
     background_tasks.add_task(
         generate_assessment,
         assessment_id=assessment_id,
-        topic_id=topic_id,
+        lesson_plan_id=lp_id,
         db_url=settings.database_url,
     )
 

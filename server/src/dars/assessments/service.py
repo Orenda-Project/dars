@@ -12,7 +12,7 @@ from dars.config import settings
 
 logger = logging.getLogger(__name__)
 
-ASSESSMENT_SYSTEM_PROMPT = """You are an expert teacher creating a short assessment to test student understanding of a textbook topic.
+ASSESSMENT_SYSTEM_PROMPT = """You are an expert teacher creating a short assessment to test student understanding of a lesson.
 
 Generate 2-3 multiple-choice questions (MCQs) that are genuinely challenging — testing comprehension and application, not trivial recall. Questions should require students to think critically about the content, not just recognise a memorised fact.
 
@@ -77,7 +77,7 @@ def _render_html(mcqs: list) -> str:
                 option_items.append(f"<li>{letter}) {text_val}</li>")
 
         parts.append(
-            f"<div class=\"mcq\">"
+            f'<div class="mcq">'
             f"<p><strong>Q{i}.</strong> {question}</p>"
             f"<ul>{''.join(option_items)}</ul>"
             f"<p><em>Explanation: {explanation}</em></p>"
@@ -88,11 +88,11 @@ def _render_html(mcqs: list) -> str:
 
 async def generate_assessment(
     assessment_id: uuid.UUID,
-    topic_id: uuid.UUID,
+    lesson_plan_id: uuid.UUID,
     db_url: str,
 ) -> None:
-    """Background task: generate MCQs for a topic and update the assessment record."""
-    logger.info("generate_assessment: start assessment_id=%s topic_id=%s", assessment_id, topic_id)
+    """Background task: generate MCQs from a lesson plan and update the assessment record."""
+    logger.info("generate_assessment: start assessment_id=%s lesson_plan_id=%s", assessment_id, lesson_plan_id)
 
     engine = create_async_engine(db_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -107,33 +107,31 @@ async def generate_assessment(
         row = await session.execute(
             text("""
                 SELECT
-                    t.title,
-                    t.topic_text,
-                    b.grade,
-                    b.subject,
-                    b.curriculum
-                FROM topics t
-                JOIN book_chapters bc ON bc.id = t.chapter_id
-                JOIN books b ON b.id = bc.book_id
-                WHERE t.id = :topic_id
+                    lp.topic,
+                    lp.content,
+                    lp.grade,
+                    lp.subject,
+                    lp.curriculum
+                FROM lesson_plans lp
+                WHERE lp.id = :lp_id
             """),
-            {"topic_id": str(topic_id)},
+            {"lp_id": str(lesson_plan_id)},
         )
         data = row.mappings().one_or_none()
 
         if data is None:
-            logger.error("generate_assessment: topic_id=%s not found", topic_id)
+            logger.error("generate_assessment: lesson_plan_id=%s not found", lesson_plan_id)
             record.status = "ERROR"
-            record.error_message = "Topic not found"
+            record.error_message = "Lesson plan not found"
             await session.commit()
             await engine.dispose()
             return
 
-        topic_text = data["topic_text"] or ""
-        if not topic_text:
-            logger.error("generate_assessment: topic_id=%s has no topic_text", topic_id)
+        lp_content = data["content"] or ""
+        if not lp_content:
+            logger.error("generate_assessment: lesson_plan_id=%s has no content", lesson_plan_id)
             record.status = "ERROR"
-            record.error_message = "Topic has no content — run chapter breakdown first"
+            record.error_message = "Lesson plan has no content — generate the LP first"
             await session.commit()
             await engine.dispose()
             return
@@ -142,8 +140,8 @@ async def generate_assessment(
             f"Grade: {data['grade']}\n"
             f"Subject: {data['subject']}\n"
             f"Curriculum: {data['curriculum']}\n"
-            f"Topic: {data['title']}\n\n"
-            f"Topic Content:\n{topic_text}"
+            f"Topic: {data['topic']}\n\n"
+            f"Lesson Plan Content:\n{lp_content}"
         )
 
         try:

@@ -58,6 +58,14 @@ interface LessonPlan {
   content_bilingual: string | null;
 }
 
+interface Assessment {
+  id: string;
+  lesson_plan_id: string;
+  status: string;
+  content: string | null;
+  content_json: object[] | null;
+}
+
 // ── Spinner ───────────────────────────────────────────────────────────────────
 
 function Spinner() {
@@ -147,6 +155,67 @@ function LPPanel({ lpId, onClose }: { lpId: string; onClose: () => void }) {
             <div
               className="text-sm text-dars-ink [&_h2]:font-bold [&_h2]:text-base [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-1 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3 [&_li]:mb-1 [&_table]:w-full [&_table]:text-xs [&_table]:border-collapse [&_td]:border [&_td]:border-dars-rule-light [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-dars-rule-light [&_th]:px-2 [&_th]:py-1 [&_th]:bg-dars-parchment [&_th]:font-semibold"
               dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Assessment Panel (slide-over) ─────────────────────────────────────────────
+
+function AssessmentPanel({ assessmentId, onClose }: { assessmentId: string; onClose: () => void }) {
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/assessments/${assessmentId}`, {
+      headers: { "X-API-Key": getApiKey() },
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: Assessment) => setAssessment(data))
+      .catch(() => { toast.error("Failed to load assessment"); })
+      .finally(() => setLoading(false));
+  }, [assessmentId]);
+
+  useEffect(() => {
+    if (!assessment || assessment.status === "READY" || assessment.status === "ERROR") return;
+    const timer = setInterval(() => {
+      fetch(`${API_URL}/api/v1/assessments/${assessmentId}`, {
+        headers: { "X-API-Key": getApiKey() },
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((data: Assessment) => setAssessment(data))
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [assessment, assessmentId]);
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-dars-rule-light shrink-0">
+          <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest">Assessment</p>
+          <button type="button" onClick={onClose} className="text-dars-muted hover:text-dars-ink cursor-pointer text-xl leading-none">✕</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {loading && <div className="flex justify-center py-16"><BookLoader size={40} label="Loading assessment" /></div>}
+          {!loading && assessment?.status === "PENDING" && (
+            <div className="flex flex-col items-center gap-3 py-16">
+              <BookLoader size={40} label="Generating assessment…" />
+              <p className="text-xs text-dars-muted">This takes about 15 seconds</p>
+            </div>
+          )}
+          {!loading && assessment?.status === "ERROR" && (
+            <p className="text-sm text-red-500">Generation failed. Try again.</p>
+          )}
+          {!loading && assessment?.status === "READY" && assessment.content && (
+            <div
+              className="text-sm text-dars-ink [&_.mcq]:mb-6 [&_.mcq_p]:mb-2 [&_.mcq_ul]:list-none [&_.mcq_ul]:pl-0 [&_.mcq_li]:py-0.5"
+              dangerouslySetInnerHTML={{ __html: assessment.content }}
             />
           )}
         </div>
@@ -354,7 +423,7 @@ function AddSlotForm({ topicId, dayCount, onDone }: { topicId: string; dayCount:
 }
 
 function TopicSlotsColumn({
-  topics, slots, chapterSelected, selectedChapterId, loading, onViewLP, onSlotsRefresh,
+  topics, slots, chapterSelected, selectedChapterId, loading, onViewLP, onViewAssessment, onSlotsRefresh,
 }: {
   topics: Topic[];
   slots: Record<string, Slot[]>;
@@ -362,11 +431,13 @@ function TopicSlotsColumn({
   selectedChapterId: string | null;
   loading: boolean;
   onViewLP: (lpId: string) => void;
+  onViewAssessment: (assessmentId: string) => void;
   onSlotsRefresh: () => void;
 }) {
   const [breakingDown, setBreakingDown] = useState(false);
   const [deletingBreakdown, setDeletingBreakdown] = useState(false);
   const [generatingLp, setGeneratingLp] = useState<Record<string, boolean>>({});
+  const [generatingAssessment, setGeneratingAssessment] = useState<Record<string, boolean>>({});
   const [deletingTopic, setDeletingTopic] = useState<Record<string, boolean>>({});
   const [deletingSlot, setDeletingSlot] = useState<Record<string, boolean>>({});
   const [deletingLp, setDeletingLp] = useState<Record<string, boolean>>({});
@@ -447,6 +518,23 @@ function TopicSlotsColumn({
     } catch { toast.error("Failed to generate lesson plan."); }
     finally { setGeneratingLp((prev) => ({ ...prev, [slotId]: false })); }
   }, [onViewLP, onSlotsRefresh]);
+
+  const handleGenerateAssessment = useCallback(async (lpId: string) => {
+    setGeneratingAssessment((prev) => ({ ...prev, [lpId]: true }));
+    try {
+      const r = await fetch(`${API_URL}/api/v1/lesson-plans/${lpId}/assessment`, {
+        method: "POST",
+        headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
+      });
+      if (r.ok) {
+        const data: Assessment = await r.json();
+        onViewAssessment(data.id);
+      } else {
+        toast.error("Failed to generate assessment.");
+      }
+    } catch { toast.error("Failed to generate assessment."); }
+    finally { setGeneratingAssessment((prev) => ({ ...prev, [lpId]: false })); }
+  }, [onViewAssessment]);
 
   if (!chapterSelected) {
     return (
@@ -613,6 +701,17 @@ function TopicSlotsColumn({
                           >
                             {generatingLp[slot.id] ? <Spinner /> : slot.lesson_plan_id ? "↺" : "Gen LP"}
                           </button>
+                          {slot.lesson_plan_id && (
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateAssessment(slot.lesson_plan_id!)}
+                              disabled={!!generatingAssessment[slot.lesson_plan_id!]}
+                              title="Generate Assessment"
+                              className="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border border-dars-ink/30 text-dars-ink/60 hover:bg-dars-ink hover:text-white disabled:opacity-60 cursor-pointer transition-colors"
+                            >
+                              {generatingAssessment[slot.lesson_plan_id!] ? <Spinner /> : "Quiz"}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteSlot(slot.id)}
@@ -676,6 +775,7 @@ export default function CurriculumPage() {
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [slots, setSlots] = useState<Record<string, Slot[]>>({});
   const [activeLpId, setActiveLpId] = useState<string | null>(null);
+  const [activeAssessmentId, setActiveAssessmentId] = useState<string | null>(null);
 
   // Bulk LP generation state
   const [generatingAllLps, setGeneratingAllLps] = useState<string | null>(null);
@@ -798,11 +898,13 @@ export default function CurriculumPage() {
           selectedChapterId={selectedChapter?.id ?? null}
           loading={loadingTopics}
           onViewLP={setActiveLpId}
+          onViewAssessment={setActiveAssessmentId}
           onSlotsRefresh={handleSlotsRefresh}
         />
       </div>
 
       {activeLpId && <LPPanel lpId={activeLpId} onClose={() => setActiveLpId(null)} />}
+      {activeAssessmentId && <AssessmentPanel assessmentId={activeAssessmentId} onClose={() => setActiveAssessmentId(null)} />}
     </div>
   );
 }
