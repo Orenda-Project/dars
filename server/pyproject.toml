@@ -40,3 +40,4 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dars"]
+artifacts = ["src/dars/migrations/*.sql"]
