@@ -112,7 +112,6 @@ class CurriculumTopic(BaseModel):
 
 class CurriculumChapter(BaseModel):
     id: uuid.UUID
-    core_id: int
     chapter_number: int
     title: str
     start_page: int | None
@@ -122,6 +121,7 @@ class CurriculumChapter(BaseModel):
 
 class BookCurriculumResponse(BaseModel):
     book_id: uuid.UUID
+    book_title: str
     chapters: list[CurriculumChapter]
 
 

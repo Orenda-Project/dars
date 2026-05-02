@@ -122,26 +122,38 @@ async def get_book_stats(
     return data
 
 
-@router.get("/api/v1/books/{book_id}/curriculum", response_model=BookCurriculumResponse)
+@router.get("/api/v1/curriculum", response_model=BookCurriculumResponse)
 async def get_book_curriculum(
-    book_id: uuid.UUID,
+    grade: int = Query(...),
+    subject: str = Query(...),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> BookCurriculumResponse:
     """
-    Full curriculum tree for a book in one request.
-    Returns chapters → topics → slots (with lesson_plan_id and assessment_id).
+    Full curriculum tree for the client's curriculum, filtered by grade and subject.
+    Returns chapters → topics → lessons (with lesson_plan_id and assessment_id).
+    Client's curriculum is read from their profile — they don't need to send it.
     """
-    logger.info("get_book_curriculum: book_id=%s", book_id)
-    book = await db.get(Book, book_id)
+    if not current_client.curriculum:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Client has no curriculum configured")
+
+    logger.info("get_book_curriculum: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, current_client.curriculum, grade, subject)
+
+    book_result = await db.execute(
+        select(Book).where(
+            Book.curriculum == current_client.curriculum,
+            Book.grade == grade,
+            Book.subject == subject,
+        )
+    )
+    book = book_result.scalar_one_or_none()
     if book is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No book found for this grade and subject")
 
     rows = await db.execute(
         text("""
             SELECT
                 bc.id           AS chapter_id,
-                bc.core_id      AS chapter_core_id,
                 bc.chapter_number,
                 bc.title        AS chapter_title,
                 bc.start_page   AS chapter_start_page,
@@ -163,11 +175,10 @@ async def get_book_curriculum(
             WHERE bc.book_id = :book_id
             ORDER BY bc.chapter_number, t.topic_number, ls.day_number
         """),
-        {"book_id": str(book_id)},
+        {"book_id": str(book.id)},
     )
     all_rows = rows.mappings().all()
 
-    # Assemble nested tree
     chapters: dict[uuid.UUID, CurriculumChapter] = {}
     topics: dict[uuid.UUID, CurriculumTopic] = {}
 
@@ -176,7 +187,6 @@ async def get_book_curriculum(
         if ch_id not in chapters:
             chapters[ch_id] = CurriculumChapter(
                 id=ch_id,
-                core_id=r["chapter_core_id"],
                 chapter_number=r["chapter_number"],
                 title=r["chapter_title"],
                 start_page=r["chapter_start_page"],
@@ -209,8 +219,8 @@ async def get_book_curriculum(
             assessment_id=uuid.UUID(str(r["assessment_id"])) if r["assessment_id"] else None,
         ))
 
-    logger.info("get_book_curriculum: book_id=%s chapters=%d", book_id, len(chapters))
-    return BookCurriculumResponse(book_id=book_id, chapters=list(chapters.values()))
+    logger.info("get_book_curriculum: book_id=%s chapters=%d", book.id, len(chapters))
+    return BookCurriculumResponse(book_id=book.id, book_title=book.title, chapters=list(chapters.values()))
 
 
 @router.get(

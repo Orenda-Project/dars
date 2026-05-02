@@ -1030,13 +1030,22 @@ export default function CurriculumPage() {
           <span>Chapters broken down: <strong className="text-dars-ink">{bookStats.chapters_broken_down}/{bookStats.total_chapters}</strong></span>
           <span>LPs: <strong className="text-dars-ink">{bookStats.lps_generated}/{bookStats.total_slots}</strong></span>
           <span>Quizzes: <strong className="text-dars-ink">{bookStats.quizzes_generated}/{bookStats.total_slots}</strong></span>
-          <button
-            onClick={handleBuildRemaining}
-            disabled={buildingRemaining}
-            className="ml-auto px-3 py-1.5 rounded bg-dars-terra text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {buildingRemaining ? "Starting…" : "Build Remaining"}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => refreshStats(selectedBook.id)}
+              title="Refresh stats"
+              className="px-2.5 py-1.5 rounded border border-dars-rule-light text-dars-muted hover:text-dars-ink hover:bg-dars-parchment transition-colors text-xs"
+            >
+              ↻
+            </button>
+            <button
+              onClick={handleBuildRemaining}
+              disabled={buildingRemaining}
+              className="px-3 py-1.5 rounded bg-dars-terra text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {buildingRemaining ? "Starting…" : "Build Remaining"}
+            </button>
+          </div>
         </div>
       )}
 
