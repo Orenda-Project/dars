@@ -34,7 +34,8 @@ interface Topic {
   chapter_id: string;
   topic_number: number;
   title: string;
-  page_number: number | null;
+  start_page: number | null;
+  end_page: number | null;
 }
 
 interface Slot {
@@ -262,7 +263,8 @@ function ChaptersColumn({
 
 function AddTopicForm({ chapterId, topicCount, onDone }: { chapterId: string; topicCount: number; onDone: () => void }) {
   const [title, setTitle] = useState("");
-  const [page, setPage] = useState("");
+  const [startPage, setStartPage] = useState("");
+  const [endPage, setEndPage] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -273,10 +275,16 @@ function AddTopicForm({ chapterId, topicCount, onDone }: { chapterId: string; to
       const r = await fetch(`${API_URL}/api/v1/chapters/${chapterId}/topics`, {
         method: "POST",
         headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
-        body: JSON.stringify({ chapter_id: chapterId, topic_number: topicCount + 1, title: title.trim(), page_number: page.trim() || null }),
+        body: JSON.stringify({
+          chapter_id: chapterId,
+          topic_number: topicCount + 1,
+          title: title.trim(),
+          start_page: startPage.trim() ? parseInt(startPage.trim()) : null,
+          end_page: endPage.trim() ? parseInt(endPage.trim()) : null,
+        }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setTitle(""); setPage("");
+      setTitle(""); setStartPage(""); setEndPage("");
       onDone();
     } catch { toast.error("Failed to add topic."); }
     finally { setSaving(false); }
@@ -292,8 +300,15 @@ function AddTopicForm({ chapterId, topicCount, onDone }: { chapterId: string; to
         />
       </div>
       <input
-        value={page} onChange={(e) => setPage(e.target.value)}
-        placeholder="Page"
+        value={startPage} onChange={(e) => setStartPage(e.target.value)}
+        placeholder="p. start"
+        type="number"
+        className="w-16 border border-dars-rule-light rounded px-2 py-1.5 text-xs text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+      />
+      <input
+        value={endPage} onChange={(e) => setEndPage(e.target.value)}
+        placeholder="p. end"
+        type="number"
         className="w-16 border border-dars-rule-light rounded px-2 py-1.5 text-xs text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
       />
       <button type="submit" disabled={saving || !title.trim()} className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded bg-dars-terra text-white hover:bg-dars-terra/90 disabled:opacity-50 cursor-pointer">
@@ -528,7 +543,11 @@ function TopicSlotsColumn({
                   <span className="text-xs font-bold text-dars-muted shrink-0 w-5 pt-0.5">{topic.topic_number}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-dars-ink leading-tight">{topic.title}</p>
-                    {topic.page_number != null && <p className="text-xs text-dars-muted mt-0.5">p. {topic.page_number}</p>}
+                    {topic.start_page != null && (
+                      <p className="text-xs text-dars-muted mt-0.5">
+                        pp. {topic.start_page}{topic.end_page != null && topic.end_page !== topic.start_page ? `–${topic.end_page}` : ""}
+                      </p>
+                    )}
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
                     <button

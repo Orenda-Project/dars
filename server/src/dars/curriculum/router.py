@@ -40,6 +40,14 @@ from dars.deps import get_admin_client, get_current_client, require_admin_secret
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["books"])
+
+
+def _format_page_range(start: int | None, end: int | None) -> str | None:
+    if start is None:
+        return None
+    if end is None or end == start:
+        return str(start)
+    return f"{start}-{end}"
 admin_router = APIRouter(prefix="/admin", tags=["admin-curriculum"])
 
 
@@ -136,7 +144,7 @@ async def generate_slot_lp(
                 ls.id, ls.lesson_plan_id,
                 t.topic_text,
                 ls.topic_subtopic AS topic,
-                t.page_number,
+                t.start_page, t.end_page,
                 b.grade, b.subject, b.curriculum
             FROM lesson_slots ls
             JOIN topics t ON t.id = ls.topic_id
@@ -158,7 +166,7 @@ async def generate_slot_lp(
         grade=str(data["grade"]),
         subject=data["subject"],
         topic=data["topic"],
-        page_number=data["page_number"],
+        page_number=_format_page_range(data["start_page"], data["end_page"]),
         status="PENDING",
     )
     db.add(lp)
@@ -254,7 +262,8 @@ class CreateTopicRequest(BaseModel):
     chapter_id: uuid.UUID
     topic_number: int
     title: str
-    page_number: str | None = None
+    start_page: int | None = None
+    end_page: int | None = None
 
 
 class CreateSlotRequest(BaseModel):
@@ -279,7 +288,8 @@ async def create_topic(
         chapter_id=chapter_id,
         topic_number=body.topic_number,
         title=body.title,
-        page_number=body.page_number,
+        start_page=body.start_page,
+        end_page=body.end_page,
     )
     db.add(topic)
     await db.commit()
@@ -522,7 +532,7 @@ async def bulk_generate_lps_endpoint(
     rows = await db.execute(
         text("""
             SELECT ls.id AS slot_id, ls.lesson_plan_id, t.topic_text,
-                   ls.topic_subtopic AS topic, t.page_number,
+                   ls.topic_subtopic AS topic, t.start_page, t.end_page,
                    b.grade, b.subject, b.curriculum
             FROM lesson_slots ls
             JOIN topics t ON t.id = ls.topic_id
@@ -549,7 +559,7 @@ async def bulk_generate_lps_endpoint(
             grade=str(slot["grade"]),
             subject=slot["subject"],
             topic=slot["topic"],
-            page_number=slot["page_number"],
+            page_number=_format_page_range(slot["start_page"], slot["end_page"]),
             status="PENDING",
         )
         db.add(lp)

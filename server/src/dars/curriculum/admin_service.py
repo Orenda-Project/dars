@@ -52,7 +52,7 @@ async def breakdown_chapter(db: AsyncSession, chapter_id: uuid.UUID) -> dict:
         for page_data in book_text_raw:
             if not isinstance(page_data, dict):
                 continue
-            page_no = page_data.get("book_page_no")
+            page_no = page_data.get("pdf_page_no")
             if page_no is None:
                 continue
             if s_page is not None and e_page is not None:
@@ -101,7 +101,8 @@ async def breakdown_chapter(db: AsyncSession, chapter_id: uuid.UUID) -> dict:
             chapter_id=chapter_id,
             topic_number=td["topic_number"],
             title=td["title"],
-            page_number=td.get("page_number"),
+            start_page=td.get("start_page"),
+            end_page=td.get("end_page"),
         )
         db.add(topic)
         topic_objects.append(topic)
@@ -125,19 +126,14 @@ async def breakdown_chapter(db: AsyncSession, chapter_id: uuid.UUID) -> dict:
     #    matching "Topic" strings in topic_subtopic against topic titles.
     total_slots = 0
     if topic_objects:
-        # Build a lookup: title -> Topic (lowercased for fuzzy match)
-        title_map = {t.title.lower(): t for t in topic_objects}
-        # Fallback: first topic
+        # Build a lookup: topic_number -> Topic
+        topic_number_map = {t.topic_number: t for t in topic_objects}
         default_topic = topic_objects[0]
 
         for sd in slots_data:
-            # Try to find a matching topic from the topic_subtopic string
             subtopic_str: str = sd["topic_subtopic"]
-            matched_topic = default_topic
-            for title_lower, topic_obj in title_map.items():
-                if title_lower in subtopic_str.lower():
-                    matched_topic = topic_obj
-                    break
+            topic_number = sd.get("topic_number")
+            matched_topic = topic_number_map.get(topic_number, default_topic)
 
             slot = LessonSlot(
                 topic_id=matched_topic.id,

@@ -116,7 +116,8 @@ class Topic(Base):
     )
     topic_number: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    page_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    start_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # topic_text not in ORM — stored/loaded via raw SQL
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

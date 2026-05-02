@@ -40,7 +40,7 @@ TOPIC_BREAKDOWN_PROMPT = """Perform the following tasks on text of a Chapter:
     > It may be called "Review Exercise", "Chapter Review", "End-of-Chapter Exercise", "Chapter Test", "Mastery Challenge", "Exercise", or any other name indicating it's the final chapter-wide assessment.
     > This is the ONLY exercise section you need to identify - NOT the topic-specific practice questions that come after each topic.
 
-- Find the starting line numbers: For each topic section (content only), identify where it starts by finding the line number where the EXPLICIT TOPIC HEADING appears. For the review exercise, identify where it starts. You can find the line numbers at the start of each line in this format: "Line: x - " where x is the line number. Make sure to correctly identify the starting line numbers, the ending line numbers will be determined by the starting line numbers of the next topic section or the review exercise, so it is important to correctly identify the starting line numbers.
+- Find the starting line numbers and page ranges: For each topic section (content only), identify where it starts by finding the line number where the EXPLICIT TOPIC HEADING appears. Also identify the PDF page range (start_page and end_page) for each topic — page numbers are shown in the text as "Page X:" before each page's content. start_page is the PDF page where the topic heading appears; end_page is the last PDF page before the next topic heading (or before the final exercise). For the review exercise, identify where it starts. You can find the line numbers at the start of each line in this format: "Line: x - " where x is the line number. Make sure to correctly identify the starting line numbers, the ending line numbers will be determined by the starting line numbers of the next topic section or the review exercise, so it is important to correctly identify the starting line numbers.
 
 CRITICAL RULES:
 - ONLY create a topic section when you find an EXPLICIT topic heading (e.g., "Topic 1", "Topic:", "Unit 1", etc.)
@@ -63,11 +63,15 @@ Return the response in the following JSON format:
     "topic_sections": [
         {{
             "section_title": "Topic Title",
-            "starting_line_number": 5
+            "starting_line_number": 5,
+            "start_page": 7,
+            "end_page": 8
         }},
         {{
             "section_title": "Another Topic",
-            "starting_line_number": 20
+            "starting_line_number": 20,
+            "start_page": 9,
+            "end_page": 11
         }},
         ...
     ],
@@ -80,7 +84,8 @@ Return the response in the following JSON format:
 IMPORTANT:
 - topic_sections contains ONLY the starting line numbers of the topic content (without practice questions)
 - The line range for each topic ends just BEFORE the practice questions start
-- exercise is the ONLY exercise section - the comprehensive one at the end of the chapter (regardless of what it's called in the text)"""
+- exercise is the ONLY exercise section - the comprehensive one at the end of the chapter (regardless of what it's called in the text)
+- start_page is the PDF page where the topic heading appears; end_page is the last PDF page of that topic's content (both taken from the "Page X:" markers in the text)"""
 
 DAY_PLAN_PROMPT = """Role: You are an experienced curriculum planner specializing in designing effective, time-bound instructional plans for teachers.
 Task: Create a teacher-oriented, topic-wise breakdown of the given chapter(s). The plan should be divided into daily teaching segments, ensuring full coverage.
@@ -110,10 +115,13 @@ Schema:
     {
       "day": 1,
       "date": "YYYY-MM-DD or Day 1 if no date given",
+      "topic_number": 1,
       "topic_subtopic": "Topic — Subtopic"
     }
   ]
-}"""
+}
+
+IMPORTANT: topic_number must match the topic_number from the input list exactly."""
 
 # ---------------------------------------------------------------------------
 # Helpers (ported from Schema/services/chapter_plan.py)
@@ -142,27 +150,19 @@ def _extract_topic_text(chapter_text: str, start_line: int, end_line: int) -> st
 
 
 def _extract_json_from_response(response: str) -> dict:
-    """Extract JSON from LLM response using three fallback strategies."""
+    """Extract JSON from LLM response using two fallback strategies."""
     if not response or not isinstance(response, str):
         return {}
 
-    # Strategy 1: ```json ... ``` code block
-    code_block = re.search(r"```(?:json)?\s*\n([\s\S]*?)\n```", response)
+    # Strategy 1: ```json ... ``` code block (allow any whitespace before closing ```)
+    code_block = re.search(r"```(?:json)?\s*\n([\s\S]*?)\n?\s*```", response)
     if code_block:
         try:
             return json.loads(code_block.group(1).strip())
         except json.JSONDecodeError as exc:
             log.debug("code-block JSON parse failed — %s", exc)
 
-    # Strategy 2: non-greedy brace match
-    non_greedy = re.search(r"\{(?:[^{}]|(?:\{[^{}]*\}))*?\}", response)
-    if non_greedy:
-        try:
-            return json.loads(non_greedy.group())
-        except json.JSONDecodeError as exc:
-            log.debug("non-greedy JSON parse failed — %s", exc)
-
-    # Strategy 3: greedy brace match (last resort)
+    # Strategy 2: greedy brace match — find outermost { ... }
     greedy = re.search(r"\{[\s\S]*\}", response)
     if greedy:
         try:
@@ -222,15 +222,18 @@ def format_topic_for_extraction(
             section_end = final_exercise_start if final_exercise_start else total_lines
 
         topic_text = _extract_topic_text(chapter_text, section_start, section_end)
-        page_number = section.get("page_number")
-        if page_number is not None:
-            page_number = str(page_number)
+        def _to_int(val):
+            try:
+                return int(val) if val is not None else None
+            except (ValueError, TypeError):
+                return None
 
         topics.append(
             {
                 "topic_number": idx + 1,
                 "title": title,
-                "page_number": page_number,
+                "start_page": _to_int(section.get("start_page")),
+                "end_page": _to_int(section.get("end_page")),
                 "topic_text": topic_text,
             }
         )
@@ -340,11 +343,14 @@ async def run_day_plan(topics: list[dict]) -> list[dict]:
         if raw_date and not str(raw_date).lower().startswith("day"):
             scheduled_date = str(raw_date)
 
+        topic_number = item.get("topic_number")
+
         slots.append(
             {
                 "day_number": int(day_number),
                 "scheduled_date": scheduled_date,
                 "topic_subtopic": topic_subtopic,
+                "topic_number": int(topic_number) if topic_number is not None else None,
             }
         )
 

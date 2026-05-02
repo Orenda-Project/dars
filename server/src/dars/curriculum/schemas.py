@@ -54,7 +54,8 @@ class TopicResponse(BaseModel):
     chapter_id: uuid.UUID
     topic_number: int
     title: str
-    page_number: str | None
+    start_page: int | None
+    end_page: int | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
