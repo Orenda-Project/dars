@@ -13,6 +13,7 @@ from dars.clients.schemas import (
     ClientCreateResponse,
     ClientListResponse,
     ClientPublicResponse,
+    ClientSelfUpdateRequest,
     ClientUpdateRequest,
 )
 from dars.clients.service import create_client, rotate_api_key, update_client
@@ -81,6 +82,26 @@ async def list_clients_endpoint(db: AsyncSession = Depends(get_db)) -> ClientLis
 
 @client_router.get("/me", response_model=ClientPublicResponse)
 async def get_me(current_client: Client = Depends(get_current_client)) -> ClientPublicResponse:
+    return ClientPublicResponse.model_validate(current_client)
+
+
+@client_router.patch("/me", response_model=ClientPublicResponse)
+async def update_me(
+    body: ClientSelfUpdateRequest,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> ClientPublicResponse:
+    logger.info("update_me: client_id=%s", current_client.id)
+    VALID_CURRICULUMS = {"ICT", "Punjab"}
+    if body.curriculum is not None and body.curriculum not in VALID_CURRICULUMS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"curriculum must be one of {sorted(VALID_CURRICULUMS)}")
+    if body.curriculum is not None:
+        current_client.curriculum = body.curriculum
+    if body.webhook_url is not None:
+        current_client.webhook_url = body.webhook_url
+    await db.commit()
+    await db.refresh(current_client)
+    logger.info("update_me: done client_id=%s curriculum=%s", current_client.id, current_client.curriculum)
     return ClientPublicResponse.model_validate(current_client)
 
 

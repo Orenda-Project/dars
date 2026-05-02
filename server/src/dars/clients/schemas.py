@@ -23,12 +23,18 @@ class ClientPublicResponse(BaseModel):
     name: str
     is_active: bool
     webhook_url: str | None = None
+    curriculum: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 class ClientUpdateRequest(BaseModel):
+    webhook_url: str | None = None
+
+
+class ClientSelfUpdateRequest(BaseModel):
+    curriculum: str | None = None
     webhook_url: str | None = None
 
 

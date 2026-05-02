@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
+import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -431,9 +432,36 @@ function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function NoCurriculumBanner() {
+  return (
+    <div className="mb-6 flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+      <span className="mt-0.5 text-amber-500 shrink-0">⚠</span>
+      <span>
+        Your account has no curriculum configured. Lesson plan generation requires a curriculum.{" "}
+        <Link href="/dashboard/settings" className="font-semibold underline underline-offset-2 hover:text-amber-900">
+          Go to Settings to select ICT or Punjab.
+        </Link>
+      </span>
+    </div>
+  );
+}
+
 export default function LessonPlansPage() {
   const [latestLp, setLatestLp] = useState<LessonPlan | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [curriculum, setCurriculum] = useState<string | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("dars_pef_session");
+    const key = raw ? (JSON.parse(raw).api_key ?? "") : "";
+    if (!key) { setLoadingProfile(false); return; }
+    fetch(`${API_URL}/api/v1/me`, { headers: { "X-API-Key": key } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setCurriculum(d.curriculum ?? null); })
+      .catch(() => {})
+      .finally(() => setLoadingProfile(false));
+  }, []);
 
   function handleGenerated(lp: LessonPlan) {
     setLatestLp(lp);
@@ -446,6 +474,7 @@ export default function LessonPlansPage() {
         <h1 className="font-serif text-2xl font-bold text-dars-ink">Lesson Plans</h1>
         <p className="text-sm text-dars-muted mt-1">Generate and manage curriculum-aligned lesson plans.</p>
       </div>
+      {!loadingProfile && !curriculum && <NoCurriculumBanner />}
       <GenerateForm onGenerated={handleGenerated} />
       {latestLp && <GenerationResult key={latestLp.id} initial={latestLp} />}
       <PastLessonPlans refreshTrigger={refreshTrigger} />

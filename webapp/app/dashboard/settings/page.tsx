@@ -2,8 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { getApiKey, getSession } from "@/lib/session";
+import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+const CURRICULUMS = [
+  { value: "ICT", label: "ICT (Federal)" },
+  { value: "Punjab", label: "Punjab" },
+];
 
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
@@ -11,11 +17,20 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [session, setSession] = useState<{ name?: string; email?: string } | null>(null);
+  const [curriculum, setCurriculum] = useState<string | null>(null);
+  const [savingCurriculum, setSavingCurriculum] = useState(false);
 
   useEffect(() => {
     const s = getSession();
     setSession(s);
-    setApiKey(getSession()?.api_key ?? "");
+    setApiKey(s?.api_key ?? "");
+    const key = s?.api_key ?? "";
+    if (key) {
+      fetch(`${API_URL}/api/v1/me`, { headers: { "X-API-Key": key } })
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => { if (d) setCurriculum(d.curriculum ?? null); })
+        .catch(() => {});
+    }
   }, []);
 
   async function handleCopy() {
@@ -49,6 +64,24 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSaveCurriculum() {
+    if (!curriculum) return;
+    setSavingCurriculum(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/me`, {
+        method: "PATCH",
+        headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ curriculum }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Curriculum saved.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save.");
+    } finally {
+      setSavingCurriculum(false);
+    }
+  }
+
   const masked = apiKey ? apiKey.slice(0, 8) + "••••••••••••••••••••••••••••••••" : "";
 
   return (
@@ -64,6 +97,32 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      <div className="mb-8 pb-8 border-b border-dars-rule-light">
+        <p className="text-xs font-semibold text-dars-muted uppercase tracking-wide mb-1">Curriculum</p>
+        <p className="text-xs text-dars-muted mb-4">
+          Your curriculum determines which books, lesson plans, and exam generation are available to you.
+        </p>
+        <div className="flex items-center gap-3">
+          <select
+            value={curriculum ?? ""}
+            onChange={(e) => setCurriculum(e.target.value || null)}
+            className="flex-1 border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+          >
+            <option value="">Select curriculum…</option>
+            {CURRICULUMS.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleSaveCurriculum}
+            disabled={savingCurriculum || !curriculum}
+            className="px-4 py-2 text-sm font-semibold bg-dars-terra text-white rounded-md hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {savingCurriculum ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
 
       <div>
         <p className="text-xs font-semibold text-dars-muted uppercase tracking-wide mb-3">API Key</p>
