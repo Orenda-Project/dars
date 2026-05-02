@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +14,7 @@ from dars.clients.schemas import (
     ClientPublicResponse,
     ClientUpdateRequest,
 )
-from dars.clients.service import create_client, update_client
+from dars.clients.service import create_client, rotate_api_key, update_client
 from dars.database import get_db
 from dars.deps import get_admin_client, get_current_client, require_admin_secret
 
@@ -73,3 +74,16 @@ async def list_clients_endpoint(db: AsyncSession = Depends(get_db)) -> ClientLis
 @client_router.get("/me", response_model=ClientPublicResponse)
 async def get_me(current_client: Client = Depends(get_current_client)) -> ClientPublicResponse:
     return ClientPublicResponse.model_validate(current_client)
+
+
+class RotateKeyResponse(BaseModel):
+    api_key: str
+
+
+@client_router.post("/me/rotate-key", response_model=RotateKeyResponse)
+async def rotate_my_key(
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> RotateKeyResponse:
+    raw_key = await rotate_api_key(db, current_client)
+    return RotateKeyResponse(api_key=raw_key)
