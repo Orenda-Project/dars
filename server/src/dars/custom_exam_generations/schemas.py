@@ -15,7 +15,14 @@ class CustomExamGenerationCreateRequest(BaseModel):
     question_types: Optional[list[str]] = None
     seen_categories: Optional[list[str]] = None
     unseen_categories: Optional[list[str]] = None
+    unseen_objective_types: Optional[list[str]] = None
+    unseen_subjective_types: Optional[list[str]] = None
+    unseen_objective_counts: Optional[dict[str, int]] = None
+    unseen_subjective_counts: Optional[dict[str, int]] = None
+    long_question_sub_types: Optional[list[str]] = None
     include_answer_key: bool = False
+    image_generation_enabled: bool = False
+    enable_review: bool = False
     external_id: Optional[str] = None
 
     @field_validator("subject", mode="before")

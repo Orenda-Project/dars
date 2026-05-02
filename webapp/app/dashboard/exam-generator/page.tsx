@@ -16,11 +16,6 @@ interface ExamGeneration {
   result?: unknown | null;
 }
 
-interface PaginatedResponse {
-  items: ExamGeneration[];
-  total: number;
-}
-
 function getApiKey(): string {
   if (typeof window === "undefined") return "";
   const raw = localStorage.getItem("dars_pef_session");
@@ -371,101 +366,12 @@ function GenerationResult({ initial }: { initial: ExamGeneration }) {
   );
 }
 
-// ─── Past Exams ───────────────────────────────────────────────────────────────
-
-const LIMIT = 10;
-
-function StatusBadge({ status }: { status: string }) {
-  const cls = status === "READY" ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-    : status === "ERROR" ? "text-red-700 bg-red-50 border-red-200"
-    : "text-dars-muted bg-dars-parchment border-dars-rule-light";
-  return <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${cls}`}>{status}</span>;
-}
-
-function PastExams({ refreshTrigger }: { refreshTrigger: number }) {
-  const [items, setItems] = useState<ExamGeneration[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const fetchPage = useCallback(async (off: number) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/custom-exam-generations?limit=${LIMIT}&offset=${off}`, { headers: { "X-API-Key": getApiKey() } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: PaginatedResponse = await res.json();
-      setItems(data.items); setTotal(data.total);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to load");
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { fetchPage(offset); }, [offset, fetchPage, refreshTrigger]);
-
-  const totalPages = Math.ceil(total / LIMIT);
-  const currentPage = Math.floor(offset / LIMIT) + 1;
-
-  return (
-    <section className="bg-white border border-dars-rule-light rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-serif text-lg font-bold text-dars-ink">Past Exams</h2>
-        {total > 0 && <span className="text-xs text-dars-muted">{total} total · page {currentPage} of {totalPages}</span>}
-      </div>
-      {loading && <p className="text-sm text-dars-muted animate-pulse">Loading…</p>}
-      {!loading && items.length === 0 && <p className="text-sm text-dars-muted">No exam generations yet.</p>}
-      {items.length > 0 && (
-        <ul className="divide-y divide-dars-rule-light">
-          {items.map((eg) => (
-            <li key={eg.id}>
-              <button onClick={() => setExpandedId((p) => p === eg.id ? null : eg.id)}
-                className="w-full text-left py-3 px-1 hover:bg-dars-parchment transition-colors rounded cursor-pointer bg-transparent border-none">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="font-mono text-xs text-dars-muted shrink-0">{eg.id.slice(0, 8)}…</span>
-                  <span className="text-sm text-dars-ink font-medium">{eg.curriculum} · Grade {eg.grade} · {SUBJECT_DISPLAY[eg.subject] ?? eg.subject}</span>
-                  <StatusBadge status={eg.status} />
-                  <span className="ml-auto text-xs text-dars-muted shrink-0">{new Date(eg.created_at).toLocaleDateString()}</span>
-                </div>
-              </button>
-              {expandedId === eg.id && (
-                <div className="px-1 pb-4">
-                  {eg.status === "READY" && eg.result != null ? (
-                    <div className="max-h-96 overflow-auto rounded-lg border border-dars-rule-light bg-dars-parchment p-4">
-                      <pre className="text-xs text-dars-ink whitespace-pre-wrap break-all">{JSON.stringify(eg.result, null, 2)}</pre>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-dars-muted">Result not available — status is {eg.status}.</p>
-                  )}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {totalPages > 1 && (
-        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-dars-rule-light">
-          <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0 || loading}
-            className="px-3 py-1.5 text-xs font-semibold text-dars-muted border border-dars-rule-dark rounded hover:text-dars-ink hover:bg-dars-parchment-deep transition-colors cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed">
-            ← Prev
-          </button>
-          <span className="text-xs text-dars-muted flex-1 text-center">{currentPage} / {totalPages}</span>
-          <button onClick={() => setOffset(offset + LIMIT)} disabled={offset + LIMIT >= total || loading}
-            className="px-3 py-1.5 text-xs font-semibold text-dars-muted border border-dars-rule-dark rounded hover:text-dars-ink hover:bg-dars-parchment-deep transition-colors cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed">
-            Next →
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ExamGeneratorPage() {
   const [curriculum, setCurriculum] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [latestEg, setLatestEg] = useState<ExamGeneration | null>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const raw = localStorage.getItem("dars_pef_session");
@@ -478,29 +384,22 @@ export default function ExamGeneratorPage() {
       .finally(() => setLoadingProfile(false));
   }, []);
 
-  function handleGenerated(eg: ExamGeneration) {
-    setLatestEg(eg);
-    setTimeout(() => setRefreshTrigger((n) => n + 1), 1500);
-  }
-
   return (
-    <div className="p-8 max-w-5xl">
-      <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Exam Generator</h1>
-      {!loadingProfile && !curriculum && <NoCurriculumBanner />}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
-        <div>
-          <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8">
-            <h2 className="font-serif text-lg font-bold text-dars-ink mb-5">Generate Exam</h2>
-            {curriculum ? (
-              <GenerateForm curriculum={curriculum} onGenerated={handleGenerated} />
-            ) : (
-              <p className="text-sm text-dars-muted">Set your curriculum in Settings to generate exams.</p>
-            )}
-          </section>
-          {latestEg && <GenerationResult key={latestEg.id} initial={latestEg} />}
-        </div>
-        <PastExams refreshTrigger={refreshTrigger} />
+    <div className="px-8 py-8 max-w-4xl">
+      <div className="mb-8 pb-6 border-b border-dars-rule-light">
+        <h1 className="font-serif text-2xl font-bold text-dars-ink">Exam Generator</h1>
+        <p className="text-sm text-dars-muted mt-1">Generate curriculum-aligned exams and class assessments.</p>
       </div>
+      {!loadingProfile && !curriculum && <NoCurriculumBanner />}
+      <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8 shadow-sm">
+        <h2 className="font-serif text-lg font-bold text-dars-ink mb-5 flex items-center gap-2 before:content-[''] before:block before:w-1 before:h-5 before:bg-dars-terra before:rounded-full">Generate Exam</h2>
+        {curriculum ? (
+          <GenerateForm curriculum={curriculum} onGenerated={setLatestEg} />
+        ) : (
+          <p className="text-sm text-dars-muted">Set your curriculum in Settings to generate exams.</p>
+        )}
+      </section>
+      {latestEg && <GenerationResult key={latestEg.id} initial={latestEg} />}
     </div>
   );
 }

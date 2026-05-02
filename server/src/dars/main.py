@@ -30,6 +30,7 @@ from dars.curriculum.router import router as curriculum_router
 from dars.assessments.router import router as assessments_router
 from dars.custom_lesson_plans.router import router as custom_lesson_plans_router
 from dars.custom_exam_generations.router import router as custom_exam_generations_router
+from dars.analytics.router import router as analytics_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -64,6 +65,7 @@ app.include_router(curriculum_admin_router)
 app.include_router(assessments_router)
 app.include_router(custom_lesson_plans_router)
 app.include_router(custom_exam_generations_router)
+app.include_router(analytics_router)
 
 
 @app.get("/health")

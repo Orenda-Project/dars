@@ -47,9 +47,18 @@ const IconSettings = (
 
 const isBeta = process.env.NEXT_PUBLIC_BETA === "true";
 
+const IconAnalytics = (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+  </svg>
+);
+
 const mainNavItems = [
   { label: "Lesson Plans", href: "/dashboard/lesson-plans", icon: IconLessonPlan },
   { label: "Exam Generator", href: "/dashboard/exam-generator", icon: IconExam },
+  { label: "Analytics", href: "/dashboard/analytics", icon: IconAnalytics },
 ];
 
 const IconDownload = (

@@ -187,8 +187,8 @@ async def test_get_lesson_plan_not_found(authed_client):
     assert response.status_code == 404
 
 
-async def test_get_lesson_plan_wrong_client(db_session):
-    """Client A cannot fetch a lesson plan belonging to Client B."""
+async def test_get_lesson_plan_global(db_session):
+    """LPs are global — any authenticated client can fetch by ID."""
     # Create two clients sharing the same db_session
     client_a, key_a = await create_client(db_session, name="Client A")
     client_b, key_b = await create_client(db_session, name="Client B")
@@ -211,12 +211,12 @@ async def test_get_lesson_plan_wrong_client(db_session):
         assert create_resp.status_code == 202
         lp_id = create_resp.json()["id"]
 
-        # Client A tries to fetch it
+        # LPs are global — Client A can also fetch Client B's LP
         get_resp = await http.get(
             f"/api/v1/lesson-plans/{lp_id}",
             headers={"X-API-Key": key_a},
         )
-        assert get_resp.status_code == 404
+        assert get_resp.status_code == 200
 
     app.dependency_overrides.clear()
 
@@ -226,8 +226,8 @@ async def test_get_lesson_plan_wrong_client(db_session):
 # ---------------------------------------------------------------------------
 
 
-async def test_list_lesson_plans_filtered_by_client(db_session):
-    """Each client only sees their own lesson plans."""
+async def test_list_lesson_plans_global(db_session):
+    """LPs are global — all authenticated clients see all lesson plans."""
     client_a, key_a = await create_client(db_session, name="List Client A")
     client_b, key_b = await create_client(db_session, name="List Client B")
 
@@ -261,10 +261,9 @@ async def test_list_lesson_plans_filtered_by_client(db_session):
         list_b = await http.get("/api/v1/lesson-plans", headers={"X-API-Key": key_b})
 
     assert list_a.status_code == 200
-    assert list_a.json()["total"] == 2
-
-    assert list_b.status_code == 200
-    assert list_b.json()["total"] == 1
+    # Global list — both clients see all 3 LPs
+    assert list_a.json()["total"] == 3
+    assert list_b.json()["total"] == 3
 
     app.dependency_overrides.clear()
 

@@ -24,6 +24,7 @@ class CustomExamGeneration(Base):
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     page_ranges: Mapped[str] = mapped_column(Text, nullable=False)
     generation_type: Mapped[str] = mapped_column(String(50), nullable=False, default="exam")
+    eg_job_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

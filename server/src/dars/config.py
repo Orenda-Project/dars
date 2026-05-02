@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     admin_secret: str = "dev-secret"
     lp_assistant_url: str = "https://lp-assistant.taleemabad.com"
     lp_assistant_api_key: str = ""
-    eg_assistant_url: str = "https://eg-assistant.taleemabad.com"
+    eg_assistant_url: str = "https://exam-generator.taleemabad.com"
     eg_assistant_api_key: str = ""
     cors_origins: list[str] = ["http://localhost:3000", "https://truthful-renewal-production-c9ce.up.railway.app"]
 
