@@ -1,15 +1,15 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
-import colorlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-handler = colorlog.StreamHandler()
-handler.setFormatter(colorlog.ColoredFormatter(
-    "%(log_color)s%(asctime)s %(levelname)s%(reset)s %(blue)s%(name)s%(reset)s — %(message)s"
-))
-logging.basicConfig(level=logging.INFO, handlers=[handler])
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 import dars.webhooks.models  # noqa: F401 — registers WebhookDelivery with SQLAlchemy Base
