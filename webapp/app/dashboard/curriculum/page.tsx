@@ -331,7 +331,7 @@ function BooksColumn({
 // ── Chapters column ───────────────────────────────────────────────────────────
 
 function ChaptersColumn({
-  chapters, selectedId, onSelect, loading, onGenerateAllLps, generatingAllLps,
+  chapters, selectedId, onSelect, loading, onGenerateAllLps, generatingAllLps, buildStatus, onBuildChapter,
 }: {
   chapters: Chapter[];
   selectedId: string | null;
@@ -339,6 +339,8 @@ function ChaptersColumn({
   loading: boolean;
   onGenerateAllLps: (chapterId: string) => void;
   generatingAllLps: string | null;
+  buildStatus: Record<string, string>;
+  onBuildChapter: (ch: Chapter) => void;
 }) {
   const sorted = [...chapters].sort((a, b) => a.chapter_number - b.chapter_number);
   return (
@@ -351,6 +353,8 @@ function ChaptersColumn({
           const active = selectedId === ch.id;
           const pages = ch.start_page != null && ch.end_page != null ? `pp. ${ch.start_page}–${ch.end_page}` : null;
           const isGenerating = generatingAllLps === ch.id;
+          const status = buildStatus[ch.id];
+          const isBuilding = !!status;
           return (
             <li key={ch.id}>
               <div className={`flex items-center border-b border-dars-rule-light ${active ? "bg-dars-terra" : "bg-white hover:bg-dars-parchment"}`}>
@@ -364,18 +368,30 @@ function ChaptersColumn({
                     <div className="min-w-0">
                       <p className={`text-sm font-semibold leading-tight ${active ? "text-white" : "text-dars-ink"}`}>{ch.title}</p>
                       {pages && <p className={`text-xs mt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{pages}</p>}
+                      {status && <p className={`text-[10px] mt-0.5 ${active ? "text-white/70" : "text-dars-muted"}`}>{status}</p>}
                     </div>
                   </div>
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onGenerateAllLps(ch.id); }}
-                  disabled={isGenerating}
-                  title="Generate LPs for all slots in this chapter"
-                  className={`shrink-0 flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 mr-2 rounded border disabled:opacity-60 cursor-pointer transition-colors ${active ? "border-white/60 text-white hover:bg-white/20" : "border-dars-terra text-dars-terra hover:bg-dars-terra hover:text-white"}`}
-                >
-                  {isGenerating ? <Spinner /> : "Gen All LPs"}
-                </button>
+                <div className="shrink-0 flex flex-col gap-1 mr-2">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onBuildChapter(ch); }}
+                    disabled={isBuilding}
+                    title="Build all: breakdown → LPs → quizzes"
+                    className={`flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border disabled:opacity-60 cursor-pointer transition-colors ${active ? "border-white/60 text-white hover:bg-white/20" : "border-dars-ink text-dars-ink hover:bg-dars-ink hover:text-white"}`}
+                  >
+                    {isBuilding ? <Spinner /> : "Build All"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onGenerateAllLps(ch.id); }}
+                    disabled={isGenerating}
+                    title="Generate LPs for all slots in this chapter"
+                    className={`flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border disabled:opacity-60 cursor-pointer transition-colors ${active ? "border-white/60 text-white hover:bg-white/20" : "border-dars-terra text-dars-terra hover:bg-dars-terra hover:text-white"}`}
+                  >
+                    {isGenerating ? <Spinner /> : "Gen LPs"}
+                  </button>
+                </div>
               </div>
             </li>
           );
@@ -853,6 +869,7 @@ export default function CurriculumPage() {
 
   // Bulk LP generation state
   const [generatingAllLps, setGeneratingAllLps] = useState<string | null>(null);
+  const [buildStatus, setBuildStatus] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (curriculum === null || grade === null || subject === null) {
@@ -924,6 +941,87 @@ export default function CurriculumPage() {
     finally { setGeneratingAllLps(null); }
   }, []);
 
+  const handleBuildChapter = useCallback(async (ch: Chapter) => {
+    const apiKey = getApiKey();
+    const setStatus = (msg: string) => setBuildStatus((p) => ({ ...p, [ch.id]: msg }));
+    const clearStatus = () => setBuildStatus((p) => { const n = { ...p }; delete n[ch.id]; return n; });
+
+    setStatus("Starting…");
+    try {
+      // Step 1: breakdown if no topics yet
+      const topicsRes = await fetch(`${API_URL}/api/v1/books/${selectedBook!.id}/chapters/${ch.id}/topics`, { headers: { "X-API-Key": apiKey } });
+      const topicsData: { items: Topic[] } = topicsRes.ok ? await topicsRes.json() : { items: [] };
+      let currentTopics = topicsData.items ?? [];
+
+      if (currentTopics.length === 0) {
+        setStatus("Breaking down chapter…");
+        const bdRes = await fetch(`${API_URL}/api/v1/chapters/${ch.id}/breakdown`, {
+          method: "POST",
+          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+        });
+        if (!bdRes.ok) { toast.error(`Breakdown failed for chapter ${ch.chapter_number}`); return; }
+        const freshTopics = await fetch(`${API_URL}/api/v1/books/${selectedBook!.id}/chapters/${ch.id}/topics`, { headers: { "X-API-Key": apiKey } });
+        const freshData: { items: Topic[] } = freshTopics.ok ? await freshTopics.json() : { items: [] };
+        currentTopics = freshData.items ?? [];
+      }
+
+      // Step 2: fetch all slots for all topics
+      setStatus("Fetching slots…");
+      const slotResults = await Promise.all(
+        currentTopics.map((t) =>
+          fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, { headers: { "X-API-Key": apiKey } })
+            .then((r) => (r.ok ? r.json() : { items: [] }))
+            .then((d: { items: Slot[] }) => d.items ?? [])
+            .catch(() => [] as Slot[])
+        )
+      );
+      const allSlots = slotResults.flat();
+
+      // Step 3: generate LPs for slots that don't have one
+      const slotsNeedingLp = allSlots.filter((s) => !s.lesson_plan_id);
+      let lpDone = 0;
+      for (const slot of slotsNeedingLp) {
+        setStatus(`LPs ${lpDone}/${slotsNeedingLp.length}…`);
+        await fetch(`${API_URL}/api/v1/slots/${slot.id}/generate-lp`, {
+          method: "POST",
+          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+        }).catch(() => {});
+        lpDone++;
+      }
+
+      // Step 4: refresh slots to get lesson_plan_ids
+      setStatus("Refreshing…");
+      const refreshedSlotResults = await Promise.all(
+        currentTopics.map((t) =>
+          fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, { headers: { "X-API-Key": apiKey } })
+            .then((r) => (r.ok ? r.json() : { items: [] }))
+            .then((d: { items: Slot[] }) => d.items ?? [])
+            .catch(() => [] as Slot[])
+        )
+      );
+      const refreshedSlots = refreshedSlotResults.flat();
+
+      // Step 5: generate quizzes for slots with LP but no assessment
+      const slotsNeedingQuiz = refreshedSlots.filter((s) => s.lesson_plan_id && !s.assessment_id);
+      let quizDone = 0;
+      for (const slot of slotsNeedingQuiz) {
+        setStatus(`Quizzes ${quizDone}/${slotsNeedingQuiz.length}…`);
+        await fetch(`${API_URL}/api/v1/lesson-plans/${slot.lesson_plan_id}/assessment`, {
+          method: "POST",
+          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+        }).catch(() => {});
+        quizDone++;
+      }
+
+      setStatus("Done ✓");
+      if (selectedChapter?.id === ch.id) handleSlotsRefresh();
+      setTimeout(() => clearStatus(), 3000);
+    } catch {
+      toast.error(`Build failed for chapter ${ch.chapter_number}`);
+      clearStatus();
+    }
+  }, [selectedBook, selectedChapter, handleSlotsRefresh]);
+
   return (
     <div className="p-8 max-w-6xl">
       <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Curriculum</h1>
@@ -964,6 +1062,8 @@ export default function CurriculumPage() {
           loading={loadingChapters}
           onGenerateAllLps={handleGenerateAllLps}
           generatingAllLps={generatingAllLps}
+          buildStatus={buildStatus}
+          onBuildChapter={handleBuildChapter}
         />
         <TopicSlotsColumn
           topics={topics}
