@@ -95,3 +95,14 @@ class BreakdownResponse(BaseModel):
     chapter_id: str
     topics_count: int
     slots_count: int
+
+
+class ImportBooksRequest(BaseModel):
+    schema_filter: str | None = None  # "fde_staging" | "balochistan_staging" | None
+
+
+class ImportBooksResponse(BaseModel):
+    imported: int
+    skipped: int
+    missing: int
+    chapters: int

@@ -291,30 +291,51 @@ async def test_list_slots_response_fields(authed_client, db_session):
 
 
 async def test_breakdown_forbidden_without_secret(authed_client, db_session):
-    http, _, _ = authed_client
+    # Non-admin API key should be rejected with 403
+    http, api_key, _ = authed_client
     book = await _make_book(db_session, core_id=1)
     chapter = await _make_chapter(db_session, book.id, core_id=1)
-    response = await http.post(f"/admin/chapters/{chapter.id}/breakdown")
+    response = await http.post(
+        f"/admin/chapters/{chapter.id}/breakdown",
+        headers={"X-API-Key": api_key},
+    )
     assert response.status_code == 403
 
 
 async def test_breakdown_not_found(authed_client, db_session):
-    http, _, _ = authed_client
+    http, _, client_obj = authed_client
+    # Promote client to admin for this test
+    client_obj.is_admin = True
+    await db_session.commit()
+
     fake_id = str(uuid.uuid4())
+    from dars.clients.service import _hash_key
+    admin_key = "dars_admin_test_key_for_not_found"
+    client_obj.api_key_hash = _hash_key(admin_key)
+    await db_session.commit()
+
     with patch(
         "dars.curriculum.router.breakdown_chapter",
         new=AsyncMock(side_effect=ValueError(f"Chapter not found: {fake_id}")),
     ):
         response = await http.post(
             f"/admin/chapters/{fake_id}/breakdown",
-            headers={"X-Admin-Secret": "dev-secret"},
+            headers={"X-API-Key": admin_key},
         )
     assert response.status_code == 404
 
 
 async def test_breakdown_creates_topics_and_slots(authed_client, db_session):
     """Endpoint shape test — mocks the whole breakdown_chapter service call."""
-    http, _, _ = authed_client
+    http, _, client_obj = authed_client
+    # Promote client to admin for this test
+    client_obj.is_admin = True
+    await db_session.commit()
+
+    from dars.clients.service import _hash_key
+    admin_key = "dars_admin_test_key_for_creates"
+    client_obj.api_key_hash = _hash_key(admin_key)
+    await db_session.commit()
 
     book = await _make_book(db_session, core_id=1)
     chapter = await _make_chapter(db_session, book.id, core_id=1, title="Numbers")
@@ -331,7 +352,7 @@ async def test_breakdown_creates_topics_and_slots(authed_client, db_session):
     ):
         response = await http.post(
             f"/admin/chapters/{chapter.id}/breakdown",
-            headers={"X-Admin-Secret": "dev-secret"},
+            headers={"X-API-Key": admin_key},
         )
 
     assert response.status_code == 200

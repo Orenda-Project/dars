@@ -6,7 +6,6 @@ import { BookLoader } from "@/components/atoms/book-loader";
 import { getApiKey, isAdmin } from "@/lib/session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-const ADMIN_SECRET = process.env.NEXT_PUBLIC_ADMIN_SECRET ?? "";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -204,9 +203,14 @@ function BooksColumn({
 // ── Chapters column ───────────────────────────────────────────────────────────
 
 function ChaptersColumn({
-  chapters, selectedId, onSelect, loading,
+  chapters, selectedId, onSelect, loading, onGenerateAllLps, generatingAllLps,
 }: {
-  chapters: Chapter[]; selectedId: string | null; onSelect: (c: Chapter) => void; loading: boolean;
+  chapters: Chapter[];
+  selectedId: string | null;
+  onSelect: (c: Chapter) => void;
+  loading: boolean;
+  onGenerateAllLps: (chapterId: string) => void;
+  generatingAllLps: string | null;
 }) {
   const sorted = [...chapters].sort((a, b) => a.chapter_number - b.chapter_number);
   return (
@@ -218,21 +222,33 @@ function ChaptersColumn({
         {sorted.map((ch) => {
           const active = selectedId === ch.id;
           const pages = ch.start_page != null && ch.end_page != null ? `pp. ${ch.start_page}–${ch.end_page}` : null;
+          const isGenerating = generatingAllLps === ch.id;
           return (
             <li key={ch.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(ch)}
-                className={`w-full text-left px-4 py-3 border-b border-dars-rule-light transition-colors cursor-pointer border-x-0 border-t-0 ${active ? "bg-dars-terra text-white" : "bg-white hover:bg-dars-parchment text-dars-ink"}`}
-              >
-                <div className="flex items-start gap-2">
-                  <span className={`text-xs font-bold shrink-0 w-5 pt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{ch.chapter_number}</span>
-                  <div className="min-w-0">
-                    <p className={`text-sm font-semibold leading-tight ${active ? "text-white" : "text-dars-ink"}`}>{ch.title}</p>
-                    {pages && <p className={`text-xs mt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{pages}</p>}
+              <div className={`flex items-center border-b border-dars-rule-light ${active ? "bg-dars-terra" : "bg-white hover:bg-dars-parchment"}`}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(ch)}
+                  className={`flex-1 text-left px-4 py-3 transition-colors cursor-pointer`}
+                >
+                  <div className="flex items-start gap-2">
+                    <span className={`text-xs font-bold shrink-0 w-5 pt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{ch.chapter_number}</span>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold leading-tight ${active ? "text-white" : "text-dars-ink"}`}>{ch.title}</p>
+                      {pages && <p className={`text-xs mt-0.5 ${active ? "text-white/80" : "text-dars-muted"}`}>{pages}</p>}
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onGenerateAllLps(ch.id); }}
+                  disabled={isGenerating}
+                  title="Generate LPs for all slots in this chapter"
+                  className={`shrink-0 flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 mr-2 rounded border disabled:opacity-60 cursor-pointer transition-colors ${active ? "border-white/60 text-white hover:bg-white/20" : "border-dars-terra text-dars-terra hover:bg-dars-terra hover:text-white"}`}
+                >
+                  {isGenerating ? <Spinner /> : "Gen All LPs"}
+                </button>
+              </div>
             </li>
           );
         })}
@@ -266,7 +282,7 @@ function TopicSlotsColumn({
     try {
       const r = await fetch(`${API_URL}/api/v1/chapters/${selectedChapterId}/breakdown`, {
         method: "POST",
-        headers: { "X-Admin-Secret": ADMIN_SECRET, "Content-Type": "application/json" },
+        headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
       });
       if (r.ok) onSlotsRefresh();
     } catch {
@@ -434,6 +450,14 @@ export default function CurriculumPage() {
   const [slots, setSlots] = useState<Record<string, Slot[]>>({});
   const [activeLpId, setActiveLpId] = useState<string | null>(null);
 
+  // Import Books state
+  const [importing, setImporting] = useState(false);
+  const [importSchema, setImportSchema] = useState<"fde_staging" | "balochistan_staging" | "">("");
+  const [importResult, setImportResult] = useState<{ imported: number; missing: number; chapters: number } | null>(null);
+
+  // Bulk LP generation state
+  const [generatingAllLps, setGeneratingAllLps] = useState<string | null>(null);
+
   useEffect(() => {
     if (curriculum === null || grade === null || subject === null) {
       setBooks([]); setSelectedBook(null); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({});
@@ -493,9 +517,63 @@ export default function CurriculumPage() {
     if (selectedBook && selectedChapter) loadTopicsAndSlots(selectedBook, selectedChapter);
   }, [selectedBook, selectedChapter, loadTopicsAndSlots]);
 
+  const handleImportBooks = useCallback(async () => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const r = await fetch(`${API_URL}/admin/import-books`, {
+        method: "POST",
+        headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
+        body: JSON.stringify({ schema_filter: importSchema || null }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setImportResult(data);
+      }
+    } catch { /* swallow */ }
+    finally { setImporting(false); }
+  }, [importSchema]);
+
+  const handleGenerateAllLps = useCallback(async (chapterId: string) => {
+    setGeneratingAllLps(chapterId);
+    try {
+      await fetch(`${API_URL}/admin/chapters/${chapterId}/generate-lps`, {
+        method: "POST",
+        headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
+      });
+    } catch { /* swallow */ }
+    finally { setGeneratingAllLps(null); }
+  }, []);
+
   return (
     <div className="p-8 max-w-6xl">
       <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Curriculum</h1>
+
+      <div className="flex items-center gap-3 mb-6 p-4 bg-dars-parchment border border-dars-rule-light rounded-lg">
+        <p className="text-xs font-semibold text-dars-muted uppercase tracking-wide shrink-0">Import Books</p>
+        <select
+          value={importSchema}
+          onChange={(e) => setImportSchema(e.target.value as typeof importSchema)}
+          className="border border-dars-rule-light rounded-md px-3 py-1.5 text-sm text-dars-ink bg-white focus:outline-none"
+        >
+          <option value="">All schemas</option>
+          <option value="fde_staging">fde_staging (ICT)</option>
+          <option value="balochistan_staging">balochistan_staging (Punjab)</option>
+        </select>
+        <button
+          type="button"
+          onClick={handleImportBooks}
+          disabled={importing}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-dars-terra text-white text-sm font-semibold hover:bg-dars-terra/90 disabled:opacity-60 cursor-pointer transition-colors"
+        >
+          {importing ? <><Spinner /> Importing…</> : "Import"}
+        </button>
+        {importResult && (
+          <p className="text-xs text-dars-muted">
+            Done — {importResult.imported} books · {importResult.chapters} chapters · {importResult.missing} missing
+          </p>
+        )}
+      </div>
 
       <div className="flex items-center gap-4 mb-6">
         <select
@@ -526,7 +604,14 @@ export default function CurriculumPage() {
 
       <div className="border border-dars-rule-light rounded-lg overflow-hidden grid grid-cols-3 divide-x divide-dars-rule-light bg-white min-h-[400px]">
         <BooksColumn books={books} selectedId={selectedBook?.id ?? null} onSelect={handleSelectBook} loading={loadingBooks} />
-        <ChaptersColumn chapters={chapters} selectedId={selectedChapter?.id ?? null} onSelect={handleSelectChapter} loading={loadingChapters} />
+        <ChaptersColumn
+          chapters={chapters}
+          selectedId={selectedChapter?.id ?? null}
+          onSelect={handleSelectChapter}
+          loading={loadingChapters}
+          onGenerateAllLps={handleGenerateAllLps}
+          generatingAllLps={generatingAllLps}
+        />
         <TopicSlotsColumn
           topics={topics}
           slots={slots}

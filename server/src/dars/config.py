@@ -24,12 +24,8 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
-    # taleemabad-core staging DB (used for SLO import scripts)
-    core_staging_db_host: str = "localhost"
-    core_staging_db_port: int = 5432
-    core_staging_db_name: str = "taleemabad"
-    core_staging_db_user: str = "postgres"
-    core_staging_db_password: str = ""
+    # taleemabad-core DB (used for curriculum import)
+    core_db_url: str = ""  # postgresql://user:pass@host/dbname for taleemabad-core
 
 
 settings = Settings()

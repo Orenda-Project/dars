@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dars.clients.models import Client
 from dars.config import settings
 from dars.curriculum.admin_service import breakdown_chapter
+from dars.curriculum.import_service import import_books
 from dars.curriculum.models import Book, BookChapter, LessonSlot, Topic
 from dars.curriculum.schemas import (
     BookChapterListResponse,
@@ -15,6 +16,8 @@ from dars.curriculum.schemas import (
     BookListResponse,
     BookResponse,
     BreakdownResponse,
+    ImportBooksRequest,
+    ImportBooksResponse,
     LessonSlotListResponse,
     LessonSlotResponse,
     TopicListResponse,
@@ -24,7 +27,7 @@ from dars.lesson_plans.models import LessonPlan
 from dars.lesson_plans.schemas import LessonPlanResponse
 from dars.curriculum.service import list_book_chapters, list_books
 from dars.database import get_db
-from dars.deps import get_current_client, require_admin_secret
+from dars.deps import get_admin_client, get_current_client, require_admin_secret
 
 router = APIRouter(tags=["books"])
 admin_router = APIRouter(prefix="/admin", tags=["admin-curriculum"])
@@ -230,12 +233,12 @@ async def list_topic_slots(
 @router.post(
     "/api/v1/chapters/{chapter_id}/breakdown",
     response_model=BreakdownResponse,
-    dependencies=[Depends(require_admin_secret)],
+    dependencies=[Depends(get_admin_client)],
 )
 @admin_router.post(
     "/chapters/{chapter_id}/breakdown",
     response_model=BreakdownResponse,
-    dependencies=[Depends(require_admin_secret)],
+    dependencies=[Depends(get_admin_client)],
 )
 async def breakdown_chapter_endpoint(
     chapter_id: uuid.UUID,
@@ -246,3 +249,113 @@ async def breakdown_chapter_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return BreakdownResponse(**summary)
+
+
+@admin_router.post("/import-books", response_model=ImportBooksResponse)
+async def import_books_endpoint(
+    body: ImportBooksRequest,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> ImportBooksResponse:
+    try:
+        result = await import_books(db, schema_filter=body.schema_filter)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return ImportBooksResponse(**result)
+
+
+@admin_router.post("/chapters/{chapter_id}/generate-lps")
+async def bulk_generate_lps_endpoint(
+    chapter_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    force: bool = Query(default=False),
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Queue LP generation for all slots in a chapter that have topic_text."""
+    rows = await db.execute(
+        text("""
+            SELECT ls.id AS slot_id, ls.lesson_plan_id, t.topic_text,
+                   ls.topic_subtopic AS topic, t.page_number,
+                   b.grade, b.subject, b.curriculum
+            FROM lesson_slots ls
+            JOIN topics t ON t.id = ls.topic_id
+            JOIN book_chapters bc ON bc.id = t.chapter_id
+            JOIN books b ON b.id = bc.book_id
+            WHERE t.chapter_id = :chapter_id
+        """),
+        {"chapter_id": str(chapter_id)},
+    )
+    slots = rows.mappings().all()
+
+    queued = skipped = 0
+    for slot in slots:
+        if not slot["topic_text"]:
+            skipped += 1
+            continue
+        if slot["lesson_plan_id"] and not force:
+            skipped += 1
+            continue
+
+        lp = LessonPlan(
+            client_id=_admin.id,
+            curriculum=slot["curriculum"],
+            grade=str(slot["grade"]),
+            subject=slot["subject"],
+            topic=slot["topic"],
+            page_number=slot["page_number"],
+            status="PENDING",
+        )
+        db.add(lp)
+        await db.flush()
+        await db.execute(
+            text("UPDATE lesson_slots SET lesson_plan_id = :lp_id WHERE id = :slot_id"),
+            {"lp_id": str(lp.id), "slot_id": str(slot["slot_id"])},
+        )
+        slot_data = dict(slot)
+        lp_id = lp.id
+        admin_id = _admin.id
+
+        async def _generate(sd=slot_data, lid=lp_id, aid=admin_id) -> None:
+            from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+            from dars.mapping import canonical_grade, canonical_subject
+            engine = create_async_engine(settings.database_url)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            payload = {
+                "grade": canonical_grade(sd["grade"]),
+                "curriculum": sd["curriculum"],
+                "subject": canonical_subject(sd["subject"]),
+                "topic": sd["topic"],
+                "page_content": sd["topic_text"] or "",
+            }
+            async with factory() as session:
+                record = await session.get(LessonPlan, lid)
+                if record is None:
+                    await engine.dispose()
+                    return
+                try:
+                    async with httpx.AsyncClient(timeout=120.0) as http:
+                        resp = await http.post(
+                            f"{settings.lp_assistant_url}/api/generate-lp",
+                            json=payload,
+                            headers={"api-key": settings.lp_assistant_api_key},
+                        )
+                    resp.raise_for_status()
+                    result = resp.json()
+                    record.content = result.get("lesson_plan", "")
+                    record.content_bilingual = result.get("lesson_plan_bilingual")
+                    record.tags = result.get("tags") or {}
+                    record.metadata_ = result.get("metadata") or {}
+                    record.status = "READY"
+                except Exception as exc:
+                    import logging as _logging
+                    _logging.getLogger(__name__).error("Bulk LP gen failed lp=%s: %s", lid, exc)
+                    record.status = "ERROR"
+                await session.commit()
+            await engine.dispose()
+
+        background_tasks.add_task(_generate)
+        queued += 1
+
+    await db.commit()
+    return {"queued": queued, "skipped": skipped}
