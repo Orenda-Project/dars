@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -76,7 +77,6 @@ function GenerateForm({ onGenerated }: { onGenerated: (eg: ExamGeneration) => vo
   const [generationType, setGenerationType] = useState("exam");
   const [includeAnswerKey, setIncludeAnswerKey] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const subjects = Object.keys(CURRICULUM_DATA[curriculum] ?? {});
   const grades = subject ? (CURRICULUM_DATA[curriculum]?.[subject] ?? []) : [];
@@ -93,7 +93,6 @@ function GenerateForm({ onGenerated }: { onGenerated: (eg: ExamGeneration) => vo
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
     setLoading(true);
     const apiKey = getApiKey();
 
@@ -128,7 +127,7 @@ function GenerateForm({ onGenerated }: { onGenerated: (eg: ExamGeneration) => vo
       const eg: ExamGeneration = await res.json();
       onGenerated(eg);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      toast.error(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -221,12 +220,6 @@ function GenerateForm({ onGenerated }: { onGenerated: (eg: ExamGeneration) => vo
           />
           <span className="text-sm text-dars-ink">Include Answer Key</span>
         </label>
-
-        {error && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-            {error}
-          </p>
-        )}
 
         <button
           type="submit"
@@ -346,12 +339,10 @@ function PastExams({ refreshTrigger }: { refreshTrigger: number }) {
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchPage = useCallback(async (off: number) => {
     setLoading(true);
-    setError("");
     const apiKey = getApiKey();
     try {
       const res = await fetch(
@@ -363,7 +354,7 @@ function PastExams({ refreshTrigger }: { refreshTrigger: number }) {
       setItems(data.items);
       setTotal(data.total);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load exam generations");
+      toast.error(err instanceof Error ? err.message : "Failed to load exam generations");
     } finally {
       setLoading(false);
     }
@@ -393,13 +384,7 @@ function PastExams({ refreshTrigger }: { refreshTrigger: number }) {
 
       {loading && <p className="text-sm text-dars-muted animate-pulse">Loading…</p>}
 
-      {error && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-          {error}
-        </p>
-      )}
-
-      {!loading && !error && items.length === 0 && (
+      {!loading && items.length === 0 && (
         <p className="text-sm text-dars-muted">No exam generations yet.</p>
       )}
 

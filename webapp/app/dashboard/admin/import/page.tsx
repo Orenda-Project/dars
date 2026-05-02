@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { getApiKey, isAdmin } from "@/lib/session";
+import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -59,11 +60,9 @@ export default function ImportBookPage() {
 
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<BookPreview | null>(null);
-  const [previewError, setPreviewError] = useState("");
 
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ status: string; chapters: number } | null>(null);
-  const [importError, setImportError] = useState("");
 
   useEffect(() => {
     if (!isAdmin()) router.replace("/dashboard/lesson-plans");
@@ -71,12 +70,10 @@ export default function ImportBookPage() {
 
   async function handlePreview() {
     const id = parseInt(coreId, 10);
-    if (!id || id <= 0) { setPreviewError("Enter a valid book ID."); return; }
+    if (!id || id <= 0) { toast.error("Enter a valid book ID."); return; }
     setPreviewing(true);
     setPreview(null);
-    setPreviewError("");
     setImportResult(null);
-    setImportError("");
     try {
       const r = await fetch(`${API_URL}/admin/preview-book?core_id=${id}&schema=${schema}`, {
         headers: { "X-API-Key": getApiKey() },
@@ -87,7 +84,7 @@ export default function ImportBookPage() {
       }
       setPreview(await r.json());
     } catch (err) {
-      setPreviewError(err instanceof Error ? err.message : "Preview failed.");
+      toast.error(err instanceof Error ? err.message : "Preview failed.");
     } finally {
       setPreviewing(false);
     }
@@ -96,9 +93,8 @@ export default function ImportBookPage() {
   async function handleImport() {
     if (!preview) return;
     const gradeNum = parseInt(grade, 10);
-    if (!gradeNum || gradeNum < 1 || gradeNum > 12) { setImportError("Enter a valid grade (1–12)."); return; }
+    if (!gradeNum || gradeNum < 1 || gradeNum > 12) { toast.error("Enter a valid grade (1–12)."); return; }
     setImporting(true);
-    setImportError("");
     setImportResult(null);
     try {
       const r = await fetch(`${API_URL}/admin/import-book`, {
@@ -118,7 +114,7 @@ export default function ImportBookPage() {
       }
       setImportResult(await r.json());
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : "Import failed.");
+      toast.error(err instanceof Error ? err.message : "Import failed.");
     } finally {
       setImporting(false);
     }
@@ -143,7 +139,7 @@ export default function ImportBookPage() {
               type="number"
               min="1"
               value={coreId}
-              onChange={(e) => { setCoreId(e.target.value); setPreview(null); setPreviewError(""); setImportResult(null); }}
+              onChange={(e) => { setCoreId(e.target.value); setPreview(null); setImportResult(null); }}
               placeholder="e.g. 1171"
               className="w-full border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra placeholder:text-dars-muted/50"
             />
@@ -155,7 +151,7 @@ export default function ImportBookPage() {
             </label>
             <select
               value={schema}
-              onChange={(e) => { setSchema(e.target.value as Schema); setPreview(null); setPreviewError(""); setImportResult(null); }}
+              onChange={(e) => { setSchema(e.target.value as Schema); setPreview(null); setImportResult(null); }}
               className="w-full border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
             >
               {SCHEMAS.map((s) => (
@@ -174,7 +170,6 @@ export default function ImportBookPage() {
           {previewing ? <><Spinner /> Looking up…</> : "Preview book"}
         </button>
 
-        {previewError && <p className="text-sm text-red-600">{previewError}</p>}
       </div>
 
       {/* Preview card */}
@@ -276,7 +271,6 @@ export default function ImportBookPage() {
                 </button>
               </div>
             )}
-            {importError && <p className="mt-2 text-sm text-red-600">{importError}</p>}
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { BookLoader } from "@/components/atoms/book-loader";
 import { getApiKey, isAdmin } from "@/lib/session";
 
@@ -81,7 +82,7 @@ function LPPanel({ lpId, onClose }: { lpId: string; onClose: () => void }) {
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: LessonPlan) => setLp(data))
-      .catch(() => {})
+      .catch(() => { toast.error("Failed to load lesson plan"); })
       .finally(() => setLoading(false));
   }, [lpId]);
 
@@ -286,7 +287,7 @@ function TopicSlotsColumn({
       });
       if (r.ok) onSlotsRefresh();
     } catch {
-      // swallow
+      toast.error("Breakdown failed. Please try again.");
     } finally {
       setBreakingDown(false);
     }
@@ -305,7 +306,7 @@ function TopicSlotsColumn({
         onSlotsRefresh();
       }
     } catch {
-      // swallow
+      toast.error("Failed to generate lesson plan.");
     } finally {
       setGeneratingLp((prev) => ({ ...prev, [slotId]: false }));
     }
@@ -465,7 +466,7 @@ export default function CurriculumPage() {
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { items: Book[] }) => setBooks(data.items ?? []))
-      .catch(() => {})
+      .catch(() => { toast.error("Failed to load data."); })
       .finally(() => setLoadingBooks(false));
   }, [curriculum, grade, subject]);
 
@@ -475,7 +476,7 @@ export default function CurriculumPage() {
     fetch(`${API_URL}/api/v1/books/${book.id}/chapters`, { headers: { "X-API-Key": getApiKey() } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { items: Chapter[] }) => setChapters(data.items ?? []))
-      .catch(() => {})
+      .catch(() => { toast.error("Failed to load data."); })
       .finally(() => setLoadingChapters(false));
   }, []);
 
@@ -499,7 +500,7 @@ export default function CurriculumPage() {
         for (const { topicId, slots: s } of slotResults) slotMap[topicId] = s;
         setSlots(slotMap);
       })
-      .catch(() => {})
+      .catch(() => { toast.error("Failed to load data."); })
       .finally(() => setLoadingTopics(false));
   }, []);
 
@@ -519,7 +520,7 @@ export default function CurriculumPage() {
         method: "POST",
         headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
       });
-    } catch { /* swallow */ }
+    } catch { toast.error("Failed to start bulk LP generation."); }
     finally { setGeneratingAllLps(null); }
   }, []);
 

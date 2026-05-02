@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Geist_Mono, Lora, Noto_Nastaliq_Urdu } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const lora = Lora({
@@ -42,7 +43,20 @@ export default function RootLayout({
       lang="en"
       className={`${lora.variable} ${geistMono.variable} ${notoNastaliq.variable} ${cormorant.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              fontFamily: "var(--font-lora), Georgia, serif",
+              background: "#1c1410",
+              color: "#faf7f2",
+              border: "1px solid #2e2420",
+            },
+          }}
+        />
+      </body>
     </html>
   );
 }

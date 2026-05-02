@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Logo } from "@/components/atoms/logo";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -27,11 +28,9 @@ export function LoginTemplate() {
   const [copied, setCopied] = useState(false);
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
@@ -52,7 +51,7 @@ export function LoginTemplate() {
       }));
       router.push("/dashboard/lesson-plans");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Sign in failed.");
+      toast.error(err instanceof Error ? err.message : "Sign in failed.");
     } finally {
       setLoading(false);
     }
@@ -60,7 +59,6 @@ export function LoginTemplate() {
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/auth/signup`, {
@@ -75,7 +73,7 @@ export function LoginTemplate() {
       setNewApiKey(data.api_key as string);
       setMode("key-reveal");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Signup failed.");
+      toast.error(err instanceof Error ? err.message : "Signup failed.");
     } finally {
       setLoading(false);
     }
@@ -131,15 +129,13 @@ export function LoginTemplate() {
             />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
-
           <button type="submit" disabled={loading} className="w-full py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-50">
             {loading ? "Signing in…" : "Sign in"}
           </button>
 
           <p className="text-center text-xs text-dars-muted">
             No account?{" "}
-            <button type="button" onClick={() => { setError(""); setMode("signup"); }} className="text-dars-terra underline bg-transparent border-none cursor-pointer p-0">
+            <button type="button" onClick={() => { setMode("signup"); }} className="text-dars-terra underline bg-transparent border-none cursor-pointer p-0">
               Create one
             </button>
           </p>
@@ -167,15 +163,13 @@ export function LoginTemplate() {
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} placeholder="••••••••" />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
-
           <button type="submit" disabled={loading} className="w-full py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-50">
             {loading ? "Creating…" : "Create account"}
           </button>
 
           <p className="text-center text-xs text-dars-muted">
             Already have an account?{" "}
-            <button type="button" onClick={() => { setError(""); setMode("signin"); }} className="text-dars-terra underline bg-transparent border-none cursor-pointer p-0">
+            <button type="button" onClick={() => { setMode("signin"); }} className="text-dars-terra underline bg-transparent border-none cursor-pointer p-0">
               Sign in
             </button>
           </p>
