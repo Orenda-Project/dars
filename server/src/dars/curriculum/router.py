@@ -3,6 +3,7 @@ import uuid
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -242,6 +243,136 @@ async def list_topic_slots(
     )
     items = list(result.scalars().all())
     return LessonSlotListResponse(items=[LessonSlotResponse.model_validate(s) for s in items])
+
+
+# ---------------------------------------------------------------------------
+# Manual create / delete endpoints
+# ---------------------------------------------------------------------------
+
+
+class CreateTopicRequest(BaseModel):
+    chapter_id: uuid.UUID
+    topic_number: int
+    title: str
+    page_number: str | None = None
+
+
+class CreateSlotRequest(BaseModel):
+    day_number: int
+    topic_subtopic: str
+    scheduled_date: str | None = None
+
+
+@router.post("/api/v1/chapters/{chapter_id}/topics", response_model=TopicResponse, status_code=201)
+async def create_topic(
+    chapter_id: uuid.UUID,
+    body: CreateTopicRequest,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> TopicResponse:
+    logger.info("create_topic: chapter_id=%s title=%r", chapter_id, body.title)
+    from dars.curriculum.models import BookChapter
+    chapter = await db.get(BookChapter, chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+    topic = Topic(
+        chapter_id=chapter_id,
+        topic_number=body.topic_number,
+        title=body.title,
+        page_number=body.page_number,
+    )
+    db.add(topic)
+    await db.commit()
+    await db.refresh(topic)
+    logger.info("create_topic: done topic_id=%s", topic.id)
+    return TopicResponse.model_validate(topic)
+
+
+@router.post("/api/v1/topics/{topic_id}/slots", response_model=LessonSlotResponse, status_code=201)
+async def create_slot(
+    topic_id: uuid.UUID,
+    body: CreateSlotRequest,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> LessonSlotResponse:
+    logger.info("create_slot: topic_id=%s day=%s", topic_id, body.day_number)
+    topic = await db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+    slot = LessonSlot(
+        topic_id=topic_id,
+        day_number=body.day_number,
+        topic_subtopic=body.topic_subtopic,
+        scheduled_date=body.scheduled_date,
+    )
+    db.add(slot)
+    await db.commit()
+    await db.refresh(slot)
+    logger.info("create_slot: done slot_id=%s", slot.id)
+    return LessonSlotResponse.model_validate(slot)
+
+
+@router.delete("/api/v1/chapters/{chapter_id}/breakdown", status_code=204)
+async def delete_chapter_breakdown(
+    chapter_id: uuid.UUID,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    logger.info("delete_chapter_breakdown: chapter_id=%s", chapter_id)
+    from sqlalchemy import delete as sql_delete
+    await db.execute(sql_delete(Topic).where(Topic.chapter_id == chapter_id))
+    await db.commit()
+    logger.info("delete_chapter_breakdown: done chapter_id=%s", chapter_id)
+
+
+@router.delete("/api/v1/topics/{topic_id}", status_code=204)
+async def delete_topic(
+    topic_id: uuid.UUID,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    logger.info("delete_topic: topic_id=%s", topic_id)
+    topic = await db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+    await db.delete(topic)
+    await db.commit()
+    logger.info("delete_topic: done topic_id=%s", topic_id)
+
+
+@router.delete("/api/v1/slots/{slot_id}", status_code=204)
+async def delete_slot(
+    slot_id: uuid.UUID,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    logger.info("delete_slot: slot_id=%s", slot_id)
+    slot = await db.get(LessonSlot, slot_id)
+    if slot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Slot not found")
+    await db.delete(slot)
+    await db.commit()
+    logger.info("delete_slot: done slot_id=%s", slot_id)
+
+
+@router.delete("/api/v1/lesson-plans/{lp_id}", status_code=204)
+async def delete_lesson_plan(
+    lp_id: uuid.UUID,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    logger.info("delete_lesson_plan: lp_id=%s", lp_id)
+    lp = await db.get(LessonPlan, lp_id)
+    if lp is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
+    # Unlink from any slots pointing to this LP
+    await db.execute(
+        text("UPDATE lesson_slots SET lesson_plan_id = NULL WHERE lesson_plan_id = :lp_id"),
+        {"lp_id": str(lp_id)},
+    )
+    await db.delete(lp)
+    await db.commit()
+    logger.info("delete_lesson_plan: done lp_id=%s", lp_id)
 
 
 # ---------------------------------------------------------------------------

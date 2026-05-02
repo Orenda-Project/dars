@@ -260,6 +260,84 @@ function ChaptersColumn({
 
 // ── Topics & Slots column ─────────────────────────────────────────────────────
 
+function AddTopicForm({ chapterId, topicCount, onDone }: { chapterId: string; topicCount: number; onDone: () => void }) {
+  const [title, setTitle] = useState("");
+  const [page, setPage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`${API_URL}/api/v1/chapters/${chapterId}/topics`, {
+        method: "POST",
+        headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
+        body: JSON.stringify({ chapter_id: chapterId, topic_number: topicCount + 1, title: title.trim(), page_number: page.trim() || null }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setTitle(""); setPage("");
+      onDone();
+    } catch { toast.error("Failed to add topic."); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex gap-2 items-end px-4 py-3 border-t border-dars-rule-light bg-dars-parchment">
+      <div className="flex-1">
+        <input
+          value={title} onChange={(e) => setTitle(e.target.value)}
+          placeholder="Topic title"
+          className="w-full border border-dars-rule-light rounded px-2 py-1.5 text-xs text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+        />
+      </div>
+      <input
+        value={page} onChange={(e) => setPage(e.target.value)}
+        placeholder="Page"
+        className="w-16 border border-dars-rule-light rounded px-2 py-1.5 text-xs text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+      />
+      <button type="submit" disabled={saving || !title.trim()} className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded bg-dars-terra text-white hover:bg-dars-terra/90 disabled:opacity-50 cursor-pointer">
+        {saving ? <Spinner /> : "Add"}
+      </button>
+    </form>
+  );
+}
+
+function AddSlotForm({ topicId, dayCount, onDone }: { topicId: string; dayCount: number; onDone: () => void }) {
+  const [subtopic, setSubtopic] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!subtopic.trim()) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`${API_URL}/api/v1/topics/${topicId}/slots`, {
+        method: "POST",
+        headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
+        body: JSON.stringify({ day_number: dayCount + 1, topic_subtopic: subtopic.trim() }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setSubtopic("");
+      onDone();
+    } catch { toast.error("Failed to add slot."); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex gap-2 items-center mt-1 ml-7">
+      <input
+        value={subtopic} onChange={(e) => setSubtopic(e.target.value)}
+        placeholder="Topic — Subtopic"
+        className="flex-1 border border-dars-rule-light rounded px-2 py-1 text-xs text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+      />
+      <button type="submit" disabled={saving || !subtopic.trim()} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded bg-dars-terra text-white hover:bg-dars-terra/90 disabled:opacity-50 cursor-pointer">
+        {saving ? <Spinner /> : "+ Slot"}
+      </button>
+    </form>
+  );
+}
+
 function TopicSlotsColumn({
   topics, slots, chapterSelected, selectedChapterId, loading, onViewLP, onSlotsRefresh,
 }: {
@@ -272,10 +350,15 @@ function TopicSlotsColumn({
   onSlotsRefresh: () => void;
 }) {
   const [breakingDown, setBreakingDown] = useState(false);
+  const [deletingBreakdown, setDeletingBreakdown] = useState(false);
   const [generatingLp, setGeneratingLp] = useState<Record<string, boolean>>({});
+  const [deletingTopic, setDeletingTopic] = useState<Record<string, boolean>>({});
+  const [deletingSlot, setDeletingSlot] = useState<Record<string, boolean>>({});
+  const [deletingLp, setDeletingLp] = useState<Record<string, boolean>>({});
+  const [addingSlotFor, setAddingSlotFor] = useState<string | null>(null);
+  const [showAddTopic, setShowAddTopic] = useState(false);
 
-  // Reset breakdown state when chapter changes
-  useEffect(() => { setBreakingDown(false); }, [selectedChapterId]);
+  useEffect(() => { setBreakingDown(false); setShowAddTopic(false); setAddingSlotFor(null); }, [selectedChapterId]);
 
   const handleBreakdown = useCallback(async () => {
     if (!selectedChapterId) return;
@@ -286,12 +369,53 @@ function TopicSlotsColumn({
         headers: { "X-API-Key": getApiKey(), "Content-Type": "application/json" },
       });
       if (r.ok) onSlotsRefresh();
-    } catch {
-      toast.error("Breakdown failed. Please try again.");
-    } finally {
-      setBreakingDown(false);
-    }
+      else toast.error("Breakdown failed.");
+    } catch { toast.error("Breakdown failed. Please try again."); }
+    finally { setBreakingDown(false); }
   }, [selectedChapterId, onSlotsRefresh]);
+
+  const handleDeleteBreakdown = useCallback(async () => {
+    if (!selectedChapterId) return;
+    if (!confirm("Delete all topics and slots for this chapter?")) return;
+    setDeletingBreakdown(true);
+    try {
+      await fetch(`${API_URL}/api/v1/chapters/${selectedChapterId}/breakdown`, {
+        method: "DELETE",
+        headers: { "X-API-Key": getApiKey() },
+      });
+      onSlotsRefresh();
+    } catch { toast.error("Failed to delete breakdown."); }
+    finally { setDeletingBreakdown(false); }
+  }, [selectedChapterId, onSlotsRefresh]);
+
+  const handleDeleteTopic = useCallback(async (topicId: string) => {
+    if (!confirm("Delete this topic and all its slots?")) return;
+    setDeletingTopic((p) => ({ ...p, [topicId]: true }));
+    try {
+      await fetch(`${API_URL}/api/v1/topics/${topicId}`, { method: "DELETE", headers: { "X-API-Key": getApiKey() } });
+      onSlotsRefresh();
+    } catch { toast.error("Failed to delete topic."); }
+    finally { setDeletingTopic((p) => ({ ...p, [topicId]: false })); }
+  }, [onSlotsRefresh]);
+
+  const handleDeleteSlot = useCallback(async (slotId: string) => {
+    setDeletingSlot((p) => ({ ...p, [slotId]: true }));
+    try {
+      await fetch(`${API_URL}/api/v1/slots/${slotId}`, { method: "DELETE", headers: { "X-API-Key": getApiKey() } });
+      onSlotsRefresh();
+    } catch { toast.error("Failed to delete slot."); }
+    finally { setDeletingSlot((p) => ({ ...p, [slotId]: false })); }
+  }, [onSlotsRefresh]);
+
+  const handleDeleteLp = useCallback(async (lpId: string, slotId: string) => {
+    if (!confirm("Delete this lesson plan?")) return;
+    setDeletingLp((p) => ({ ...p, [slotId]: true }));
+    try {
+      await fetch(`${API_URL}/api/v1/lesson-plans/${lpId}`, { method: "DELETE", headers: { "X-API-Key": getApiKey() } });
+      onSlotsRefresh();
+    } catch { toast.error("Failed to delete lesson plan."); }
+    finally { setDeletingLp((p) => ({ ...p, [slotId]: false })); }
+  }, [onSlotsRefresh]);
 
   const handleGenerateLp = useCallback(async (slotId: string) => {
     setGeneratingLp((prev) => ({ ...prev, [slotId]: true }));
@@ -305,11 +429,8 @@ function TopicSlotsColumn({
         onViewLP(data.id);
         onSlotsRefresh();
       }
-    } catch {
-      toast.error("Failed to generate lesson plan.");
-    } finally {
-      setGeneratingLp((prev) => ({ ...prev, [slotId]: false }));
-    }
+    } catch { toast.error("Failed to generate lesson plan."); }
+    finally { setGeneratingLp((prev) => ({ ...prev, [slotId]: false })); }
   }, [onViewLP, onSlotsRefresh]);
 
   if (!chapterSelected) {
@@ -336,46 +457,97 @@ function TopicSlotsColumn({
         <ColHeader label="Topics & Slots" />
         <div className="px-4 py-6 flex flex-col gap-3">
           <p className="text-sm text-dars-muted">No breakdown yet for this chapter.</p>
-          <button
-            type="button"
-            onClick={handleBreakdown}
-            disabled={breakingDown}
-            className="flex items-center gap-2 self-start px-4 py-2 rounded-md bg-dars-terra text-white text-sm font-semibold hover:bg-dars-terra/90 disabled:opacity-60 cursor-pointer transition-colors"
-          >
-            {breakingDown ? <><Spinner /> Generating…</> : "Generate AI Breakdown"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleBreakdown}
+              disabled={breakingDown}
+              className="flex items-center gap-2 px-4 py-2 rounded-md bg-dars-terra text-white text-sm font-semibold hover:bg-dars-terra/90 disabled:opacity-60 cursor-pointer transition-colors"
+            >
+              {breakingDown ? <><Spinner /> Generating…</> : "Generate AI Breakdown"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddTopic(true)}
+              className="px-4 py-2 rounded-md border border-dars-terra text-dars-terra text-sm font-semibold hover:bg-dars-terra/5 cursor-pointer transition-colors"
+            >
+              + Add manually
+            </button>
+          </div>
         </div>
+        {showAddTopic && selectedChapterId && (
+          <AddTopicForm chapterId={selectedChapterId} topicCount={0} onDone={() => { setShowAddTopic(false); onSlotsRefresh(); }} />
+        )}
       </div>
     );
   }
 
   const sorted = [...topics].sort((a, b) => a.topic_number - b.topic_number);
+  const allSlots = Object.values(slots).flat();
 
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between pr-3 border-b border-dars-rule-light">
         <p className="text-[10px] font-semibold text-dars-muted uppercase tracking-widest px-4 py-3">Topics & Slots</p>
-        <button
-          type="button"
-          onClick={handleBreakdown}
-          disabled={breakingDown}
-          title="Regenerate breakdown (overwrites existing topics and slots)"
-          className="flex items-center gap-1 text-[10px] font-semibold text-dars-muted hover:text-dars-terra disabled:opacity-50 cursor-pointer transition-colors"
-        >
-          {breakingDown ? <Spinner /> : "↺"} Regenerate
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowAddTopic((v) => !v)}
+            className="text-[10px] font-semibold text-dars-muted hover:text-dars-terra cursor-pointer transition-colors"
+          >
+            + Topic
+          </button>
+          <button
+            type="button"
+            onClick={handleBreakdown}
+            disabled={breakingDown}
+            title="Regenerate breakdown (overwrites existing)"
+            className="flex items-center gap-1 text-[10px] font-semibold text-dars-muted hover:text-dars-terra disabled:opacity-50 cursor-pointer transition-colors"
+          >
+            {breakingDown ? <Spinner /> : "↺"} Regenerate
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteBreakdown}
+            disabled={deletingBreakdown}
+            title="Delete all topics and slots"
+            className="flex items-center gap-1 text-[10px] font-semibold text-red-400 hover:text-red-600 disabled:opacity-50 cursor-pointer transition-colors"
+          >
+            {deletingBreakdown ? <Spinner /> : "✕"} Clear
+          </button>
+        </div>
       </div>
       <ul>
         {sorted.map((topic) => {
           const topicSlots = slots[topic.id] ?? [];
+          const isAddingSlot = addingSlotFor === topic.id;
           return (
             <li key={topic.id} className="border-b border-dars-rule-light last:border-0">
               <div className="px-4 py-3">
                 <div className="flex items-start gap-2 mb-2">
                   <span className="text-xs font-bold text-dars-muted shrink-0 w-5 pt-0.5">{topic.topic_number}</span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-dars-ink leading-tight">{topic.title}</p>
                     {topic.page_number != null && <p className="text-xs text-dars-muted mt-0.5">p. {topic.page_number}</p>}
+                  </div>
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setAddingSlotFor(isAddingSlot ? null : topic.id)}
+                      title="Add slot manually"
+                      className="text-[10px] font-semibold text-dars-muted hover:text-dars-terra cursor-pointer transition-colors"
+                    >
+                      + slot
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTopic(topic.id)}
+                      disabled={!!deletingTopic[topic.id]}
+                      title="Delete topic and its slots"
+                      className="text-[10px] text-red-300 hover:text-red-500 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      {deletingTopic[topic.id] ? <Spinner /> : "✕"}
+                    </button>
                   </div>
                 </div>
 
@@ -394,33 +566,68 @@ function TopicSlotsColumn({
                         </div>
                         <div className="shrink-0 flex items-center gap-1">
                           {slot.lesson_plan_id && (
-                            <button
-                              type="button"
-                              onClick={() => onViewLP(slot.lesson_plan_id!)}
-                              className="text-[10px] font-semibold px-2 py-0.5 rounded bg-dars-terra text-white hover:bg-dars-terra/90 cursor-pointer transition-colors"
-                            >
-                              LP
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onViewLP(slot.lesson_plan_id!)}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded bg-dars-terra text-white hover:bg-dars-terra/90 cursor-pointer transition-colors"
+                              >
+                                LP
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLp(slot.lesson_plan_id!, slot.id)}
+                                disabled={!!deletingLp[slot.id]}
+                                title="Delete lesson plan"
+                                className="text-[10px] text-red-300 hover:text-red-500 disabled:opacity-50 cursor-pointer transition-colors"
+                              >
+                                {deletingLp[slot.id] ? <Spinner /> : "✕"}
+                              </button>
+                            </>
                           )}
                           <button
                             type="button"
                             onClick={() => handleGenerateLp(slot.id)}
                             disabled={!!generatingLp[slot.id]}
-                            title={slot.lesson_plan_id ? "Regenerate LP (overwrites existing)" : "Generate LP"}
+                            title={slot.lesson_plan_id ? "Regenerate LP" : "Generate LP"}
                             className="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border border-dars-terra text-dars-terra hover:bg-dars-terra hover:text-white disabled:opacity-60 cursor-pointer transition-colors"
                           >
                             {generatingLp[slot.id] ? <Spinner /> : slot.lesson_plan_id ? "↺" : "Gen LP"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSlot(slot.id)}
+                            disabled={!!deletingSlot[slot.id]}
+                            title="Delete slot"
+                            className="text-[10px] text-red-300 hover:text-red-500 disabled:opacity-50 cursor-pointer transition-colors"
+                          >
+                            {deletingSlot[slot.id] ? <Spinner /> : "✕"}
                           </button>
                         </div>
                       </li>
                     ))}
                   </ul>
                 )}
+
+                {isAddingSlot && (
+                  <AddSlotForm
+                    topicId={topic.id}
+                    dayCount={allSlots.length}
+                    onDone={() => { setAddingSlotFor(null); onSlotsRefresh(); }}
+                  />
+                )}
               </div>
             </li>
           );
         })}
       </ul>
+      {showAddTopic && selectedChapterId && (
+        <AddTopicForm
+          chapterId={selectedChapterId}
+          topicCount={topics.length}
+          onDone={() => { setShowAddTopic(false); onSlotsRefresh(); }}
+        />
+      )}
     </div>
   );
 }
