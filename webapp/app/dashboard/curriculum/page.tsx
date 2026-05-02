@@ -871,6 +871,7 @@ export default function CurriculumPage() {
   // Bulk LP generation state
   const [generatingAllLps, setGeneratingAllLps] = useState<string | null>(null);
   const [buildStatus, setBuildStatus] = useState<Record<string, string>>({});
+  const [buildingRemaining, setBuildingRemaining] = useState(false);
 
   useEffect(() => {
     if (curriculum === null || grade === null || subject === null) {
@@ -1032,6 +1033,26 @@ export default function CurriculumPage() {
     }
   }, [selectedBook, selectedChapter, handleSlotsRefresh, refreshStats]);
 
+  const handleBuildRemaining = useCallback(async () => {
+    if (!selectedBook) return;
+    const apiKey = getApiKey();
+    if (!apiKey) { toast.error("No API key set"); return; }
+    setBuildingRemaining(true);
+    try {
+      const resp = await fetch(`${API_URL}/admin/books/${selectedBook.id}/build-remaining`, {
+        method: "POST",
+        headers: { "X-API-Key": apiKey },
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      toast.success(`Build started for ${data.chapters} chapter(s). This runs in the background.`);
+    } catch (e: unknown) {
+      toast.error(`Build remaining failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBuildingRemaining(false);
+    }
+  }, [selectedBook]);
+
   return (
     <div className="p-8 max-w-6xl">
       <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Curriculum</h1>
@@ -1069,6 +1090,13 @@ export default function CurriculumPage() {
           <span>Chapters broken down: <strong className="text-dars-ink">{bookStats.chapters_broken_down}/{bookStats.total_chapters}</strong></span>
           <span>LPs: <strong className="text-dars-ink">{bookStats.lps_generated}/{bookStats.total_slots}</strong></span>
           <span>Quizzes: <strong className="text-dars-ink">{bookStats.quizzes_generated}/{bookStats.total_slots}</strong></span>
+          <button
+            onClick={handleBuildRemaining}
+            disabled={buildingRemaining}
+            className="ml-auto px-3 py-1.5 rounded bg-dars-terra text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {buildingRemaining ? "Starting…" : "Build Remaining"}
+          </button>
         </div>
       )}
 
