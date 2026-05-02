@@ -90,6 +90,34 @@ async def list_book_chapters_endpoint(
     )
 
 
+@router.get("/api/v1/books/{book_id}/stats")
+async def get_book_stats(
+    book_id: uuid.UUID,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    logger.info("get_book_stats: book_id=%s", book_id)
+    row = await db.execute(
+        text("""
+            SELECT
+                COUNT(DISTINCT bc.id)                                          AS total_chapters,
+                COUNT(DISTINCT CASE WHEN t.id IS NOT NULL THEN bc.id END)      AS chapters_broken_down,
+                COUNT(DISTINCT ls.id)                                          AS total_slots,
+                COUNT(DISTINCT ls.lesson_plan_id)                              AS lps_generated,
+                COUNT(DISTINCT a.id)                                           AS quizzes_generated
+            FROM book_chapters bc
+            LEFT JOIN topics t        ON t.chapter_id = bc.id
+            LEFT JOIN lesson_slots ls ON ls.topic_id = t.id
+            LEFT JOIN assessments a   ON a.lesson_plan_id = ls.lesson_plan_id
+            WHERE bc.book_id = :book_id
+        """),
+        {"book_id": str(book_id)},
+    )
+    data = dict(row.mappings().one())
+    logger.info("get_book_stats: book_id=%s stats=%s", book_id, data)
+    return data
+
+
 @router.get(
     "/api/v1/books/{book_id}/chapters/{chapter_id}/topics",
     response_model=TopicListResponse,

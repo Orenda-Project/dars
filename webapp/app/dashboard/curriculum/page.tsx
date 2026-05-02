@@ -866,6 +866,7 @@ export default function CurriculumPage() {
   const [slots, setSlots] = useState<Record<string, Slot[]>>({});
   const [activeLpId, setActiveLpId] = useState<string | null>(null);
   const [activeAssessmentId, setActiveAssessmentId] = useState<string | null>(null);
+  const [bookStats, setBookStats] = useState<Record<string, number> | null>(null);
 
   // Bulk LP generation state
   const [generatingAllLps, setGeneratingAllLps] = useState<string | null>(null);
@@ -887,15 +888,23 @@ export default function CurriculumPage() {
       .finally(() => setLoadingBooks(false));
   }, [curriculum, grade, subject]);
 
+  const refreshStats = useCallback((bookId: string) => {
+    fetch(`${API_URL}/api/v1/books/${bookId}/stats`, { headers: { "X-API-Key": getApiKey() } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data) setBookStats(data); })
+      .catch(() => {});
+  }, []);
+
   const handleSelectBook = useCallback((book: Book) => {
-    setSelectedBook(book); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({});
+    setSelectedBook(book); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({}); setBookStats(null);
     setLoadingChapters(true);
     fetch(`${API_URL}/api/v1/books/${book.id}/chapters`, { headers: { "X-API-Key": getApiKey() } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { items: Chapter[] }) => setChapters(data.items ?? []))
       .catch(() => { toast.error("Failed to load data."); })
       .finally(() => setLoadingChapters(false));
-  }, []);
+    refreshStats(book.id);
+  }, [refreshStats]);
 
   const loadTopicsAndSlots = useCallback((book: Book, chapter: Chapter) => {
     setTopics([]); setSlots({}); setLoadingTopics(true);
@@ -1015,12 +1024,13 @@ export default function CurriculumPage() {
 
       setStatus("Done ✓");
       if (selectedChapter?.id === ch.id) handleSlotsRefresh();
+      if (selectedBook) refreshStats(selectedBook.id);
       setTimeout(() => clearStatus(), 3000);
     } catch {
       toast.error(`Build failed for chapter ${ch.chapter_number}`);
       clearStatus();
     }
-  }, [selectedBook, selectedChapter, handleSlotsRefresh]);
+  }, [selectedBook, selectedChapter, handleSlotsRefresh, refreshStats]);
 
   return (
     <div className="p-8 max-w-6xl">
@@ -1052,6 +1062,15 @@ export default function CurriculumPage() {
           {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
+
+      {selectedBook && bookStats && (
+        <div className="mb-4 flex items-center gap-6 px-4 py-2.5 bg-white border border-dars-rule-light rounded-lg text-xs text-dars-muted">
+          <span className="font-semibold text-dars-ink truncate">{selectedBook.title}</span>
+          <span>Chapters broken down: <strong className="text-dars-ink">{bookStats.chapters_broken_down}/{bookStats.total_chapters}</strong></span>
+          <span>LPs: <strong className="text-dars-ink">{bookStats.lps_generated}/{bookStats.total_slots}</strong></span>
+          <span>Quizzes: <strong className="text-dars-ink">{bookStats.quizzes_generated}/{bookStats.total_slots}</strong></span>
+        </div>
+      )}
 
       <div className="border border-dars-rule-light rounded-lg overflow-hidden grid grid-cols-3 divide-x divide-dars-rule-light bg-white min-h-[400px]">
         <BooksColumn books={books} selectedId={selectedBook?.id ?? null} onSelect={handleSelectBook} loading={loadingBooks} />
