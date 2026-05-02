@@ -19,6 +19,7 @@ interface Book {
   publisher: string | null;
   total_chapters: number | null;
   series: string | null;
+  pdf_url: string | null;
   created_at: string;
 }
 
@@ -183,6 +184,7 @@ function ViewTab({ onSwitchToImport }: { onSwitchToImport: () => void }) {
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-dars-muted uppercase tracking-wide">Subject</th>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-dars-muted uppercase tracking-wide">Chapters</th>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-dars-muted uppercase tracking-wide">Core ID</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-dars-muted uppercase tracking-wide">PDF</th>
               </tr>
             </thead>
             <tbody>
@@ -207,6 +209,13 @@ function ViewTab({ onSwitchToImport }: { onSwitchToImport: () => void }) {
                   <td className="px-4 py-3 text-dars-ink">{SUBJECT_LABELS[book.subject] ?? book.subject}</td>
                   <td className="px-4 py-3 text-dars-muted">{book.total_chapters ?? "—"}</td>
                   <td className="px-4 py-3 text-dars-muted font-mono text-xs">{book.core_id}</td>
+                  <td className="px-4 py-3">
+                    {book.pdf_url ? (
+                      <a href={book.pdf_url} target="_blank" rel="noopener noreferrer" className="text-xs text-dars-terra hover:underline no-underline">PDF ↗</a>
+                    ) : (
+                      <span className="text-xs text-dars-muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
