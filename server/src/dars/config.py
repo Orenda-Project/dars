@@ -20,8 +20,6 @@ class Settings(BaseSettings):
     lp_assistant_api_key: str = ""
     eg_assistant_url: str = "https://eg-assistant.taleemabad.com"
     eg_assistant_api_key: str = ""
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
     cors_origins: list[str] = ["http://localhost:3000", "https://truthful-renewal-production-c9ce.up.railway.app"]
 
     anthropic_api_key: str = ""

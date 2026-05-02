@@ -19,6 +19,7 @@ class Client(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     supabase_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     default_teacher_id: Mapped[uuid.UUID | None] = mapped_column(

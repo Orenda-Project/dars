@@ -44,14 +44,6 @@ async def get_client_by_email(db: AsyncSession, email: str) -> Client | None:
     return result.scalar_one_or_none()
 
 
-async def get_client_by_supabase_user_id(
-    db: AsyncSession, supabase_user_id: str
-) -> Client | None:
-    result = await db.execute(
-        select(Client).where(Client.supabase_user_id == supabase_user_id)
-    )
-    return result.scalar_one_or_none()
-
 
 async def rotate_api_key(db: AsyncSession, client: Client) -> str:
     """Generate a new API key for an existing client. Returns the new raw key (shown once)."""
