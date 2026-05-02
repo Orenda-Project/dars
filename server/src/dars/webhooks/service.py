@@ -24,6 +24,10 @@ async def deliver_webhook(
     payload: dict,
     max_attempts: int = MAX_ATTEMPTS,
 ) -> WebhookDelivery:
+    logger.info(
+        "deliver_webhook: client_id=%s event=%s lp_id=%s url=%s",
+        client_id, event, lesson_plan_id, webhook_url,
+    )
     delivery = WebhookDelivery(
         client_id=client_id,
         lesson_plan_id=lesson_plan_id,

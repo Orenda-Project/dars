@@ -19,6 +19,10 @@ async def queue_exam_generation(
     request: ExamGenerationCreateRequest,
 ) -> ExamGeneration:
     """Create a PENDING exam generation record and return it. Background task fires separately."""
+    logger.info(
+        "queue_exam_generation: client_id=%s curriculum=%s grade=%s subject=%s type=%s",
+        client_id, request.curriculum, request.grade, request.subject, request.generation_type,
+    )
     eg = ExamGeneration(
         client_id=client_id,
         webhook_url=request.webhook_url,
@@ -33,6 +37,7 @@ async def queue_exam_generation(
     db.add(eg)
     await db.commit()
     await db.refresh(eg)
+    logger.info("queue_exam_generation: queued eg_id=%s client_id=%s", eg.id, client_id)
     return eg
 
 
@@ -83,6 +88,7 @@ async def generate_exam_task(
     Background task: call EG Assistant, update ExamGeneration record, fire webhook.
     Uses its own DB session (background tasks run outside request context).
     """
+    logger.info("generate_exam_task: eg_id=%s client_id=%s", eg_id, client_id)
     engine = create_async_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -144,7 +150,7 @@ async def generate_exam_task(
             event = "exam_generation.ready"
 
         except Exception as exc:
-            logger.error("EG generation failed for eg=%s: %s", eg_id, exc)
+            logger.error("EG generation failed for eg=%s: %s", eg_id, exc, exc_info=True)
             eg.error_detail = str(exc)
             eg.status = "ERROR"
             event = "exam_generation.error"
@@ -160,10 +166,14 @@ async def generate_exam_task(
                 "exam_generation_id": str(eg_id),
                 "status": eg.status,
             }
+            logger.info(
+                "generate_exam_task: delivering webhook event=%s eg_id=%s client_id=%s",
+                event, eg_id, client_id,
+            )
             try:
                 async with httpx.AsyncClient(timeout=10.0) as http:
                     await http.post(eg.webhook_url, json=webhook_payload)
             except Exception as exc:
-                logger.error("Webhook delivery failed for eg=%s: %s", eg_id, exc)
+                logger.error("Webhook delivery failed for eg=%s: %s", eg_id, exc, exc_info=True)
 
     await engine.dispose()

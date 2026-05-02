@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 import httpx
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dars.clients.models import Client
 from dars.config import settings
 from dars.curriculum.admin_service import breakdown_chapter
-from dars.curriculum.import_service import import_books
+from dars.curriculum.import_service import import_books, list_known_books
 from dars.curriculum.models import Book, BookChapter, LessonSlot, Topic
 from dars.curriculum.schemas import (
     BookChapterListResponse,
@@ -18,6 +19,8 @@ from dars.curriculum.schemas import (
     BreakdownResponse,
     ImportBooksRequest,
     ImportBooksResponse,
+    KnownBookEntry,
+    KnownBooksResponse,
     LessonSlotListResponse,
     LessonSlotResponse,
     TopicListResponse,
@@ -28,6 +31,8 @@ from dars.lesson_plans.schemas import LessonPlanResponse
 from dars.curriculum.service import list_book_chapters, list_books
 from dars.database import get_db
 from dars.deps import get_admin_client, get_current_client, require_admin_secret
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["books"])
 admin_router = APIRouter(prefix="/admin", tags=["admin-curriculum"])
@@ -46,7 +51,9 @@ async def list_books_endpoint(
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> BookListResponse:
+    logger.info("list_books_endpoint: filters curriculum=%s grade=%s subject=%s", curriculum, grade, subject)
     items, total = await list_books(db, curriculum=curriculum, grade=grade, subject=subject)
+    logger.info("list_books_endpoint: returning count=%d total=%d", len(items), total)
     return BookListResponse(
         items=[BookResponse.model_validate(b) for b in items],
         total=total,
@@ -59,10 +66,12 @@ async def list_book_chapters_endpoint(
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> BookChapterListResponse:
+    logger.info("list_book_chapters_endpoint: book_id=%s", book_id)
     book = await db.get(Book, book_id)
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
     chapters = await list_book_chapters(db, book_id=book_id)
+    logger.info("list_book_chapters_endpoint: book_id=%s count=%d", book_id, len(chapters))
     return BookChapterListResponse(
         items=[BookChapterResponse.model_validate(c) for c in chapters],
     )
@@ -78,6 +87,7 @@ async def list_chapter_topics(
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> TopicListResponse:
+    logger.info("list_chapter_topics: chapter_id=%s", chapter_id)
     # Verify chapter belongs to book
     chapter = await db.get(BookChapter, chapter_id)
     if chapter is None or chapter.book_id != book_id:
@@ -95,6 +105,7 @@ async def list_chapter_topics(
     )
     items = list(items_result.scalars().all())
 
+    logger.info("list_chapter_topics: chapter_id=%s count=%d", chapter_id, total)
     return TopicListResponse(
         items=[TopicResponse.model_validate(t) for t in items],
         total=total,
@@ -113,6 +124,7 @@ async def generate_slot_lp(
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:
     """Generate (or regenerate) a lesson plan for a slot using its topic_text."""
+    logger.info("generate_slot_lp: slot_id=%s client_id=%s", slot_id, current_client.id)
     row = await db.execute(
         text("""
             SELECT
@@ -161,6 +173,7 @@ async def generate_slot_lp(
     async def _generate() -> None:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from dars.mapping import canonical_grade, canonical_subject
+        logger.info("_generate slot LP: lp_id=%s", lp_id)
         engine = create_async_engine(settings.database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -179,6 +192,7 @@ async def generate_slot_lp(
         async with factory() as session:
             record = await session.get(LessonPlan, lp_id)
             if record is None:
+                logger.error("_generate slot LP: lp_id=%s not found in DB", lp_id)
                 await engine.dispose()
                 return
             try:
@@ -196,12 +210,13 @@ async def generate_slot_lp(
                 record.metadata_ = result.get("metadata") or {}
                 record.status = "READY"
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).error("Slot LP generation failed lp=%s: %s", lp_id, exc)
+                logger.error("_generate slot LP: failed lp_id=%s", lp_id, exc_info=True)
                 record.status = "ERROR"
+            logger.info("_generate slot LP: done lp_id=%s status=%s", lp_id, record.status)
             await session.commit()
         await engine.dispose()
 
+    logger.info("generate_slot_lp: queued background LP generation lp_id=%s", lp_id)
     background_tasks.add_task(_generate)
     return LessonPlanResponse.model_validate(lp)
 
@@ -244,11 +259,23 @@ async def breakdown_chapter_endpoint(
     chapter_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> BreakdownResponse:
+    logger.info("breakdown_chapter_endpoint: chapter_id=%s", chapter_id)
     try:
         summary = await breakdown_chapter(db, chapter_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    logger.info(
+        "breakdown_chapter_endpoint: done chapter_id=%s topics=%s slots=%s",
+        chapter_id, summary.get("topics"), summary.get("slots"),
+    )
     return BreakdownResponse(**summary)
+
+
+@admin_router.get("/known-books", response_model=KnownBooksResponse)
+async def known_books_endpoint(
+    _admin: Client = Depends(get_admin_client),
+) -> KnownBooksResponse:
+    return KnownBooksResponse(items=[KnownBookEntry(**b) for b in list_known_books()])
 
 
 @admin_router.post("/import-books", response_model=ImportBooksResponse)
@@ -257,10 +284,15 @@ async def import_books_endpoint(
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> ImportBooksResponse:
+    logger.info(
+        "import_books_endpoint: schema_filter=%s core_book_ids=%s",
+        body.schema_filter, body.core_book_ids,
+    )
     try:
-        result = await import_books(db, schema_filter=body.schema_filter)
+        result = await import_books(db, schema_filter=body.schema_filter, core_book_ids=body.core_book_ids)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    logger.info("import_books_endpoint: done result=%s", result)
     return ImportBooksResponse(**result)
 
 
@@ -273,6 +305,7 @@ async def bulk_generate_lps_endpoint(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Queue LP generation for all slots in a chapter that have topic_text."""
+    logger.info("bulk_generate_lps_endpoint: chapter_id=%s force=%s", chapter_id, force)
     rows = await db.execute(
         text("""
             SELECT ls.id AS slot_id, ls.lesson_plan_id, t.topic_text,
@@ -319,6 +352,7 @@ async def bulk_generate_lps_endpoint(
         async def _generate(sd=slot_data, lid=lp_id, aid=admin_id) -> None:
             from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
             from dars.mapping import canonical_grade, canonical_subject
+            logger.info("_generate bulk LP: lp_id=%s topic=%s", lid, sd.get("topic"))
             engine = create_async_engine(settings.database_url)
             factory = async_sessionmaker(engine, expire_on_commit=False)
             payload = {
@@ -331,6 +365,7 @@ async def bulk_generate_lps_endpoint(
             async with factory() as session:
                 record = await session.get(LessonPlan, lid)
                 if record is None:
+                    logger.error("_generate bulk LP: lp_id=%s not found in DB", lid)
                     await engine.dispose()
                     return
                 try:
@@ -348,9 +383,9 @@ async def bulk_generate_lps_endpoint(
                     record.metadata_ = result.get("metadata") or {}
                     record.status = "READY"
                 except Exception as exc:
-                    import logging as _logging
-                    _logging.getLogger(__name__).error("Bulk LP gen failed lp=%s: %s", lid, exc)
+                    logger.error("_generate bulk LP: failed lp_id=%s", lid, exc_info=True)
                     record.status = "ERROR"
+                logger.info("_generate bulk LP: done lp_id=%s status=%s", lid, record.status)
                 await session.commit()
             await engine.dispose()
 
@@ -358,4 +393,5 @@ async def bulk_generate_lps_endpoint(
         queued += 1
 
     await db.commit()
+    logger.info("bulk_generate_lps_endpoint: done chapter_id=%s queued=%d skipped=%d", chapter_id, queued, skipped)
     return {"queued": queued, "skipped": skipped}

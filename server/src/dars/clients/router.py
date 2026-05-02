@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,6 +19,8 @@ from dars.clients.service import create_client, rotate_api_key, update_client
 from dars.database import get_db
 from dars.deps import get_admin_client, get_current_client, require_admin_secret
 
+logger = logging.getLogger(__name__)
+
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 client_router = APIRouter(prefix="/api/v1", tags=["clients"])
 
@@ -32,7 +35,9 @@ async def create_client_endpoint(
     body: ClientCreateRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ClientCreateResponse:
+    logger.info("create_client_endpoint: name=%s", body.name)
     client, raw_key = await create_client(db, name=body.name)
+    logger.info("create_client_endpoint: done client_id=%s", client.id)
     return ClientCreateResponse(
         id=client.id,
         name=client.name,
@@ -52,11 +57,13 @@ async def update_client_endpoint(
     body: ClientUpdateRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ClientPublicResponse:
+    logger.info("update_client_endpoint: client_id=%s", client_id)
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     client = await update_client(db, client, webhook_url=body.webhook_url)
+    logger.info("update_client_endpoint: done client_id=%s", client_id)
     return ClientPublicResponse.model_validate(client)
 
 
@@ -68,6 +75,7 @@ async def update_client_endpoint(
 async def list_clients_endpoint(db: AsyncSession = Depends(get_db)) -> ClientListResponse:
     result = await db.execute(select(Client).order_by(Client.created_at.desc()))
     clients = result.scalars().all()
+    logger.info("list_clients_endpoint: returning count=%d", len(clients))
     return ClientListResponse(items=[ClientAdminResponse.model_validate(c) for c in clients])
 
 
@@ -85,5 +93,7 @@ async def rotate_my_key(
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> RotateKeyResponse:
+    logger.info("rotate_my_key: client_id=%s", current_client.id)
     raw_key = await rotate_api_key(db, current_client)
+    logger.info("rotate_my_key: done client_id=%s", current_client.id)
     return RotateKeyResponse(api_key=raw_key)

@@ -20,6 +20,10 @@ async def queue_lesson_plan(
     request: LessonPlanCreateRequest,
 ) -> LessonPlan:
     """Create a PENDING lesson plan record and return it. Background task fires separately."""
+    logger.info(
+        "queue_lesson_plan: client_id=%s curriculum=%s grade=%s subject=%s topic=%s",
+        client_id, request.curriculum, request.grade, request.subject, request.topic,
+    )
     lp = LessonPlan(
         client_id=client_id,
         webhook_url=request.webhook_url,
@@ -35,6 +39,7 @@ async def queue_lesson_plan(
     db.add(lp)
     await db.commit()
     await db.refresh(lp)
+    logger.info("queue_lesson_plan: queued lp_id=%s client_id=%s", lp.id, client_id)
     return lp
 
 
@@ -82,6 +87,7 @@ async def generate_lesson_plan_task(
     Background task: call LP Assistant, update LessonPlan record, fire webhook.
     Uses its own DB session (background tasks run outside request context).
     """
+    logger.info("generate_lesson_plan_task: lp_id=%s client_id=%s", lp_id, client_id)
     engine = create_async_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -124,7 +130,7 @@ async def generate_lesson_plan_task(
             event = "lesson_plan.ready"
 
         except Exception as exc:
-            logger.error("LP generation failed for lp=%s: %s", lp_id, exc)
+            logger.error("LP generation failed for lp=%s: %s", lp_id, exc, exc_info=True)
             lp.status = "ERROR"
             event = "lesson_plan.error"
 
@@ -139,6 +145,10 @@ async def generate_lesson_plan_task(
                 "lesson_plan_id": str(lp_id),
                 "status": lp.status,
             }
+            logger.info(
+                "generate_lesson_plan_task: delivering webhook event=%s lp_id=%s client_id=%s",
+                event, lp_id, client_id,
+            )
             try:
                 await deliver_webhook(
                     db=db,
@@ -149,6 +159,6 @@ async def generate_lesson_plan_task(
                     payload=webhook_payload,
                 )
             except Exception as exc:
-                logger.error("Webhook delivery failed for lp=%s: %s", lp_id, exc)
+                logger.error("Webhook delivery failed for lp=%s: %s", lp_id, exc, exc_info=True)
 
     await engine.dispose()

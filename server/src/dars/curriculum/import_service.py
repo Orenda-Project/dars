@@ -49,22 +49,47 @@ SCHEMA = {
 }
 
 
-async def import_books(db: AsyncSession, schema_filter: str | None = None) -> dict:
+def list_known_books() -> list[dict]:
+    """Return the static book catalogue as dicts for the admin UI."""
+    return [
+        {"core_id": cid, "curriculum": cur, "grade": g, "subject": s, "schema": SCHEMA[cur]}
+        for (cid, cur, g, s) in BOOKS
+    ]
+
+
+async def import_books(
+    db: AsyncSession,
+    schema_filter: str | None = None,
+    core_book_ids: list[int] | None = None,
+) -> dict:
     """
     Import books+chapters from core DB into Dars.
     schema_filter: "fde_staging" | "balochistan_staging" | None (both)
+    core_book_ids: if set, only import these specific core IDs
     Returns {"imported": int, "skipped": int, "missing": int, "chapters": int}
     """
     if not settings.core_db_url:
         raise ValueError("CORE_DB_URL is not configured")
 
     books_to_import = BOOKS
-    if schema_filter == "fde_staging":
+    if core_book_ids:
+        books_to_import = [(cid, cur, g, s) for (cid, cur, g, s) in BOOKS if cid in core_book_ids]
+    elif schema_filter == "fde_staging":
         books_to_import = [(cid, cur, g, s) for (cid, cur, g, s) in BOOKS if SCHEMA[cur] == "fde_staging"]
     elif schema_filter == "balochistan_staging":
         books_to_import = [(cid, cur, g, s) for (cid, cur, g, s) in BOOKS if SCHEMA[cur] == "balochistan_staging"]
 
-    core_conn = await asyncpg.connect(settings.core_db_url)
+    log.info(
+        "import_books: schema_filter=%s core_book_ids=%s books_to_import=%d",
+        schema_filter, core_book_ids, len(books_to_import),
+    )
+
+    try:
+        core_conn = await asyncpg.connect(settings.core_db_url)
+    except Exception:
+        log.error("import_books: failed to connect to core DB", exc_info=True)
+        raise
+
     imported = skipped = missing = chapters_total = 0
 
     try:
@@ -138,4 +163,8 @@ async def import_books(db: AsyncSession, schema_filter: str | None = None) -> di
     finally:
         await core_conn.close()
 
+    log.info(
+        "import_books: done imported=%d skipped=%d missing=%d chapters=%d",
+        imported, skipped, missing, chapters_total,
+    )
     return {"imported": imported, "skipped": skipped, "missing": missing, "chapters": chapters_total}

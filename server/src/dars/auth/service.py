@@ -27,6 +27,7 @@ def _verify_password(plain: str, hashed: str) -> bool:
 async def signup(
     db: AsyncSession, email: str, password: str, name: str
 ) -> tuple[Client, str]:
+    logger.info("Signup: email=%s", email)
     existing = await get_client_by_email(db, email)
     if existing is not None:
         raise HTTPException(
@@ -45,6 +46,7 @@ async def signup(
 
 
 async def login(db: AsyncSession, email: str, password: str) -> tuple[Client, str]:
+    logger.info("Login: email=%s", email)
     client = await get_client_by_email(db, email)
 
     if client is None or not client.hashed_password or not _verify_password(password, client.hashed_password):
