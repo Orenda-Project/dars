@@ -24,8 +24,29 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
-    # taleemabad-core DB (used for curriculum import)
-    core_db_url: str = ""  # postgresql://user:pass@host/dbname for taleemabad-core
+    # taleemabad-core DB — set CORE_DB_URL directly, or set the 5 CORE_STAGING_DB_* parts
+    core_db_url: str = ""
+    core_staging_db_host: str = ""
+    core_staging_db_port: str = "5432"
+    core_staging_db_name: str = ""
+    core_staging_db_user: str = ""
+    core_staging_db_password: str = ""
+
+    @property
+    def effective_core_db_url(self) -> str:
+        """Return CORE_DB_URL if set, otherwise build it from the 5-part env vars."""
+        if self.core_db_url:
+            return self.core_db_url
+        if self.core_staging_db_host and self.core_staging_db_name:
+            from urllib.parse import quote_plus
+            pw = quote_plus(self.core_staging_db_password)
+            user = quote_plus(self.core_staging_db_user)
+            return (
+                f"postgresql://{user}:{pw}"
+                f"@{self.core_staging_db_host}:{self.core_staging_db_port}"
+                f"/{self.core_staging_db_name}"
+            )
+        return ""
 
 
 settings = Settings()

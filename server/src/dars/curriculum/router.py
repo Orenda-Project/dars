@@ -295,7 +295,11 @@ async def import_books_endpoint(
     try:
         result = await import_books(db, schema_filter=body.schema_filter, core_book_ids=body.core_book_ids)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        logger.error("import_books_endpoint: config error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("import_books_endpoint: failed", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Import failed") from exc
     logger.info("import_books_endpoint: done result=%s", result)
     return ImportBooksResponse(**result)
 
@@ -313,9 +317,11 @@ async def preview_book_endpoint(
     try:
         data = await preview_book(core_id=core_id, schema=schema)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        logger.error("preview_book_endpoint: config error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Core DB connection failed") from exc
+        logger.error("preview_book_endpoint: core DB error", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Core DB error: {exc}") from exc
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Book {core_id} not found in {schema}")
     logger.info(
@@ -351,9 +357,11 @@ async def import_single_book_endpoint(
             subject=body.subject,
         )
     except ValueError as exc:
+        logger.error("import_single_book_endpoint: error: %s", exc)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Import failed") from exc
+        logger.error("import_single_book_endpoint: failed", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Import failed: {exc}") from exc
     logger.info(
         "import_single_book_endpoint: done core_id=%s status=%s chapters=%d",
         body.core_id, result["status"], result["chapters"],

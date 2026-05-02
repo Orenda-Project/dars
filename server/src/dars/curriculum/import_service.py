@@ -69,7 +69,7 @@ async def import_books(
     core_book_ids: if set, only import these specific core IDs
     Returns {"imported": int, "skipped": int, "missing": int, "chapters": int}
     """
-    if not settings.core_db_url:
+    if not settings.effective_core_db_url:
         raise ValueError("CORE_DB_URL is not configured")
 
     books_to_import = BOOKS
@@ -86,7 +86,7 @@ async def import_books(
     )
 
     try:
-        core_conn = await asyncpg.connect(settings.core_db_url)
+        core_conn = await asyncpg.connect(settings.effective_core_db_url)
     except Exception:
         log.error("import_books: failed to connect to core DB", exc_info=True)
         raise
@@ -177,11 +177,11 @@ async def preview_book(core_id: int, schema: str) -> dict[str, Any] | None:
     Returns a dict with book info + chapter list, or None if not found.
     """
     log.info("preview_book: core_id=%s schema=%s", core_id, schema)
-    if not settings.core_db_url:
+    if not settings.effective_core_db_url:
         raise ValueError("CORE_DB_URL is not configured")
 
     try:
-        core_conn = await asyncpg.connect(settings.core_db_url)
+        core_conn = await asyncpg.connect(settings.effective_core_db_url)
     except Exception:
         log.error("preview_book: failed to connect to core DB", exc_info=True)
         raise
@@ -256,11 +256,11 @@ async def import_single_book(
         "import_single_book: core_id=%s schema=%s curriculum=%s grade=%s subject=%s",
         core_id, schema, curriculum, grade, subject,
     )
-    if not settings.core_db_url:
+    if not settings.effective_core_db_url:
         raise ValueError("CORE_DB_URL is not configured")
 
     try:
-        core_conn = await asyncpg.connect(settings.core_db_url)
+        core_conn = await asyncpg.connect(settings.effective_core_db_url)
     except Exception:
         log.error("import_single_book: failed to connect to core DB", exc_info=True)
         raise
