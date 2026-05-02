@@ -124,8 +124,8 @@ function GenerateForm({ onGenerated }: { onGenerated: (lp: LessonPlan) => void }
   const labelClass = "block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide";
 
   return (
-    <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8">
-      <h2 className="font-serif text-lg font-bold text-dars-ink mb-4">Generate Lesson Plan</h2>
+    <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8 shadow-sm">
+      <h2 className="font-serif text-lg font-bold text-dars-ink mb-4 flex items-center gap-2 before:content-[''] before:block before:w-1 before:h-5 before:bg-dars-terra before:rounded-full">Generate Lesson Plan</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -266,7 +266,7 @@ function GenerationResult({ initial }: { initial: LessonPlan }) {
       : "text-dars-muted bg-dars-parchment border-dars-rule-light";
 
   return (
-    <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8">
+    <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8 shadow-sm">
       <div className="flex items-center gap-3 mb-4">
         <h2 className="font-serif text-lg font-bold text-dars-ink">Latest Generation</h2>
         <span
@@ -355,9 +355,9 @@ function PastLessonPlans({ refreshTrigger }: { refreshTrigger: number }) {
   const currentPage = Math.floor(offset / LIMIT) + 1;
 
   return (
-    <section className="bg-white border border-dars-rule-light rounded-xl p-6">
+    <section className="bg-white border border-dars-rule-light rounded-xl p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-serif text-lg font-bold text-dars-ink">Past Lesson Plans</h2>
+        <h2 className="font-serif text-lg font-bold text-dars-ink flex items-center gap-2 before:content-[''] before:block before:w-1 before:h-5 before:bg-dars-terra before:rounded-full">Past Lesson Plans</h2>
         {total > 0 && (
           <span className="text-xs text-dars-muted">
             {total} total · page {currentPage} of {totalPages}
@@ -456,8 +456,11 @@ export default function LessonPlansPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl">
-      <h1 className="font-serif text-2xl font-bold text-dars-ink mb-6">Lesson Plans</h1>
+    <div className="px-8 py-8 max-w-4xl">
+      <div className="mb-8 pb-6 border-b border-dars-rule-light">
+        <h1 className="font-serif text-2xl font-bold text-dars-ink">Lesson Plans</h1>
+        <p className="text-sm text-dars-muted mt-1">Generate and manage curriculum-aligned lesson plans.</p>
+      </div>
       <GenerateForm onGenerated={handleGenerated} />
       {latestLp && <GenerationResult key={latestLp.id} initial={latestLp} />}
       <PastLessonPlans refreshTrigger={refreshTrigger} />

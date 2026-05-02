@@ -97,12 +97,65 @@ class BreakdownResponse(BaseModel):
     slots_count: int
 
 
+class KnownBookEntry(BaseModel):
+    core_id: int
+    curriculum: str
+    grade: int
+    subject: str
+    schema: str
+
+
+class KnownBooksResponse(BaseModel):
+    items: list[KnownBookEntry]
+
+
 class ImportBooksRequest(BaseModel):
     schema_filter: str | None = None  # "fde_staging" | "balochistan_staging" | None
+    core_book_ids: list[int] | None = None  # if set, import only these
 
 
 class ImportBooksResponse(BaseModel):
     imported: int
     skipped: int
     missing: int
+    chapters: int
+
+
+# ---------------------------------------------------------------------------
+# Single-book preview + import
+# ---------------------------------------------------------------------------
+
+
+class ChapterPreview(BaseModel):
+    id: int
+    title: str
+    chapter_number: int
+    start_page: int | None
+    end_page: int | None
+
+
+class BookPreviewResponse(BaseModel):
+    core_id: int
+    schema: str
+    title: str
+    publisher: str | None
+    edition: str | None
+    published_year: int | None
+    total_chapters: int | None
+    pdf_url: str | None
+    series: str | None
+    has_ocr: bool
+    chapters: list[ChapterPreview]
+
+
+class ImportSingleBookRequest(BaseModel):
+    core_id: int
+    schema: str       # "fde_staging" | "balochistan_staging"
+    curriculum: str   # "ICT" | "Punjab"
+    grade: int
+    subject: str      # "Eng" | "Maths" | "Urdu"
+
+
+class ImportSingleBookResponse(BaseModel):
+    status: str       # "imported" | "updated"
     chapters: int

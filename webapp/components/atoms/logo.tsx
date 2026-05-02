@@ -28,7 +28,7 @@ export function Logo({ variant = "dark", size = "md" }: LogoProps) {
 
   return (
     <div
-      style={{ width: px, height: ph, position: "relative", cursor: "pointer", overflow: "hidden" }}
+      style={{ width: px, height: ph, position: "relative", cursor: "pointer", overflow: "visible" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       aria-label="Dars"

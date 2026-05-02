@@ -1,5 +1,5 @@
-import { PefLoginTemplate } from "@/components/templates/pef-login-template";
+import { LoginTemplate } from "@/components/templates/login-template";
 
 export default function DashboardLoginPage() {
-  return <PefLoginTemplate />;
+  return <LoginTemplate />;
 }

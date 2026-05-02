@@ -11,7 +11,7 @@ const inputClass =
 const labelClass =
   "block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide";
 
-export function PefLoginTemplate() {
+export function LoginTemplate() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup" | "key-reveal">("signin");
 
@@ -104,7 +104,7 @@ export function PefLoginTemplate() {
           onSubmit={handleSignIn}
           className="w-full max-w-sm bg-white border border-dars-rule-light rounded-xl px-8 py-8 space-y-5"
         >
-          <h1 className="font-serif text-xl font-bold text-dars-ink">PEF Dashboard</h1>
+          <h1 className="font-serif text-xl font-bold text-dars-ink">Dars Dashboard</h1>
           <p className="text-sm text-dars-muted -mt-1">Sign in with your email and password.</p>
 
           <div>

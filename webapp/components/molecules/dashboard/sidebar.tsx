@@ -52,8 +52,17 @@ const mainNavItems = [
   { label: "Exam Generator", href: "/dashboard/exam-generator", icon: IconExam },
 ];
 
+const IconDownload = (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
 const adminNavItems = [
   { label: "Curriculum", href: "/dashboard/curriculum", icon: IconBook },
+  { label: "Import Books", href: "/dashboard/admin/import", icon: IconDownload },
   { label: "Clients", href: "/dashboard/admin/clients", icon: IconUsers },
 ];
 
@@ -70,7 +79,7 @@ function NavEntry({ label, href, icon, pathname }: { label: string; href: string
       className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors no-underline ${
         active
           ? "bg-dars-terra text-white"
-          : "text-dars-muted hover:bg-dars-parchment-deep hover:text-dars-ink"
+          : "text-dars-muted-light hover:bg-white/10 hover:text-dars-parchment"
       }`}
     >
       {icon}
@@ -91,10 +100,10 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col border-r border-dars-rule-light bg-dars-parchment min-h-screen">
-      <div className="px-5 py-5 border-b border-dars-rule-light">
-        <a href="/" className="no-underline">
-          <Logo size="sm" />
+    <aside className="w-56 shrink-0 flex flex-col border-r border-dars-rule-dark bg-dars-ink min-h-screen">
+      <div className="px-5 py-5 border-b border-dars-rule-dark">
+        <a href="/" className="no-underline block overflow-visible">
+          <Logo size="sm" variant="light" />
         </a>
       </div>
 
@@ -107,7 +116,7 @@ export function Sidebar() {
 
         {admin && adminNavItems.length > 0 && (
           <div className="mt-4">
-            <p className="px-3 py-1.5 text-[10px] font-semibold tracking-widest uppercase text-dars-muted/70">
+            <p className="px-3 py-1.5 text-[10px] font-semibold tracking-widest uppercase text-dars-muted-light/50">
               Admin
             </p>
             <div className="space-y-0.5">
@@ -120,7 +129,7 @@ export function Sidebar() {
 
         {isBeta && betaNavItems.length > 0 && (
           <div className="mt-4">
-            <p className="px-3 py-1.5 text-[10px] font-semibold tracking-widest uppercase text-dars-muted/70">
+            <p className="px-3 py-1.5 text-[10px] font-semibold tracking-widest uppercase text-dars-muted-light/50">
               Beta
             </p>
             <div className="space-y-0.5">
@@ -132,12 +141,17 @@ export function Sidebar() {
         )}
       </nav>
 
-      <div className="px-3 py-4 border-t border-dars-rule-light space-y-0.5">
+      <div className="px-3 py-4 border-t border-dars-rule-dark space-y-0.5">
         <NavEntry label="Settings" href="/dashboard/settings" icon={IconSettings} pathname={pathname} />
         <button
           onClick={handleSignOut}
-          className="w-full text-left px-3 py-2 text-xs text-dars-muted hover:text-dars-ink transition-colors rounded-md hover:bg-dars-parchment-deep cursor-pointer bg-transparent border-none"
+          className="w-full text-left px-3 py-2 text-xs text-dars-muted-light hover:text-dars-parchment transition-colors rounded-md hover:bg-white/10 cursor-pointer bg-transparent border-none flex items-center gap-2.5"
         >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
           Sign out
         </button>
       </div>

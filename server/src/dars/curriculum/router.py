@@ -9,16 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dars.clients.models import Client
 from dars.config import settings
 from dars.curriculum.admin_service import breakdown_chapter
-from dars.curriculum.import_service import import_books, list_known_books
+from dars.curriculum.import_service import import_books, import_single_book, list_known_books, preview_book
 from dars.curriculum.models import Book, BookChapter, LessonSlot, Topic
 from dars.curriculum.schemas import (
     BookChapterListResponse,
     BookChapterResponse,
     BookListResponse,
+    BookPreviewResponse,
     BookResponse,
     BreakdownResponse,
+    ChapterPreview,
     ImportBooksRequest,
     ImportBooksResponse,
+    ImportSingleBookRequest,
+    ImportSingleBookResponse,
     KnownBookEntry,
     KnownBooksResponse,
     LessonSlotListResponse,
@@ -294,6 +298,67 @@ async def import_books_endpoint(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     logger.info("import_books_endpoint: done result=%s", result)
     return ImportBooksResponse(**result)
+
+
+@admin_router.get("/preview-book", response_model=BookPreviewResponse)
+async def preview_book_endpoint(
+    core_id: int = Query(...),
+    schema: str = Query(...),
+    _admin: Client = Depends(get_admin_client),
+) -> BookPreviewResponse:
+    """Fetch book info from core DB without importing anything."""
+    logger.info("preview_book_endpoint: core_id=%s schema=%s", core_id, schema)
+    if schema not in ("fde_staging", "balochistan_staging"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid schema")
+    try:
+        data = await preview_book(core_id=core_id, schema=schema)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Core DB connection failed") from exc
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Book {core_id} not found in {schema}")
+    logger.info(
+        "preview_book_endpoint: done core_id=%s title=%r chapters=%d",
+        core_id, data["title"], len(data["chapters"]),
+    )
+    return BookPreviewResponse(
+        **{k: v for k, v in data.items() if k != "chapters"},
+        chapters=[ChapterPreview(**ch) for ch in data["chapters"]],
+    )
+
+
+@admin_router.post("/import-book", response_model=ImportSingleBookResponse)
+async def import_single_book_endpoint(
+    body: ImportSingleBookRequest,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> ImportSingleBookResponse:
+    """Import a single book with OCR (book_text) into Dars."""
+    logger.info(
+        "import_single_book_endpoint: core_id=%s schema=%s curriculum=%s grade=%s subject=%s",
+        body.core_id, body.schema, body.curriculum, body.grade, body.subject,
+    )
+    if body.schema not in ("fde_staging", "balochistan_staging"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid schema")
+    try:
+        result = await import_single_book(
+            db,
+            core_id=body.core_id,
+            schema=body.schema,
+            curriculum=body.curriculum,
+            grade=body.grade,
+            subject=body.subject,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Import failed") from exc
+    logger.info(
+        "import_single_book_endpoint: done core_id=%s status=%s chapters=%d",
+        body.core_id, result["status"], result["chapters"],
+    )
+    return ImportSingleBookResponse(**result)
 
 
 @admin_router.post("/chapters/{chapter_id}/generate-lps")

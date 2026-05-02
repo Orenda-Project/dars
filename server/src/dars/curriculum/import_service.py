@@ -1,5 +1,6 @@
 """Import books and chapters from taleemabad-core into Dars."""
 import logging
+from typing import Any
 import asyncpg
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -168,3 +169,181 @@ async def import_books(
         imported, skipped, missing, chapters_total,
     )
     return {"imported": imported, "skipped": skipped, "missing": missing, "chapters": chapters_total}
+
+
+async def preview_book(core_id: int, schema: str) -> dict[str, Any] | None:
+    """
+    Fetch book metadata from core DB without writing anything to Dars.
+    Returns a dict with book info + chapter list, or None if not found.
+    """
+    log.info("preview_book: core_id=%s schema=%s", core_id, schema)
+    if not settings.core_db_url:
+        raise ValueError("CORE_DB_URL is not configured")
+
+    try:
+        core_conn = await asyncpg.connect(settings.core_db_url)
+    except Exception:
+        log.error("preview_book: failed to connect to core DB", exc_info=True)
+        raise
+
+    try:
+        book_row = await core_conn.fetchrow(
+            f"""
+            SELECT id, title, publisher, edition, published_year, total_chapters,
+                   pdf_url, series,
+                   (book_text IS NOT NULL AND book_text != 'null'::jsonb) AS has_ocr
+            FROM {schema}.book_library_book WHERE id = $1
+            """,
+            core_id,
+        )
+        if book_row is None:
+            log.info("preview_book: not found core_id=%s schema=%s", core_id, schema)
+            return None
+
+        chapter_rows = await core_conn.fetch(
+            f"""
+            SELECT id, title, chapter_number, start_page, end_page
+            FROM {schema}.book_library_bookchapter
+            WHERE book_id = $1 ORDER BY chapter_number ASC
+            """,
+            core_id,
+        )
+
+        result = {
+            "core_id": core_id,
+            "schema": schema,
+            "title": book_row["title"],
+            "publisher": book_row["publisher"],
+            "edition": book_row["edition"],
+            "published_year": book_row["published_year"],
+            "total_chapters": book_row["total_chapters"],
+            "pdf_url": book_row["pdf_url"],
+            "series": book_row["series"],
+            "has_ocr": bool(book_row["has_ocr"]),
+            "chapters": [
+                {
+                    "id": ch["id"],
+                    "title": ch["title"],
+                    "chapter_number": ch["chapter_number"],
+                    "start_page": ch["start_page"],
+                    "end_page": ch["end_page"],
+                }
+                for ch in chapter_rows
+            ],
+        }
+        log.info(
+            "preview_book: found core_id=%s title=%r chapters=%d has_ocr=%s",
+            core_id, result["title"], len(chapter_rows), result["has_ocr"],
+        )
+        return result
+    finally:
+        await core_conn.close()
+
+
+async def import_single_book(
+    db: AsyncSession,
+    core_id: int,
+    schema: str,
+    curriculum: str,
+    grade: int,
+    subject: str,
+) -> dict[str, Any]:
+    """
+    Import a single book (by arbitrary core_id + schema) including book_text (OCR).
+    Returns {"status": "imported"|"updated", "chapters": int}.
+    """
+    log.info(
+        "import_single_book: core_id=%s schema=%s curriculum=%s grade=%s subject=%s",
+        core_id, schema, curriculum, grade, subject,
+    )
+    if not settings.core_db_url:
+        raise ValueError("CORE_DB_URL is not configured")
+
+    try:
+        core_conn = await asyncpg.connect(settings.core_db_url)
+    except Exception:
+        log.error("import_single_book: failed to connect to core DB", exc_info=True)
+        raise
+
+    try:
+        book_row = await core_conn.fetchrow(
+            f"""
+            SELECT id, title, publisher, edition, published_year, total_chapters,
+                   pdf_url, series, book_text
+            FROM {schema}.book_library_book WHERE id = $1
+            """,
+            core_id,
+        )
+        if book_row is None:
+            raise ValueError(f"Book id={core_id} not found in {schema}")
+
+        chapter_rows = await core_conn.fetch(
+            f"""
+            SELECT id, title, chapter_number, start_page, end_page
+            FROM {schema}.book_library_bookchapter
+            WHERE book_id = $1 ORDER BY chapter_number ASC
+            """,
+            core_id,
+        )
+
+        # book_text from asyncpg comes back as a string (JSON) or None
+        book_text_raw = book_row["book_text"]
+
+        result = await db.execute(
+            text("""
+                INSERT INTO books (core_id, curriculum, grade, subject, title, publisher,
+                                   edition, published_year, total_chapters, pdf_url, series, book_text)
+                VALUES (:core_id, :curriculum, :grade, :subject, :title, :publisher,
+                        :edition, :published_year, :total_chapters, :pdf_url, :series, CAST(:book_text AS jsonb))
+                ON CONFLICT (core_id, curriculum) DO UPDATE SET
+                    title=EXCLUDED.title, publisher=EXCLUDED.publisher,
+                    edition=EXCLUDED.edition, published_year=EXCLUDED.published_year,
+                    total_chapters=EXCLUDED.total_chapters, pdf_url=EXCLUDED.pdf_url,
+                    series=EXCLUDED.series, book_text=EXCLUDED.book_text, updated_at=NOW()
+                RETURNING id, (xmax = 0) AS inserted
+            """),
+            dict(
+                core_id=core_id, curriculum=curriculum, grade=grade, subject=subject,
+                title=book_row["title"], publisher=book_row["publisher"],
+                edition=book_row["edition"], published_year=book_row["published_year"],
+                total_chapters=book_row["total_chapters"], pdf_url=book_row["pdf_url"],
+                series=book_row["series"],
+                book_text=str(book_text_raw) if book_text_raw is not None else None,
+            ),
+        )
+        row = result.mappings().one()
+        dars_book_id = row["id"]
+        status = "imported" if row["inserted"] else "updated"
+
+        chapters_count = 0
+        for ch in chapter_rows:
+            await db.execute(
+                text("""
+                    INSERT INTO book_chapters (core_id, book_id, title, chapter_number, start_page, end_page)
+                    VALUES (:core_id, :book_id, :title, :chapter_number, :start_page, :end_page)
+                    ON CONFLICT (core_id) DO UPDATE SET
+                        title=EXCLUDED.title, chapter_number=EXCLUDED.chapter_number,
+                        start_page=EXCLUDED.start_page, end_page=EXCLUDED.end_page,
+                        updated_at=NOW()
+                """),
+                dict(
+                    core_id=ch["id"], book_id=str(dars_book_id),
+                    title=ch["title"], chapter_number=ch["chapter_number"],
+                    start_page=ch["start_page"], end_page=ch["end_page"],
+                ),
+            )
+            chapters_count += 1
+
+        await db.commit()
+        log.info(
+            "import_single_book: done core_id=%s status=%s chapters=%d",
+            core_id, status, chapters_count,
+        )
+        return {"status": status, "chapters": chapters_count}
+
+    except Exception:
+        log.error("import_single_book: failed core_id=%s schema=%s", core_id, schema, exc_info=True)
+        await db.rollback()
+        raise
+    finally:
+        await core_conn.close()

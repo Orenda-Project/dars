@@ -44,11 +44,16 @@ Use the Agent tool for any self-contained backend or frontend build that would o
 
 1. **Always work on a feature branch** — never commit directly to `main`; branch naming: `feature/<slug>` or `fix/<slug>`
 2. **All DB queries must filter by `client_id`** — never query data tables without it
-2. **Never store API keys plain** — SHA-256 hash on creation, shown once only
-3. **Use `hmac.compare_digest`** for all secret comparisons — plain `!=` is timing-attackable
-4. **Use `sqlalchemy.types.Uuid`** not `sqlalchemy.dialects.postgresql.UUID` — PG dialect breaks SQLite tests
-5. **Open a bead before starting any non-trivial task** — see [.beads/README.md](.beads/README.md)
-6. **Design work:** read `theme.pen` via pencil MCP before touching colors or typography
+3. **Never store API keys plain** — SHA-256 hash on creation, shown once only
+4. **Use `hmac.compare_digest`** for all secret comparisons — plain `!=` is timing-attackable
+5. **Use `sqlalchemy.types.Uuid`** not `sqlalchemy.dialects.postgresql.UUID` — PG dialect breaks SQLite tests
+6. **Open a bead before starting any non-trivial task** — see [.beads/README.md](.beads/README.md)
+7. **Design work:** read `theme.pen` via pencil MCP before touching colors or typography
+8. **Structured logging on every flow** — every service function, endpoint, and background task must log:
+   - Entry at `INFO` with relevant IDs and input context
+   - Exit/completion at `INFO` with status and key output (counts, IDs)
+   - Errors at `ERROR` with `exc_info=True`
+   - Use `logger = logging.getLogger(__name__)` — never `print()`
 
 ---
 
