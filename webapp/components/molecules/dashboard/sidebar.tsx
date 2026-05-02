@@ -62,6 +62,7 @@ const IconDownload = (
 
 const adminNavItems = [
   { label: "Curriculum", href: "/dashboard/curriculum", icon: IconBook },
+  { label: "Books", href: "/dashboard/admin/books", icon: IconBook },
   { label: "Import Books", href: "/dashboard/admin/import", icon: IconDownload },
   { label: "Clients", href: "/dashboard/admin/clients", icon: IconUsers },
 ];
