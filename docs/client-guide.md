@@ -29,7 +29,7 @@ To rotate your key, call the rotate-key endpoint — the old key is invalidated 
 
 ## Your Client Profile
 
-`GET /api/v1/me` returns your current profile including `curriculum`, `name`, `is_active`, and `webhook_url`.
+`GET /api/v1/me` returns your current profile including `curriculum`, `name`, and `is_active`.
 
 Your **curriculum** (`ICT` or `Punjab`) is set during registration via Settings. Most generation endpoints read it automatically — you never send it in a request body. If it is unset, generation endpoints will return a 422. You can update it at any time via `PATCH /api/v1/me`.
 
@@ -273,7 +273,7 @@ Error bodies follow FastAPI's standard shape:
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/me` | Your client profile |
-| PATCH | `/api/v1/me` | Update curriculum or webhook URL |
+| PATCH | `/api/v1/me` | Update curriculum |
 | POST | `/api/v1/me/rotate-key` | Rotate API key |
 
 ### Curriculum
