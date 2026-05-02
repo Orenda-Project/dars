@@ -30,3 +30,18 @@ class ClientPublicResponse(BaseModel):
 
 class ClientUpdateRequest(BaseModel):
     webhook_url: str | None = None
+
+
+class ClientAdminResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str | None = None
+    is_active: bool
+    is_admin: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ClientListResponse(BaseModel):
+    items: list[ClientAdminResponse]

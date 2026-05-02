@@ -1,21 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { BookLoader } from "@/components/atoms/book-loader";
+import { getApiKey, isAdmin } from "@/lib/session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const ADMIN_SECRET = process.env.NEXT_PUBLIC_ADMIN_SECRET ?? "";
-
-function getApiKey(): string {
-  if (typeof window === "undefined") return "";
-  const raw = localStorage.getItem("dars_pef_session");
-  if (!raw) return "";
-  try {
-    return JSON.parse(raw).api_key ?? "";
-  } catch {
-    return "";
-  }
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -424,6 +415,11 @@ const CURRICULUMS = ["ICT", "Punjab"];
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CurriculumPage() {
+  const router = useRouter();
+  useEffect(() => {
+    if (!isAdmin()) router.replace("/dashboard/lesson-plans");
+  }, [router]);
+
   const [curriculum, setCurriculum] = useState<string | null>(null);
   const [grade, setGrade] = useState<number | null>(null);
   const [subject, setSubject] = useState<string | null>(null);

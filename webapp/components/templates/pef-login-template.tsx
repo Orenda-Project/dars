@@ -16,7 +16,8 @@ export function PefLoginTemplate() {
   const [mode, setMode] = useState<"signin" | "signup" | "key-reveal">("signin");
 
   // sign-in state
-  const [apiKey, setApiKey] = useState("");
+  const [signInEmail, setSignInEmail] = useState("");
+  const [signInPassword, setSignInPassword] = useState("");
 
   // sign-up state
   const [name, setName] = useState("");
@@ -28,12 +29,33 @@ export function PefLoginTemplate() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function handleSignIn(e: React.FormEvent) {
+  async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = apiKey.trim();
-    if (!trimmed) { setError("API key is required."); return; }
-    localStorage.setItem("dars_pef_session", JSON.stringify({ api_key: trimmed }));
-    router.push("/dashboard/lesson-plans");
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: signInEmail.trim(), password: signInPassword }),
+      });
+      const text = await res.text();
+      let data: Record<string, unknown> = {};
+      try { data = JSON.parse(text); } catch { throw new Error(`Server returned unexpected response (HTTP ${res.status}). Is NEXT_PUBLIC_API_URL set correctly?`); }
+      if (!res.ok) throw new Error((data.detail as string) ?? `HTTP ${res.status}`);
+      localStorage.setItem("dars_pef_session", JSON.stringify({
+        api_key: data.api_key,
+        client_id: data.client_id,
+        name: data.name,
+        email: data.email,
+        is_admin: data.is_admin,
+      }));
+      router.push("/dashboard/lesson-plans");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Sign in failed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSignUp(e: React.FormEvent) {
@@ -60,7 +82,7 @@ export function PefLoginTemplate() {
   }
 
   function handleContinue() {
-    localStorage.setItem("dars_pef_session", JSON.stringify({ api_key: newApiKey }));
+    localStorage.setItem("dars_pef_session", JSON.stringify({ api_key: newApiKey, is_admin: false }));
     router.push("/dashboard/lesson-plans");
   }
 
@@ -83,24 +105,36 @@ export function PefLoginTemplate() {
           className="w-full max-w-sm bg-white border border-dars-rule-light rounded-xl px-8 py-8 space-y-5"
         >
           <h1 className="font-serif text-xl font-bold text-dars-ink">PEF Dashboard</h1>
-          <p className="text-sm text-dars-muted -mt-1">Sign in with your API key.</p>
+          <p className="text-sm text-dars-muted -mt-1">Sign in with your email and password.</p>
 
           <div>
-            <label className={labelClass}>API Key</label>
+            <label className={labelClass}>Email</label>
+            <input
+              type="email"
+              required
+              value={signInEmail}
+              onChange={(e) => setSignInEmail(e.target.value)}
+              className={inputClass}
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Password</label>
             <input
               type="password"
               required
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              value={signInPassword}
+              onChange={(e) => setSignInPassword(e.target.value)}
               className={inputClass}
-              placeholder="sk-••••••••"
+              placeholder="••••••••"
             />
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          <button type="submit" className="w-full py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none">
-            Sign in
+          <button type="submit" disabled={loading} className="w-full py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-50">
+            {loading ? "Signing in…" : "Sign in"}
           </button>
 
           <p className="text-center text-xs text-dars-muted">

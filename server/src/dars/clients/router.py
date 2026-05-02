@@ -6,14 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.clients.models import Client
 from dars.clients.schemas import (
+    ClientAdminResponse,
     ClientCreateRequest,
     ClientCreateResponse,
+    ClientListResponse,
     ClientPublicResponse,
     ClientUpdateRequest,
 )
 from dars.clients.service import create_client, update_client
 from dars.database import get_db
-from dars.deps import get_current_client, require_admin_secret
+from dars.deps import get_admin_client, get_current_client, require_admin_secret
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 client_router = APIRouter(prefix="/api/v1", tags=["clients"])
@@ -55,6 +57,17 @@ async def update_client_endpoint(
         raise HTTPException(status_code=404, detail="Client not found")
     client = await update_client(db, client, webhook_url=body.webhook_url)
     return ClientPublicResponse.model_validate(client)
+
+
+@admin_router.get(
+    "/clients",
+    response_model=ClientListResponse,
+    dependencies=[Depends(get_admin_client)],
+)
+async def list_clients_endpoint(db: AsyncSession = Depends(get_db)) -> ClientListResponse:
+    result = await db.execute(select(Client).order_by(Client.created_at.desc()))
+    clients = result.scalars().all()
+    return ClientListResponse(items=[ClientAdminResponse.model_validate(c) for c in clients])
 
 
 @client_router.get("/me", response_model=ClientPublicResponse)
