@@ -244,13 +244,39 @@ async def list_topic_slots(
     if topic is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
 
-    result = await db.execute(
+    slot_rows = await db.execute(
         select(LessonSlot)
         .where(LessonSlot.topic_id == topic_id)
         .order_by(LessonSlot.day_number)
     )
-    items = list(result.scalars().all())
-    return LessonSlotListResponse(items=[LessonSlotResponse.model_validate(s) for s in items])
+    slots = list(slot_rows.scalars().all())
+
+    # Fetch assessment IDs for any slots that have a lesson_plan_id
+    lp_ids = [s.lesson_plan_id for s in slots if s.lesson_plan_id is not None]
+    assessment_map: dict = {}
+    if lp_ids:
+        from dars.assessments.models import Assessment as AssessmentModel
+        from sqlalchemy import select as sa_select
+        arows = await db.execute(
+            sa_select(AssessmentModel.id, AssessmentModel.lesson_plan_id)
+            .where(AssessmentModel.lesson_plan_id.in_(lp_ids))
+        )
+        assessment_map = {row.lesson_plan_id: row.id for row in arows}
+
+    items = []
+    for s in slots:
+        data = {
+            "id": s.id,
+            "topic_id": s.topic_id,
+            "day_number": s.day_number,
+            "scheduled_date": s.scheduled_date,
+            "topic_subtopic": s.topic_subtopic,
+            "lesson_plan_id": s.lesson_plan_id,
+            "assessment_id": assessment_map.get(s.lesson_plan_id) if s.lesson_plan_id else None,
+            "created_at": s.created_at,
+        }
+        items.append(LessonSlotResponse(**data))
+    return LessonSlotListResponse(items=items)
 
 
 # ---------------------------------------------------------------------------

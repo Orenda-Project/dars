@@ -11,6 +11,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import dars.assessments.models  # noqa — register with Base
 import dars.clients.models  # noqa — register with Base
 import dars.curriculum.models  # noqa — register with Base
 from dars.clients.service import create_client

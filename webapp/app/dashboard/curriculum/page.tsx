@@ -45,6 +45,7 @@ interface Slot {
   scheduled_date: string | null;
   topic_subtopic: string;
   lesson_plan_id: string | null;
+  assessment_id: string | null;
 }
 
 interface LessonPlan {
@@ -585,12 +586,13 @@ function TopicSlotsColumn({
       if (r.ok) {
         const data: Assessment = await r.json();
         onViewAssessment(data.id);
+        onSlotsRefresh();
       } else {
         toast.error("Failed to generate assessment.");
       }
     } catch { toast.error("Failed to generate assessment."); }
     finally { setGeneratingAssessment((prev) => ({ ...prev, [lpId]: false })); }
-  }, [onViewAssessment]);
+  }, [onViewAssessment, onSlotsRefresh]);
 
   if (!chapterSelected) {
     return (
@@ -758,15 +760,31 @@ function TopicSlotsColumn({
                             {generatingLp[slot.id] ? <Spinner /> : slot.lesson_plan_id ? "↺" : "Gen LP"}
                           </button>
                           {slot.lesson_plan_id && (
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateAssessment(slot.lesson_plan_id!)}
-                              disabled={!!generatingAssessment[slot.lesson_plan_id!]}
-                              title="Generate Assessment"
-                              className="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border border-dars-ink/30 text-dars-ink/60 hover:bg-dars-ink hover:text-white disabled:opacity-60 cursor-pointer transition-colors"
-                            >
-                              {generatingAssessment[slot.lesson_plan_id!] ? <Spinner /> : "Quiz"}
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => slot.assessment_id
+                                  ? onViewAssessment(slot.assessment_id)
+                                  : handleGenerateAssessment(slot.lesson_plan_id!)
+                                }
+                                disabled={!!generatingAssessment[slot.lesson_plan_id!]}
+                                title={slot.assessment_id ? "View Quiz" : "Generate Quiz"}
+                                className="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border border-dars-ink/30 text-dars-ink/60 hover:bg-dars-ink hover:text-white disabled:opacity-60 cursor-pointer transition-colors"
+                              >
+                                {generatingAssessment[slot.lesson_plan_id!] ? <Spinner /> : "Quiz"}
+                              </button>
+                              {slot.assessment_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateAssessment(slot.lesson_plan_id!)}
+                                  disabled={!!generatingAssessment[slot.lesson_plan_id!]}
+                                  title="Regenerate Quiz"
+                                  className="text-[10px] text-dars-muted hover:text-dars-ink disabled:opacity-50 cursor-pointer transition-colors"
+                                >
+                                  ↺
+                                </button>
+                              )}
+                            </>
                           )}
                           <button
                             type="button"

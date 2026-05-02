@@ -78,6 +78,7 @@ class LessonSlotResponse(BaseModel):
     scheduled_date: str | None
     topic_subtopic: str
     lesson_plan_id: uuid.UUID | None
+    assessment_id: uuid.UUID | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
