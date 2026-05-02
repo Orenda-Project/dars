@@ -14,9 +14,6 @@ class LessonPlan(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    client_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
-    )
     webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     grade: Mapped[str] = mapped_column(String(50), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), ForeignKey("subjects.code"), nullable=False)

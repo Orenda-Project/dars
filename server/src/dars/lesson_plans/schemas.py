@@ -37,7 +37,6 @@ class LessonPlanCreateRequest(BaseModel):
 
 class LessonPlanResponse(BaseModel):
     id: uuid.UUID
-    client_id: uuid.UUID
     status: str
     grade: str
     subject: str

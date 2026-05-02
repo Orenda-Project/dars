@@ -165,7 +165,7 @@ async def generate_slot_lp(
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:
     """Generate (or regenerate) a lesson plan for a slot using its topic_text."""
-    logger.info("generate_slot_lp: slot_id=%s client_id=%s", slot_id, current_client.id)
+    logger.info("generate_slot_lp: slot_id=%s", slot_id)
     row = await db.execute(
         text("""
             SELECT
@@ -189,7 +189,6 @@ async def generate_slot_lp(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Slot has no topic_text — run chapter breakdown first")
 
     lp = LessonPlan(
-        client_id=current_client.id,
         curriculum=data["curriculum"],
         grade=str(data["grade"]),
         subject=data["subject"],
@@ -209,7 +208,6 @@ async def generate_slot_lp(
 
     slot_data = dict(data)
     lp_id = lp.id
-    client_id = current_client.id
 
     async def _generate() -> None:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -608,7 +606,6 @@ async def bulk_generate_lps_endpoint(
             continue
 
         lp = LessonPlan(
-            client_id=_admin.id,
             curriculum=slot["curriculum"],
             grade=str(slot["grade"]),
             subject=slot["subject"],
@@ -624,9 +621,8 @@ async def bulk_generate_lps_endpoint(
         )
         slot_data = dict(slot)
         lp_id = lp.id
-        admin_id = _admin.id
 
-        async def _generate(sd=slot_data, lid=lp_id, aid=admin_id) -> None:
+        async def _generate(sd=slot_data, lid=lp_id) -> None:
             from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
             from dars.mapping import canonical_grade, canonical_subject
             logger.info("_generate bulk LP: lp_id=%s topic=%s", lid, sd.get("topic"))
@@ -699,7 +695,6 @@ async def build_remaining_endpoint(
     else:
         chapters = await list_book_chapters(db, book_id=book_id)
         chapter_ids = [c.id for c in chapters]
-    admin_id = _admin.id
 
     logger.info("build_remaining_endpoint: book_id=%s chapters=%d", book_id, len(chapter_ids))
 
@@ -749,7 +744,6 @@ async def build_remaining_endpoint(
 
                     for slot in slots_needing_lp:
                         lp = LessonPlan(
-                            client_id=admin_id,
                             curriculum=slot["curriculum"],
                             grade=str(slot["grade"]),
                             subject=slot["subject"],

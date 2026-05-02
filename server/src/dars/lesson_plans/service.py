@@ -9,23 +9,20 @@ from dars.config import settings
 from dars.lesson_plans.models import LessonPlan
 from dars.lesson_plans.schemas import LessonPlanCreateRequest
 from dars.mapping import canonical_grade, canonical_subject
-from dars.webhooks.service import deliver_webhook
 
 logger = logging.getLogger(__name__)
 
 
 async def queue_lesson_plan(
     db: AsyncSession,
-    client_id: uuid.UUID,
     request: LessonPlanCreateRequest,
 ) -> LessonPlan:
     """Create a PENDING lesson plan record and return it. Background task fires separately."""
     logger.info(
-        "queue_lesson_plan: client_id=%s curriculum=%s grade=%s subject=%s topic=%s",
-        client_id, request.curriculum, request.grade, request.subject, request.topic,
+        "queue_lesson_plan: curriculum=%s grade=%s subject=%s topic=%s",
+        request.curriculum, request.grade, request.subject, request.topic,
     )
     lp = LessonPlan(
-        client_id=client_id,
         webhook_url=request.webhook_url,
         curriculum=request.curriculum,
         grade=str(request.grade),
@@ -39,40 +36,29 @@ async def queue_lesson_plan(
     db.add(lp)
     await db.commit()
     await db.refresh(lp)
-    logger.info("queue_lesson_plan: queued lp_id=%s client_id=%s", lp.id, client_id)
+    logger.info("queue_lesson_plan: queued lp_id=%s", lp.id)
     return lp
 
 
 async def get_lesson_plan(
     db: AsyncSession,
     lp_id: uuid.UUID,
-    client_id: uuid.UUID | None = None,
 ) -> LessonPlan | None:
-    q = select(LessonPlan).where(LessonPlan.id == lp_id)
-    if client_id is not None:
-        q = q.where(LessonPlan.client_id == client_id)
-    result = await db.execute(q)
+    result = await db.execute(select(LessonPlan).where(LessonPlan.id == lp_id))
     return result.scalar_one_or_none()
 
 
 async def list_lesson_plans(
     db: AsyncSession,
-    client_id: uuid.UUID,
     offset: int = 0,
     limit: int = 50,
 ) -> tuple[list[LessonPlan], int]:
-    """Return (items, total) for paginated lesson plan list, always filtered by client_id."""
-    count_result = await db.execute(
-        select(func.count()).select_from(LessonPlan).where(LessonPlan.client_id == client_id)
-    )
+    """Return (items, total) for paginated lesson plan list."""
+    count_result = await db.execute(select(func.count()).select_from(LessonPlan))
     total = count_result.scalar_one()
 
     items_result = await db.execute(
-        select(LessonPlan)
-        .where(LessonPlan.client_id == client_id)
-        .order_by(LessonPlan.created_at.desc())
-        .offset(offset)
-        .limit(limit)
+        select(LessonPlan).order_by(LessonPlan.created_at.desc()).offset(offset).limit(limit)
     )
     items = list(items_result.scalars().all())
     return items, total
@@ -80,14 +66,13 @@ async def list_lesson_plans(
 
 async def generate_lesson_plan_task(
     lp_id: uuid.UUID,
-    client_id: uuid.UUID,
     request: LessonPlanCreateRequest,
 ) -> None:
     """
     Background task: call LP Assistant, update LessonPlan record, fire webhook.
     Uses its own DB session (background tasks run outside request context).
     """
-    logger.info("generate_lesson_plan_task: lp_id=%s client_id=%s", lp_id, client_id)
+    logger.info("generate_lesson_plan_task: lp_id=%s", lp_id)
     engine = create_async_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -138,27 +123,5 @@ async def generate_lesson_plan_task(
         await db.refresh(lp)
         logger.info("LP %s marked %s", lp_id, lp.status)
 
-        # Fire webhook if URL is configured on the LP record
-        if lp.webhook_url:
-            webhook_payload = {
-                "event": event,
-                "lesson_plan_id": str(lp_id),
-                "status": lp.status,
-            }
-            logger.info(
-                "generate_lesson_plan_task: delivering webhook event=%s lp_id=%s client_id=%s",
-                event, lp_id, client_id,
-            )
-            try:
-                await deliver_webhook(
-                    db=db,
-                    client_id=client_id,
-                    lesson_plan_id=lp_id,
-                    webhook_url=lp.webhook_url,
-                    event=event,
-                    payload=webhook_payload,
-                )
-            except Exception as exc:
-                logger.error("Webhook delivery failed for lp=%s: %s", lp_id, exc, exc_info=True)
 
     await engine.dispose()

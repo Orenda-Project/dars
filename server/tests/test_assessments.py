@@ -72,7 +72,6 @@ async def authed_client(db_session):
 
 async def _make_lp(db: AsyncSession, **kwargs) -> LessonPlan:
     defaults = {
-        "client_id": uuid.uuid4(),
         "curriculum": "ICT",
         "grade": "5",
         "subject": "Math",
@@ -108,7 +107,7 @@ def _mock_anthropic_response(mcqs: list = None):
 
 async def test_create_assessment_returns_201_pending(authed_client, db_session):
     http, api_key, client_obj = authed_client
-    lp = await _make_lp(db_session, client_id=client_obj.id)
+    lp = await _make_lp(db_session)
 
     with patch("dars.assessments.service.anthropic.AsyncAnthropic", return_value=_mock_anthropic_response()):
         response = await http.post(
@@ -127,7 +126,7 @@ async def test_create_assessment_returns_201_pending(authed_client, db_session):
 
 async def test_create_assessment_requires_auth(authed_client, db_session):
     http, _, client_obj = authed_client
-    lp = await _make_lp(db_session, client_id=client_obj.id)
+    lp = await _make_lp(db_session)
 
     response = await http.post(f"/api/v1/lesson-plans/{lp.id}/assessment")
     assert response.status_code == 401
@@ -150,7 +149,7 @@ async def test_create_assessment_lp_not_found(authed_client):
 
 async def test_get_assessment_by_id(authed_client, db_session):
     http, api_key, client_obj = authed_client
-    lp = await _make_lp(db_session, client_id=client_obj.id)
+    lp = await _make_lp(db_session)
 
     with patch("dars.assessments.service.anthropic.AsyncAnthropic", return_value=_mock_anthropic_response()):
         create_resp = await http.post(
@@ -182,7 +181,7 @@ async def test_get_assessment_not_found(authed_client):
 
 async def test_get_assessment_requires_auth(authed_client, db_session):
     http, _, client_obj = authed_client
-    lp = await _make_lp(db_session, client_id=client_obj.id)
+    lp = await _make_lp(db_session)
     assessment = Assessment(lesson_plan_id=lp.id, status="PENDING")
     db_session.add(assessment)
     await db_session.commit()
@@ -199,7 +198,7 @@ async def test_get_assessment_requires_auth(authed_client, db_session):
 
 async def test_create_assessment_replaces_existing(authed_client, db_session):
     http, api_key, client_obj = authed_client
-    lp = await _make_lp(db_session, client_id=client_obj.id)
+    lp = await _make_lp(db_session)
 
     with patch("dars.assessments.service.anthropic.AsyncAnthropic", return_value=_mock_anthropic_response()):
         first_resp = await http.post(

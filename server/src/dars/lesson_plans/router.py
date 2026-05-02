@@ -40,11 +40,10 @@ async def create_lesson_plan(
     Returns immediately with status=PENDING and a lesson plan id.
     Poll GET /api/v1/lesson-plans/{id} or wait for the webhook.
     """
-    lp = await queue_lesson_plan(db, client_id=current_client.id, request=body)
+    lp = await queue_lesson_plan(db, request=body)
     background_tasks.add_task(
         generate_lesson_plan_task,
         lp_id=lp.id,
-        client_id=current_client.id,
         request=body,
     )
     return LessonPlanResponse.model_validate(lp)
@@ -61,7 +60,7 @@ async def list_lesson_plans_endpoint(
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanListResponse:
     """List all lesson plans for the authenticated client."""
-    items, total = await list_lesson_plans(db, client_id=current_client.id, offset=offset, limit=limit)
+    items, total = await list_lesson_plans(db, offset=offset, limit=limit)
     return LessonPlanListResponse(
         items=[LessonPlanResponse.model_validate(lp) for lp in items],
         total=total,
@@ -78,7 +77,7 @@ async def get_lesson_plan_endpoint(
     db: AsyncSession = Depends(get_db),
 ) -> LessonPlanResponse:
     """Get a single lesson plan by id. Only accessible to the owning client."""
-    lp = await get_lesson_plan(db, lp_id=lp_id, client_id=current_client.id)
+    lp = await get_lesson_plan(db, lp_id=lp_id)
     if lp is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
     return LessonPlanResponse.model_validate(lp)
@@ -100,7 +99,7 @@ async def generate_exam_from_lp(
     Uses the LP's curriculum, grade, subject, and page_number as inputs.
     All other exam generation settings use sensible defaults.
     """
-    lp = await get_lesson_plan(db, client_id=current_client.id, lp_id=lp_id)
+    lp = await get_lesson_plan(db, lp_id=lp_id)
     if lp is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
     if not lp.page_number:
