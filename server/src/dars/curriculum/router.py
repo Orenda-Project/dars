@@ -15,11 +15,15 @@ from dars.curriculum.models import Book, BookChapter, LessonSlot, Topic
 from dars.curriculum.schemas import (
     BookChapterListResponse,
     BookChapterResponse,
+    BookCurriculumResponse,
     BookListResponse,
     BookPreviewResponse,
     BookResponse,
     BreakdownResponse,
     ChapterPreview,
+    CurriculumChapter,
+    CurriculumSlot,
+    CurriculumTopic,
     ImportBooksRequest,
     ImportBooksResponse,
     ImportSingleBookRequest,
@@ -116,6 +120,97 @@ async def get_book_stats(
     data = dict(row.mappings().one())
     logger.info("get_book_stats: book_id=%s stats=%s", book_id, data)
     return data
+
+
+@router.get("/api/v1/books/{book_id}/curriculum", response_model=BookCurriculumResponse)
+async def get_book_curriculum(
+    book_id: uuid.UUID,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> BookCurriculumResponse:
+    """
+    Full curriculum tree for a book in one request.
+    Returns chapters → topics → slots (with lesson_plan_id and assessment_id).
+    """
+    logger.info("get_book_curriculum: book_id=%s", book_id)
+    book = await db.get(Book, book_id)
+    if book is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+
+    rows = await db.execute(
+        text("""
+            SELECT
+                bc.id           AS chapter_id,
+                bc.core_id      AS chapter_core_id,
+                bc.chapter_number,
+                bc.title        AS chapter_title,
+                bc.start_page   AS chapter_start_page,
+                bc.end_page     AS chapter_end_page,
+                t.id            AS topic_id,
+                t.topic_number,
+                t.title         AS topic_title,
+                t.start_page    AS topic_start_page,
+                t.end_page      AS topic_end_page,
+                ls.id           AS slot_id,
+                ls.day_number,
+                ls.topic_subtopic,
+                ls.lesson_plan_id,
+                a.id            AS assessment_id
+            FROM book_chapters bc
+            LEFT JOIN topics t        ON t.chapter_id = bc.id
+            LEFT JOIN lesson_slots ls ON ls.topic_id = t.id
+            LEFT JOIN assessments a   ON a.lesson_plan_id = ls.lesson_plan_id
+            WHERE bc.book_id = :book_id
+            ORDER BY bc.chapter_number, t.topic_number, ls.day_number
+        """),
+        {"book_id": str(book_id)},
+    )
+    all_rows = rows.mappings().all()
+
+    # Assemble nested tree
+    chapters: dict[uuid.UUID, CurriculumChapter] = {}
+    topics: dict[uuid.UUID, CurriculumTopic] = {}
+
+    for r in all_rows:
+        ch_id = uuid.UUID(str(r["chapter_id"]))
+        if ch_id not in chapters:
+            chapters[ch_id] = CurriculumChapter(
+                id=ch_id,
+                core_id=r["chapter_core_id"],
+                chapter_number=r["chapter_number"],
+                title=r["chapter_title"],
+                start_page=r["chapter_start_page"],
+                end_page=r["chapter_end_page"],
+                topics=[],
+            )
+
+        if r["topic_id"] is None:
+            continue
+        t_id = uuid.UUID(str(r["topic_id"]))
+        if t_id not in topics:
+            topic = CurriculumTopic(
+                id=t_id,
+                topic_number=r["topic_number"],
+                title=r["topic_title"],
+                start_page=r["topic_start_page"],
+                end_page=r["topic_end_page"],
+                slots=[],
+            )
+            topics[t_id] = topic
+            chapters[ch_id].topics.append(topic)
+
+        if r["slot_id"] is None:
+            continue
+        topics[t_id].slots.append(CurriculumSlot(
+            id=uuid.UUID(str(r["slot_id"])),
+            day_number=r["day_number"],
+            topic_subtopic=r["topic_subtopic"],
+            lesson_plan_id=uuid.UUID(str(r["lesson_plan_id"])) if r["lesson_plan_id"] else None,
+            assessment_id=uuid.UUID(str(r["assessment_id"])) if r["assessment_id"] else None,
+        ))
+
+    logger.info("get_book_curriculum: book_id=%s chapters=%d", book_id, len(chapters))
+    return BookCurriculumResponse(book_id=book_id, chapters=list(chapters.values()))
 
 
 @router.get(

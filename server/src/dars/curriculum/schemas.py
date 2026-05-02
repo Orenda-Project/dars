@@ -89,6 +89,43 @@ class LessonSlotListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Full curriculum tree
+# ---------------------------------------------------------------------------
+
+
+class CurriculumSlot(BaseModel):
+    id: uuid.UUID
+    day_number: int
+    topic_subtopic: str
+    lesson_plan_id: uuid.UUID | None
+    assessment_id: uuid.UUID | None
+
+
+class CurriculumTopic(BaseModel):
+    id: uuid.UUID
+    topic_number: int
+    title: str
+    start_page: int | None
+    end_page: int | None
+    slots: list[CurriculumSlot]
+
+
+class CurriculumChapter(BaseModel):
+    id: uuid.UUID
+    core_id: int
+    chapter_number: int
+    title: str
+    start_page: int | None
+    end_page: int | None
+    topics: list[CurriculumTopic]
+
+
+class BookCurriculumResponse(BaseModel):
+    book_id: uuid.UUID
+    chapters: list[CurriculumChapter]
+
+
+# ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
 
