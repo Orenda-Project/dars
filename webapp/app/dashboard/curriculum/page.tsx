@@ -952,86 +952,26 @@ export default function CurriculumPage() {
   }, []);
 
   const handleBuildChapter = useCallback(async (ch: Chapter) => {
+    if (!selectedBook) return;
     const apiKey = getApiKey();
+    if (!apiKey) { toast.error("No API key set"); return; }
     const setStatus = (msg: string) => setBuildStatus((p) => ({ ...p, [ch.id]: msg }));
     const clearStatus = () => setBuildStatus((p) => { const n = { ...p }; delete n[ch.id]; return n; });
 
-    setStatus("Starting…");
+    setStatus("Queuing…");
     try {
-      // Step 1: breakdown if no topics yet
-      const topicsRes = await fetch(`${API_URL}/api/v1/books/${selectedBook!.id}/chapters/${ch.id}/topics`, { headers: { "X-API-Key": apiKey } });
-      const topicsData: { items: Topic[] } = topicsRes.ok ? await topicsRes.json() : { items: [] };
-      let currentTopics = topicsData.items ?? [];
-
-      if (currentTopics.length === 0) {
-        setStatus("Breaking down chapter…");
-        const bdRes = await fetch(`${API_URL}/api/v1/chapters/${ch.id}/breakdown`, {
-          method: "POST",
-          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-        });
-        if (!bdRes.ok) { toast.error(`Breakdown failed for chapter ${ch.chapter_number}`); return; }
-        const freshTopics = await fetch(`${API_URL}/api/v1/books/${selectedBook!.id}/chapters/${ch.id}/topics`, { headers: { "X-API-Key": apiKey } });
-        const freshData: { items: Topic[] } = freshTopics.ok ? await freshTopics.json() : { items: [] };
-        currentTopics = freshData.items ?? [];
-      }
-
-      // Step 2: fetch all slots for all topics
-      setStatus("Fetching slots…");
-      const slotResults = await Promise.all(
-        currentTopics.map((t) =>
-          fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, { headers: { "X-API-Key": apiKey } })
-            .then((r) => (r.ok ? r.json() : { items: [] }))
-            .then((d: { items: Slot[] }) => d.items ?? [])
-            .catch(() => [] as Slot[])
-        )
+      const resp = await fetch(
+        `${API_URL}/admin/books/${selectedBook.id}/build-remaining?chapter_id=${ch.id}`,
+        { method: "POST", headers: { "X-API-Key": apiKey } },
       );
-      const allSlots = slotResults.flat();
-
-      // Step 3: generate LPs for slots that don't have one
-      const slotsNeedingLp = allSlots.filter((s) => !s.lesson_plan_id);
-      let lpDone = 0;
-      for (const slot of slotsNeedingLp) {
-        setStatus(`LPs ${lpDone}/${slotsNeedingLp.length}…`);
-        await fetch(`${API_URL}/api/v1/slots/${slot.id}/generate-lp`, {
-          method: "POST",
-          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-        }).catch(() => {});
-        lpDone++;
-      }
-
-      // Step 4: refresh slots to get lesson_plan_ids
-      setStatus("Refreshing…");
-      const refreshedSlotResults = await Promise.all(
-        currentTopics.map((t) =>
-          fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, { headers: { "X-API-Key": apiKey } })
-            .then((r) => (r.ok ? r.json() : { items: [] }))
-            .then((d: { items: Slot[] }) => d.items ?? [])
-            .catch(() => [] as Slot[])
-        )
-      );
-      const refreshedSlots = refreshedSlotResults.flat();
-
-      // Step 5: generate quizzes for slots with LP but no assessment
-      const slotsNeedingQuiz = refreshedSlots.filter((s) => s.lesson_plan_id && !s.assessment_id);
-      let quizDone = 0;
-      for (const slot of slotsNeedingQuiz) {
-        setStatus(`Quizzes ${quizDone}/${slotsNeedingQuiz.length}…`);
-        await fetch(`${API_URL}/api/v1/lesson-plans/${slot.lesson_plan_id}/assessment`, {
-          method: "POST",
-          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-        }).catch(() => {});
-        quizDone++;
-      }
-
-      setStatus("Done ✓");
-      if (selectedChapter?.id === ch.id) handleSlotsRefresh();
-      if (selectedBook) refreshStats(selectedBook.id);
-      setTimeout(() => clearStatus(), 3000);
-    } catch {
-      toast.error(`Build failed for chapter ${ch.chapter_number}`);
+      if (!resp.ok) throw new Error(await resp.text());
+      setStatus("Running in background…");
+      setTimeout(() => clearStatus(), 4000);
+    } catch (e: unknown) {
+      toast.error(`Build failed: ${e instanceof Error ? e.message : String(e)}`);
       clearStatus();
     }
-  }, [selectedBook, selectedChapter, handleSlotsRefresh, refreshStats]);
+  }, [selectedBook]);
 
   const handleBuildRemaining = useCallback(async () => {
     if (!selectedBook) return;

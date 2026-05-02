@@ -678,20 +678,27 @@ async def bulk_generate_lps_endpoint(
 async def build_remaining_endpoint(
     book_id: uuid.UUID,
     background_tasks: BackgroundTasks,
+    chapter_id: uuid.UUID | None = None,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
-    Background task: for every chapter in the book, run breakdown (if no topics),
-    LP generation (for slots without LPs), and quiz generation (for LPs without assessments).
-    Skips anything already done.
+    Background task: run breakdown → LPs → quizzes, skipping anything already done.
+    If chapter_id is provided, only that chapter is processed; otherwise all chapters
+    in the book are processed.
     """
     book = await db.get(Book, book_id)
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
 
-    chapters = await list_book_chapters(db, book_id=book_id)
-    chapter_ids = [c.id for c in chapters]
+    if chapter_id is not None:
+        chapter = await db.get(BookChapter, chapter_id)
+        if chapter is None or chapter.book_id != book_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+        chapter_ids = [chapter_id]
+    else:
+        chapters = await list_book_chapters(db, book_id=book_id)
+        chapter_ids = [c.id for c in chapters]
     admin_id = _admin.id
 
     logger.info("build_remaining_endpoint: book_id=%s chapters=%d", book_id, len(chapter_ids))
