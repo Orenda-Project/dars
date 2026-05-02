@@ -267,7 +267,16 @@ async def breakdown_chapter_endpoint(
     try:
         summary = await breakdown_chapter(db, chapter_id)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        logger.error("breakdown_chapter_endpoint: error chapter_id=%s: %s", chapter_id, exc)
+        status_code = (
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+            if "not configured" in str(exc)
+            else status.HTTP_404_NOT_FOUND
+        )
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("breakdown_chapter_endpoint: failed chapter_id=%s", chapter_id, exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
     logger.info(
         "breakdown_chapter_endpoint: done chapter_id=%s topics=%s slots=%s",
         chapter_id, summary.get("topics"), summary.get("slots"),

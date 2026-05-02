@@ -253,6 +253,8 @@ async def run_topic_breakdown(
 
     Returns list of dicts: {topic_number, title, page_number, topic_text}
     """
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not configured")
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     page_hint = f"Start Page: {start_page}\n" if start_page else ""
@@ -287,6 +289,8 @@ async def run_day_plan(topics: list[dict]) -> list[dict]:
 
     Returns list of dicts: {day_number, scheduled_date, topic_subtopic}
     """
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not configured")
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     # Simplify topics for day-plan prompt (title + page_number only — no large text)
