@@ -273,10 +273,14 @@ async def run_topic_breakdown(
     raw = message.content[0].text
     log.info("Topic breakdown done — chapter=%r response_chars=%d", chapter_title, len(raw))
 
+    log.info("Topic breakdown raw response — chapter=%r:\n%s", chapter_title, raw)
+
     parsed = _extract_json_from_response(raw)
     if not parsed:
         log.warning("No JSON found in topic breakdown response — chapter=%r", chapter_title)
         return []
+
+    log.info("Topic breakdown parsed JSON — chapter=%r topic_sections=%s", chapter_title, parsed.get("topic_sections"))
 
     topics = format_topic_for_extraction(chapter_text, parsed, start_page=start_page)
     log.info("Extracted %d topics — chapter=%r", len(topics), chapter_title)
