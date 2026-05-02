@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/molecules/dashboard/sidebar";
 
@@ -11,21 +11,27 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    // Allow the login page through without a session check
-    if (pathname === "/dashboard/login") return;
+    if (pathname === "/dashboard/login") {
+      setAuthChecked(true);
+      return;
+    }
 
     const raw = localStorage.getItem("dars_pef_session");
     if (!raw) {
       router.replace("/dashboard/login");
+    } else {
+      setAuthChecked(true);
     }
   }, [pathname, router]);
 
-  // Render the login page without the sidebar shell
   if (pathname === "/dashboard/login") {
     return <>{children}</>;
   }
+
+  if (!authChecked) return null;
 
   return (
     <div className="flex min-h-screen bg-white">

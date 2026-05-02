@@ -82,7 +82,7 @@ export function LandingTemplate() {
 
           <div className="flex gap-3.5 items-center justify-center relative z-10 flex-wrap">
             <a
-              href="/login"
+              href="/dashboard/login"
               className="bg-dars-terra text-dars-parchment px-7 py-3.5 rounded-md text-sm font-semibold no-underline hover:opacity-90 transition-opacity"
             >
               Log in →
@@ -212,7 +212,7 @@ export function LandingTemplate() {
             Log in to your dashboard and start generating curriculum-aligned lesson plans today.
           </p>
           <a
-            href="/login"
+            href="/dashboard/login"
             className="bg-dars-terra text-dars-parchment px-8 py-3.5 rounded-md text-[15px] font-semibold no-underline relative inline-block hover:opacity-90 transition-opacity"
           >
             Log in →
