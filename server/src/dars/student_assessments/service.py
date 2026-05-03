@@ -1,3 +1,4 @@
+# Student-facing quiz — tests whether the student understood the lesson. Lower difficulty than teacher assessments.
 import json
 import logging
 import re
@@ -7,17 +8,14 @@ import anthropic
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from dars.assessments.models import Assessment
+from dars.student_assessments.models import StudentAssessment
 from dars.config import settings
 
 logger = logging.getLogger(__name__)
 
-# These assessments are for the teacher, not the student — the goal is to verify
-# the teacher actually understands the material before they deliver the lesson.
-# Hence the emphasis on comprehension/application over recall.
-ASSESSMENT_SYSTEM_PROMPT = """You are an expert teacher creating a short assessment to test student understanding of a lesson.
+STUDENT_ASSESSMENT_SYSTEM_PROMPT = """You are an expert teacher creating a short quiz to check if a student understood a lesson.
 
-Generate exactly 3 multiple-choice questions (MCQs) that are genuinely challenging — testing comprehension and application, not trivial recall. Questions should require students to think critically about the content, not just recognise a memorised fact.
+Generate exactly 5 multiple-choice questions (MCQs) that test recall and basic understanding of the lesson content. Questions should be accessible and focus on key facts, definitions, and straightforward comprehension — not deep application or critical analysis.
 
 Each MCQ must have:
 - A clear, specific question
@@ -78,21 +76,26 @@ def _split_mcqs(mcqs: list) -> tuple[list, list]:
     return questions, answers
 
 
-async def generate_assessment(
+async def generate_student_assessment(
     assessment_id: uuid.UUID,
     lesson_plan_id: uuid.UUID,
     db_url: str,
 ) -> None:
-    """Background task: generate MCQs from a lesson plan and update the assessment record."""
-    logger.info("generate_assessment: start assessment_id=%s lesson_plan_id=%s", assessment_id, lesson_plan_id)
+    """Background task: generate student MCQs from a lesson plan and update the student assessment record."""
+    logger.info(
+        "generate_student_assessment: start assessment_id=%s lesson_plan_id=%s",
+        assessment_id, lesson_plan_id,
+    )
 
     engine = create_async_engine(db_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async with factory() as session:
-        record = await session.get(Assessment, assessment_id)
+        record = await session.get(StudentAssessment, assessment_id)
         if record is None:
-            logger.error("generate_assessment: assessment_id=%s not found in DB", assessment_id)
+            logger.error(
+                "generate_student_assessment: assessment_id=%s not found in DB", assessment_id
+            )
             await engine.dispose()
             return
 
@@ -112,7 +115,9 @@ async def generate_assessment(
         data = row.mappings().one_or_none()
 
         if data is None:
-            logger.error("generate_assessment: lesson_plan_id=%s not found", lesson_plan_id)
+            logger.error(
+                "generate_student_assessment: lesson_plan_id=%s not found", lesson_plan_id
+            )
             record.status = "ERROR"
             record.error_message = "Lesson plan not found"
             await session.commit()
@@ -121,7 +126,9 @@ async def generate_assessment(
 
         lp_content = data["content"] or ""
         if not lp_content:
-            logger.error("generate_assessment: lesson_plan_id=%s has no content", lesson_plan_id)
+            logger.error(
+                "generate_student_assessment: lesson_plan_id=%s has no content", lesson_plan_id
+            )
             record.status = "ERROR"
             record.error_message = "Lesson plan has no content — generate the LP first"
             await session.commit()
@@ -141,11 +148,14 @@ async def generate_assessment(
             message = await client.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=2000,
-                system=ASSESSMENT_SYSTEM_PROMPT,
+                system=STUDENT_ASSESSMENT_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_message}],
             )
             raw = message.content[0].text
-            logger.info("generate_assessment: LLM responded assessment_id=%s chars=%d", assessment_id, len(raw))
+            logger.info(
+                "generate_student_assessment: LLM responded assessment_id=%s chars=%d",
+                assessment_id, len(raw),
+            )
 
             mcqs = _extract_json_array(raw)
             if not mcqs:
@@ -154,14 +164,19 @@ async def generate_assessment(
             questions, answers = _split_mcqs(mcqs)
             record.content_json = questions
             record.answers_json = answers
-            record.content = None
             record.status = "READY"
         except Exception:
-            logger.error("generate_assessment: failed assessment_id=%s", assessment_id, exc_info=True)
+            logger.error(
+                "generate_student_assessment: failed assessment_id=%s",
+                assessment_id, exc_info=True,
+            )
             record.status = "ERROR"
             record.error_message = "Generation failed — see server logs"
 
-        logger.info("generate_assessment: done assessment_id=%s status=%s", assessment_id, record.status)
+        logger.info(
+            "generate_student_assessment: done assessment_id=%s status=%s",
+            assessment_id, record.status,
+        )
         await session.commit()
 
     await engine.dispose()
