@@ -52,7 +52,7 @@ async def get_student_assessment_by_lp(
             logger.info("get_student_assessment_by_lp: stale PENDING found, re-running generation assessment_id=%s", assessment.id)
         assessment_id = assessment.id
         await generate_student_assessment(assessment_id, lp_id, settings.database_url)
-        # re-fetch since generate_student_assessment uses its own session
+        await db.expire_all()
         assessment = await db.get(StudentAssessment, assessment_id)
 
     logger.info(
