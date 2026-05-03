@@ -315,11 +315,8 @@ async def generate_slot_lp(
     lp_id = lp.id
 
     async def _generate() -> None:
-        import asyncio
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from dars.mapping import canonical_grade, canonical_subject
-        from dars.student_assessments.models import StudentAssessment
-        from dars.student_assessments.service import generate_student_assessment
         logger.info("_generate slot LP: lp_id=%s", lp_id)
         engine = create_async_engine(settings.database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -356,20 +353,12 @@ async def generate_slot_lp(
                 record.tags = result.get("tags") or {}
                 record.metadata_ = result.get("metadata") or {}
                 record.status = "READY"
-                sa = StudentAssessment(lesson_plan_id=record.id, status="PENDING")
-                session.add(sa)
-                await session.flush()
-                sa_id = sa.id
             except Exception as exc:
                 logger.error("_generate slot LP: failed lp_id=%s", lp_id, exc_info=True)
                 record.status = "ERROR"
-                sa_id = None
             logger.info("_generate slot LP: done lp_id=%s status=%s", lp_id, record.status)
             await session.commit()
         await engine.dispose()
-        if sa_id is not None:
-            logger.info("_generate slot LP: queuing student assessment sa_id=%s lp_id=%s", sa_id, lp_id)
-            asyncio.ensure_future(generate_student_assessment(sa_id, lp_id, settings.database_url))
 
     logger.info("generate_slot_lp: queued background LP generation lp_id=%s", lp_id)
     background_tasks.add_task(_generate)
@@ -739,11 +728,8 @@ async def bulk_generate_lps_endpoint(
         lp_id = lp.id
 
         async def _generate(sd=slot_data, lid=lp_id) -> None:
-            import asyncio
             from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
             from dars.mapping import canonical_grade, canonical_subject
-            from dars.student_assessments.models import StudentAssessment
-            from dars.student_assessments.service import generate_student_assessment
             logger.info("_generate bulk LP: lp_id=%s topic=%s", lid, sd.get("topic"))
             engine = create_async_engine(settings.database_url)
             factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -754,7 +740,6 @@ async def bulk_generate_lps_endpoint(
                 "topic": sd["topic"],
                 "page_content": sd["topic_text"] or "",
             }
-            sa_id = None
             async with factory() as session:
                 record = await session.get(LessonPlan, lid)
                 if record is None:
@@ -775,19 +760,12 @@ async def bulk_generate_lps_endpoint(
                     record.tags = result.get("tags") or {}
                     record.metadata_ = result.get("metadata") or {}
                     record.status = "READY"
-                    sa = StudentAssessment(lesson_plan_id=record.id, status="PENDING")
-                    session.add(sa)
-                    await session.flush()
-                    sa_id = sa.id
                 except Exception as exc:
                     logger.error("_generate bulk LP: failed lp_id=%s", lid, exc_info=True)
                     record.status = "ERROR"
                 logger.info("_generate bulk LP: done lp_id=%s status=%s", lid, record.status)
                 await session.commit()
             await engine.dispose()
-            if sa_id is not None:
-                logger.info("_generate bulk LP: queuing student assessment sa_id=%s lp_id=%s", sa_id, lid)
-                asyncio.ensure_future(generate_student_assessment(sa_id, lid, settings.database_url))
 
         background_tasks.add_task(_generate)
         queued += 1
@@ -829,8 +807,6 @@ async def build_remaining_endpoint(
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from dars.assessments.models import Assessment
         from dars.assessments.service import generate_assessment
-        from dars.student_assessments.models import StudentAssessment
-        from dars.student_assessments.service import generate_student_assessment
         from dars.mapping import canonical_grade, canonical_subject
 
         engine = create_async_engine(settings.database_url)
@@ -896,7 +872,6 @@ async def build_remaining_endpoint(
                             "topic": slot["topic"],
                             "page_content": slot["topic_text"] or "",
                         }
-                        sa_id = None
                         try:
                             async with httpx.AsyncClient(timeout=120.0) as http:
                                 resp = await http.post(
@@ -914,13 +889,7 @@ async def build_remaining_endpoint(
                                     record.tags = result.get("tags") or {}
                                     record.metadata_ = result.get("metadata") or {}
                                     record.status = "READY"
-                                    sa = StudentAssessment(lesson_plan_id=record.id, status="PENDING")
-                                    upd.add(sa)
-                                    await upd.flush()
-                                    sa_id = sa.id
                                     await upd.commit()
-                            if sa_id is not None:
-                                await generate_student_assessment(sa_id, lp.id, settings.database_url)
                         except Exception:
                             logger.error("build_remaining: LP generation failed slot_id=%s", slot["slot_id"], exc_info=True)
                             async with factory() as upd:
@@ -953,34 +922,6 @@ async def build_remaining_endpoint(
                             assessment_id = assessment.id
                             await qs.commit()
                         await generate_assessment(assessment_id, lp_id, settings.database_url)
-
-                    # Step 4: generate student assessments for LPs without one
-                    student_quiz_rows = await session.execute(
-                        text("""
-                            SELECT ls.lesson_plan_id
-                            FROM lesson_slots ls
-                            JOIN topics t ON t.id = ls.topic_id
-                            LEFT JOIN student_assessments sa ON sa.lesson_plan_id = ls.lesson_plan_id
-                            WHERE t.chapter_id = :cid
-                              AND ls.lesson_plan_id IS NOT NULL
-                              AND sa.id IS NULL
-                        """),
-                        {"cid": str(chapter_id)},
-                    )
-                    lps_needing_student_quiz = [r[0] for r in student_quiz_rows]
-                    logger.info(
-                        "build_remaining: chapter_id=%s LPs needing student quiz=%d",
-                        chapter_id, len(lps_needing_student_quiz),
-                    )
-
-                    for lp_id in lps_needing_student_quiz:
-                        async with factory() as sqs:
-                            sa = StudentAssessment(lesson_plan_id=lp_id, status="PENDING")
-                            sqs.add(sa)
-                            await sqs.flush()
-                            sa_id = sa.id
-                            await sqs.commit()
-                        await generate_student_assessment(sa_id, lp_id, settings.database_url)
 
                 except Exception:
                     logger.error("build_remaining: chapter_id=%s failed", chapter_id, exc_info=True)

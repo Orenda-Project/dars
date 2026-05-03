@@ -122,7 +122,7 @@ Response includes `status`, `content` (HTML), `content_bilingual` (if generated)
 
 ---
 
-### 3. Fetch a Pre-generated Assessment (Quiz)
+### 3. Fetch a Pre-generated Assessment (Teacher Quiz)
 
 Assessments are linked to lesson plans. Fetch by the `assessment_id` from the curriculum tree.
 
@@ -131,6 +131,38 @@ GET /api/v1/assessments/{assessment_id}
 ```
 
 Response includes `status`, `content_json` (structured question list), and `answers_json` (one answer per question). `content` (HTML) may be null — use `content_json` for structured access.
+
+**Intended audience:** Teachers. These are 3-question MCQ quizzes designed to verify the teacher's own understanding of the lesson content before they deliver it — questions test comprehension and application, not trivial recall.
+
+You can also trigger regeneration of the teacher assessment for any lesson plan:
+
+```
+POST /api/v1/lesson-plans/{lp_id}/assessment
+```
+
+Returns 201 with `status: "PENDING"`. Poll `GET /api/v1/assessments/{assessment_id}` until ready. Replaces any existing assessment for that lesson plan.
+
+---
+
+### 3b. Fetch a Pre-generated Student Assessment
+
+**Intended audience:** Students. These are 5-question MCQ quizzes designed to check whether a student understood a lesson — questions focus on recall and straightforward comprehension.
+
+Student assessments are generated on first fetch and persisted for all subsequent requests. Fetch by lesson plan ID:
+
+```
+GET /api/v1/lesson-plans/{lp_id}/student-assessment
+```
+
+If no student assessment exists yet, it is generated synchronously and returned in the same response — expect 10–15 seconds on first fetch. If one already exists (from a previous fetch by any client), it is returned immediately. If a previous generation was interrupted mid-flight, the next fetch will re-run generation automatically.
+
+You can also fetch directly by assessment ID if you have it:
+
+```
+GET /api/v1/student-assessments/{assessment_id}
+```
+
+Response includes `status`, `content_json` (questions without answers), and `answers_json` (one answer + explanation per question).
 
 ---
 
@@ -363,7 +395,10 @@ Error bodies follow FastAPI's standard shape:
 |---|---|---|
 | GET | `/api/v1/lesson-plans/{id}` | Fetch a lesson plan by ID |
 | GET | `/api/v1/lesson-plans` | List all lesson plans (global) |
-| GET | `/api/v1/assessments/{id}` | Fetch an assessment by ID |
+| GET | `/api/v1/assessments/{id}` | Fetch a teacher assessment by ID |
+| POST | `/api/v1/lesson-plans/{id}/assessment` | Generate (or regenerate) teacher assessment for an LP |
+| GET | `/api/v1/lesson-plans/{id}/student-assessment` | Fetch student assessment for an LP (generates on first fetch) |
+| GET | `/api/v1/student-assessments/{id}` | Fetch a student assessment by ID |
 
 ### Custom Lesson Plans
 
