@@ -77,6 +77,14 @@ interface Assessment {
   answers_json: MCQAnswer[] | null;
 }
 
+interface StudentAssessment {
+  id: string;
+  lesson_plan_id: string;
+  status: string;
+  content_json: MCQQuestion[] | null;
+  answers_json: MCQAnswer[] | null;
+}
+
 // ── Spinner ───────────────────────────────────────────────────────────────────
 
 function Spinner() {
@@ -237,6 +245,118 @@ function AssessmentPanel({ assessmentId, onClose }: { assessmentId: string; onCl
             <div className="flex flex-col items-center gap-3 py-16">
               <BookLoader size={40} label="Generating quiz…" />
               <p className="text-xs text-dars-muted">This takes about 15 seconds</p>
+            </div>
+          )}
+          {!loading && assessment?.status === "ERROR" && (
+            <p className="text-sm text-red-500">Generation failed. Try again.</p>
+          )}
+          {!loading && assessment?.status === "READY" && (
+            <ol className="space-y-6">
+              {questions.map((q, i) => {
+                const ans = answers[i];
+                return (
+                  <li key={i} className="text-sm text-dars-ink">
+                    <p className="font-semibold mb-2">Q{i + 1}. {q.question}</p>
+                    <ul className="space-y-1 mb-2">
+                      {(["a", "b", "c", "d"] as const).map((letter) => {
+                        const isCorrect = showAnswers && ans?.answer === letter;
+                        return (
+                          <li
+                            key={letter}
+                            className={`px-3 py-1.5 rounded text-xs ${
+                              isCorrect
+                                ? "bg-green-50 border border-green-300 font-semibold text-green-800"
+                                : "border border-dars-rule-light"
+                            }`}
+                          >
+                            {letter}) {q.options[letter]}
+                            {isCorrect && <span className="ml-2">✓</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {showAnswers && ans?.explanation && (
+                      <p className="text-xs text-dars-muted italic">{ans.explanation}</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Student Assessment Panel (slide-over) ─────────────────────────────────────
+
+function StudentAssessmentPanel({ lpId, onClose }: { lpId: string; onClose: () => void }) {
+  const [assessment, setAssessment] = useState<StudentAssessment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showAnswers, setShowAnswers] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    setAssessment(null);
+    fetch(`${API_URL}/api/v1/lesson-plans/${lpId}/student-assessment`, {
+      headers: { "X-API-Key": getApiKey() },
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: StudentAssessment) => setAssessment(data))
+      .catch(() => { toast.error("Failed to load student assessment"); })
+      .finally(() => setLoading(false));
+  }, [lpId]);
+
+  // Poll if PENDING (shouldn't normally happen since BE generates synchronously, but handle it)
+  useEffect(() => {
+    if (!assessment || assessment.status !== "PENDING") return;
+    const timer = setInterval(() => {
+      fetch(`${API_URL}/api/v1/student-assessments/${assessment.id}`, {
+        headers: { "X-API-Key": getApiKey() },
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((data: StudentAssessment) => setAssessment(data))
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [assessment]);
+
+  const questions = assessment?.content_json ?? [];
+  const answers = assessment?.answers_json ?? [];
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-dars-rule-light shrink-0">
+          <div>
+            <p className="text-xs font-semibold text-dars-muted uppercase tracking-widest">Student Quiz</p>
+            <p className="text-[10px] text-dars-muted mt-0.5">5 questions · comprehension & recall</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {assessment?.status === "READY" && (
+              <button
+                type="button"
+                onClick={() => setShowAnswers((s) => !s)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                  showAnswers
+                    ? "bg-dars-terra text-white border-dars-terra"
+                    : "bg-white text-dars-muted border-dars-rule-light hover:border-dars-terra hover:text-dars-terra"
+                }`}
+              >
+                {showAnswers ? "Hide Answers" : "Reveal Answers"}
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="text-dars-muted hover:text-dars-ink cursor-pointer text-xl leading-none">✕</button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {loading && <div className="flex flex-col items-center gap-3 py-16"><BookLoader size={40} label="Generating student quiz…" /><p className="text-xs text-dars-muted">This takes about 10–15 seconds on first fetch</p></div>}
+          {!loading && assessment?.status === "PENDING" && (
+            <div className="flex flex-col items-center gap-3 py-16">
+              <BookLoader size={40} label="Generating student quiz…" />
+              <p className="text-xs text-dars-muted">This takes about 10–15 seconds</p>
             </div>
           )}
           {!loading && assessment?.status === "ERROR" && (
@@ -496,7 +616,7 @@ function AddSlotForm({ topicId, dayCount, onDone }: { topicId: string; dayCount:
 }
 
 function TopicSlotsColumn({
-  topics, slots, chapterSelected, selectedChapterId, loading, onViewLP, onViewAssessment, onSlotsRefresh,
+  topics, slots, chapterSelected, selectedChapterId, loading, onViewLP, onViewAssessment, onViewStudentAssessment, onSlotsRefresh,
 }: {
   topics: Topic[];
   slots: Record<string, Slot[]>;
@@ -505,6 +625,7 @@ function TopicSlotsColumn({
   loading: boolean;
   onViewLP: (lpId: string) => void;
   onViewAssessment: (assessmentId: string) => void;
+  onViewStudentAssessment: (lpId: string) => void;
   onSlotsRefresh: () => void;
 }) {
   const [breakingDown, setBreakingDown] = useState(false);
@@ -784,7 +905,7 @@ function TopicSlotsColumn({
                                   : handleGenerateAssessment(slot.lesson_plan_id!)
                                 }
                                 disabled={!!generatingAssessment[slot.lesson_plan_id!]}
-                                title={slot.assessment_id ? "View Quiz" : "Generate Quiz"}
+                                title={slot.assessment_id ? "View Teacher Quiz" : "Generate Teacher Quiz"}
                                 className="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border border-dars-ink/30 text-dars-ink/60 hover:bg-dars-ink hover:text-white disabled:opacity-60 cursor-pointer transition-colors"
                               >
                                 {generatingAssessment[slot.lesson_plan_id!] ? <Spinner /> : "Quiz"}
@@ -794,12 +915,20 @@ function TopicSlotsColumn({
                                   type="button"
                                   onClick={() => handleGenerateAssessment(slot.lesson_plan_id!)}
                                   disabled={!!generatingAssessment[slot.lesson_plan_id!]}
-                                  title="Regenerate Quiz"
+                                  title="Regenerate Teacher Quiz"
                                   className="text-[10px] text-dars-muted hover:text-dars-ink disabled:opacity-50 cursor-pointer transition-colors"
                                 >
                                   ↺
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => onViewStudentAssessment(slot.lesson_plan_id!)}
+                                title="Student Quiz"
+                                className="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded border border-dars-terra/40 text-dars-terra hover:bg-dars-terra hover:text-white cursor-pointer transition-colors"
+                              >
+                                SQ
+                              </button>
                             </>
                           )}
                           <button
@@ -866,6 +995,7 @@ export default function CurriculumPage() {
   const [slots, setSlots] = useState<Record<string, Slot[]>>({});
   const [activeLpId, setActiveLpId] = useState<string | null>(null);
   const [activeAssessmentId, setActiveAssessmentId] = useState<string | null>(null);
+  const [activeStudentAssessmentLpId, setActiveStudentAssessmentLpId] = useState<string | null>(null);
   const [bookStats, setBookStats] = useState<Record<string, number> | null>(null);
 
   // Bulk LP generation state
@@ -1069,12 +1199,14 @@ export default function CurriculumPage() {
           loading={loadingTopics}
           onViewLP={setActiveLpId}
           onViewAssessment={setActiveAssessmentId}
+          onViewStudentAssessment={setActiveStudentAssessmentLpId}
           onSlotsRefresh={handleSlotsRefresh}
         />
       </div>
 
       {activeLpId && <LPPanel lpId={activeLpId} onClose={() => setActiveLpId(null)} />}
       {activeAssessmentId && <AssessmentPanel assessmentId={activeAssessmentId} onClose={() => setActiveAssessmentId(null)} />}
+      {activeStudentAssessmentLpId && <StudentAssessmentPanel lpId={activeStudentAssessmentLpId} onClose={() => setActiveStudentAssessmentLpId(null)} />}
     </div>
   );
 }
