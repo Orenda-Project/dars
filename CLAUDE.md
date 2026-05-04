@@ -43,6 +43,7 @@ Use the Agent tool for any self-contained backend or frontend build that would o
 ## Critical Rules
 
 1. **Always work on a feature branch** — never commit directly to `main`; branch naming: `feature/<slug>` or `fix/<slug>`
+2. **Never `git push` without explicit user confirmation** — `main` deploys directly to production on Railway. Stage the commit, show the diff, and wait for the user to say "ship it" or "push" before running `git push`.
 2. **All DB queries must filter by `client_id`** — never query data tables without it
 3. **Never store API keys plain** — SHA-256 hash on creation, shown once only
 4. **Use `hmac.compare_digest`** for all secret comparisons — plain `!=` is timing-attackable

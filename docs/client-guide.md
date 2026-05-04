@@ -270,15 +270,15 @@ POST /api/v1/custom-exam-generations
 {
   "grade": 4,
   "subject": "Eng",
-  "page_ranges": "10-15, 20",
+  "page_ranges": "10-15",
   "generation_type": "exam",
   "question_types": ["seen", "unseen"],
   "seen_categories": ["objective", "subjective"],
   "unseen_categories": ["objective", "subjective"],
   "unseen_objective_types": ["MCQs", "Fill in the Blanks", "True/False"],
-  "unseen_subjective_types": ["Comprehension", "Essay Writing"],
+  "unseen_subjective_types": ["Word Meanings", "Essay Writing"],
   "unseen_objective_counts": { "MCQs": 5, "Fill in the Blanks": 4, "True/False": 5 },
-  "unseen_subjective_counts": { "Comprehension": 1, "Essay Writing": 1 },
+  "unseen_subjective_counts": { "Word Meanings": 1, "Essay Writing": 1 },
   "include_answer_key": true,
   "external_id": "coach-99"
 }
@@ -305,7 +305,210 @@ POST /api/v1/custom-exam-generations
 
 Returns 202 with `id` and `status: "PENDING"`. Poll `GET /api/v1/custom-exam-generations/{id}` until ready.
 
-Ready response adds `result` (full structured exam JSON from the generation service).
+#### Ready response — `result` structure
+
+When `status` is `"READY"`, the `result` field contains the full output from the generation service:
+
+```
+result.response.exam_json     structured exam content (see below)
+result.response.exam_paper    full HTML string, ready to render
+result.response.metadata      tokens used, cost, timings
+```
+
+`exam_json` is organised by section and question type:
+
+```json
+{
+  "seen": {
+    "objective": {
+      "MCQs": [...],
+      "Fill in the blanks": [...],
+      "True/False": [...],
+      "Match the Column": [...]
+    },
+    "subjective": {
+      "Brief Answers": [...],
+      "Simple Writing": [...]
+    }
+  },
+  "unseen": { ... }
+}
+```
+
+Each question object contains:
+
+| Field | Description |
+|---|---|
+| `question` | The question text |
+| `main_question` | Section/group header (e.g. "Choose the correct option") |
+| `answer` | Correct answer — **always present**, regardless of `include_answer_key` |
+| `marks` | Mark allocation |
+| `lines` | Suggested answer lines (0 for objective) |
+| `blooms` | Bloom's taxonomy level (Remember, Understand, Apply, Analyze, Evaluate) |
+| `options` | MCQ options object `{"a": ..., "b": ..., "c": ..., "d": ...}` (MCQs only) |
+
+> **Note on `include_answer_key`:** This flag controls whether answers appear in the rendered `exam_paper` HTML — it does not affect `exam_json`. The `answer` field is always present in the JSON. If you want to show a student-facing exam without answers, use `exam_json` and omit the `answer` field when rendering.
+
+#### Example — full request and response
+
+**Request:**
+```json
+{
+  "grade": 4,
+  "subject": "Eng",
+  "page_ranges": "10-15",
+  "generation_type": "exam",
+  "question_types": ["seen", "unseen"],
+  "seen_categories": ["objective", "subjective"],
+  "unseen_categories": ["objective", "subjective"],
+  "unseen_objective_types": ["MCQs", "Fill in the Blanks", "True/False"],
+  "unseen_subjective_types": ["Word Meanings", "Essay Writing"],
+  "unseen_objective_counts": { "MCQs": 5, "Fill in the Blanks": 4, "True/False": 5 },
+  "unseen_subjective_counts": { "Word Meanings": 1, "Essay Writing": 1 },
+  "include_answer_key": true,
+  "external_id": "doc-example"
+}
+```
+
+**Response (202 on submit, then poll until READY):**
+```json
+{
+  "id": "d9a37488-e8b8-4d10-8762-fd634c6e2b72",
+  "client_id": "...",
+  "status": "READY",
+  "curriculum": "Punjab",
+  "grade": 4,
+  "subject": "Eng",
+  "page_ranges": "10-15",
+  "generation_type": "exam",
+  "external_id": "doc-example",
+  "error_detail": null,
+  "created_at": "2026-05-04T08:54:34Z",
+  "updated_at": "2026-05-04T09:01:12Z",
+  "result": {
+    "status": "completed",
+    "request": { "...echo of request body..." },
+    "response": {
+      "status": "success",
+      "job_id": "...",
+      "tags": {
+        "grade": 4,
+        "subject": "Eng",
+        "curriculum": "Punjab",
+        "page_ranges": "10-15",
+        "total_pages": 6,
+        "parsed_pages": [10, 11, 12, 13, 14, 15],
+        "question_types": ["seen", "unseen"]
+      },
+      "metadata": {
+        "tokens": { "input_tokens": 8297, "output_tokens": 8969, "total_tokens": 17266, "cost_usd": 0.124 },
+        "timings": { "db_fetch_book_text": 2.5, "exam_generation": 148.6, "total_time": 151.2 },
+        "total_cost_usd": 0.124
+      },
+      "exam_json": {
+        "seen": {
+          "objective": {
+            "Fill in the blanks": [
+              {
+                "question": "______ man who wrote this book is famous.",
+                "main_question": "Fill in the blanks with 'a', 'an' or 'the'.",
+                "answer": "The",
+                "marks": 1,
+                "lines": 0,
+                "blooms": "Apply"
+              }
+            ]
+          },
+          "subjective": {
+            "Rewrite": [
+              {
+                "question": "peshawar, lahore, quetta and karachi are the most famous cities of pakistan.",
+                "main_question": "Rewrite the given sentences with correct capitalisation.",
+                "answer": "Peshawar, Lahore, Quetta and Karachi are the most famous cities of Pakistan.",
+                "marks": 2,
+                "lines": 2,
+                "blooms": "Apply"
+              }
+            ],
+            "Paragraph Writing": [
+              {
+                "question": "Write a paragraph about Hazrat Muhammad (ﷺ). Look at the given mind map.",
+                "main_question": "Write a paragraph",
+                "answer": "Hazrat Muhammad (ﷺ) is the last prophet of Allah...",
+                "marks": 5,
+                "lines": 8,
+                "blooms": "Create",
+                "image": "https://ug-ai-gen-images.s3.amazonaws.com/..."
+              }
+            ]
+          }
+        },
+        "unseen": {
+          "objective": {
+            "MCQs": [
+              {
+                "question": "Which article should be used: I saw ___ elephant at the zoo.",
+                "main_question": "Choose the correct option",
+                "options": ["a) a", "b) an", "c) the", "d) none"],
+                "answer": "b) an",
+                "marks": 1,
+                "lines": 0,
+                "blooms": "Apply"
+              }
+            ],
+            "True/False": [
+              {
+                "question": "The word 'an' is used before words starting with a consonant sound.",
+                "main_question": "Write True or False",
+                "answer": "False",
+                "marks": 1,
+                "lines": 0,
+                "blooms": "Remember"
+              }
+            ],
+            "Fill in the blanks": [
+              {
+                "question": "She is wearing a ___________ dress.",
+                "main_question": "Fill in the blanks with the correct word (Word Bank: beautiful, an, the, Pakistani)",
+                "answer": "beautiful",
+                "marks": 1,
+                "lines": 0,
+                "blooms": "Apply"
+              }
+            ]
+          },
+          "subjective": {
+            "Word Meanings": [
+              {
+                "main_question": "Write the meanings of the given words",
+                "words": ["famous", "naughty", "costly", "similar"],
+                "answer": "famous: known by many people\nnaughty: behaving badly\ncostly: expensive\nsimilar: almost the same",
+                "marks": 4,
+                "lines": 4,
+                "blooms": "Remember"
+              }
+            ],
+            "Essay Writing": [
+              {
+                "question": "Write an essay on the topic: 'The Beauty of Nature'.",
+                "main_question": "Write an essay",
+                "answer": "Nature is a beautiful gift to us...",
+                "marks": 10,
+                "lines": 15,
+                "blooms": "Create"
+              }
+            ]
+          }
+        }
+      },
+      "exam_paper": "<div class=\"exam-paper\">...full rendered HTML...</div>",
+      "page_content": "=== Page 10 ===\n...raw OCR text from textbook pages..."
+    }
+  }
+}
+```
+
+> **Note:** MCQ `options` come back as an array of strings (`["a) ...", "b) ..."]`), not an object. Word Meanings questions have a `words` array instead of a `question` string. Some subjective questions include an `image` URL for picture-based prompts.
 
 **List your custom exams:**
 ```
