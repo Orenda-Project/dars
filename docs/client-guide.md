@@ -136,29 +136,62 @@ Response includes `status`, `content_json` (questions + options, no answers), an
 
 **Response shape:**
 
-`content_json` — show these to the user before they answer:
-```json
-[
-  {
-    "question": "Sa'ad's story talks about things he does every day with his family. Which of these BEST describes the main idea of the story?",
-    "options": {
-      "a": "Sa'ad loves to play with his toy train",
-      "b": "Sa'ad is a Pakistani boy who lives with his family and shares daily routines with them",
-      "c": "Sa'ad goes to school every morning",
-      "d": "Sa'ad's grandparents live in a big house"
-    }
-  }
-]
-```
+`content_json` and `answers_json` are parallel arrays — `content_json[i]` is the question, `answers_json[i]` is the answer + explanation for that same question. Show `content_json` upfront, reveal `answers_json` after the user picks.
 
-`answers_json` — parallel array, same index as `content_json`. Reveal after the user picks:
+**Full example response:**
+
 ```json
-[
-  {
-    "answer": "b",
-    "explanation": "The main idea covers what the whole story is about — Sa'ad, his family, and his everyday life. Option A is just one small detail, and options C and D are not supported as the central focus of the text."
-  }
-]
+{
+  "id": "744f62d8-f0b4-416b-82a5-f55346749de1",
+  "lesson_plan_id": "932832f2-9120-4134-9147-7d294be5d1a7",
+  "status": "READY",
+  "content_json": [
+    {
+      "question": "Sa'ad's story talks about things he does every day with his family. Which of these BEST describes the main idea of the story?",
+      "options": {
+        "a": "Sa'ad loves to play with his toy train",
+        "b": "Sa'ad is a Pakistani boy who lives with his family and shares daily routines with them",
+        "c": "Sa'ad goes to school every morning",
+        "d": "Sa'ad's grandparents live in a big house"
+      }
+    },
+    {
+      "question": "Your friend says: 'The main idea of the story is that Sa'ad loves his toy train.' Is your friend correct? Why or why not?",
+      "options": {
+        "a": "Yes, because toys are the most important part of any story",
+        "b": "Yes, because Sa'ad talks about his toy train the whole time",
+        "c": "No, because the toy train is just one small detail, not what the whole story is about",
+        "d": "No, because Sa'ad does not have a toy train at all"
+      }
+    },
+    {
+      "question": "In the lesson, the word 'grandparents' means the parents of your mother or father. If Sa'ad visits his grandparents, who is he going to see?",
+      "options": {
+        "a": "His brothers and sisters",
+        "b": "His mother's or father's parents",
+        "c": "His teachers at school",
+        "d": "His friends from the neighbourhood"
+      }
+    }
+  ],
+  "answers_json": [
+    {
+      "answer": "b",
+      "explanation": "The main idea covers what the whole story is about — Sa'ad, his family, and his everyday life. Option A is just one small detail, and options C and D are not supported as the central focus of the text."
+    },
+    {
+      "answer": "c",
+      "explanation": "A main idea tells what the WHOLE story is about, not just one small detail. The toy train is mentioned briefly; the full story is about Sa'ad, his family, and his daily routines."
+    },
+    {
+      "answer": "b",
+      "explanation": "As explained in the lesson, grandparents are the parents of your mother or father. This question checks whether students can apply the vocabulary meaning, not just recall the word."
+    }
+  ],
+  "error_message": null,
+  "created_at": "2026-05-02T09:04:26.171618Z",
+  "updated_at": "2026-05-02T09:04:35.979868Z"
+}
 ```
 
 You can also trigger regeneration of the teacher assessment for any lesson plan:
