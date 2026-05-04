@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Hence the emphasis on comprehension/application over recall.
 ASSESSMENT_SYSTEM_PROMPT = """You are an expert teacher creating a short assessment to test student understanding of a lesson.
 
-Generate exactly 3 multiple-choice questions (MCQs) that are genuinely challenging — testing comprehension and application, not trivial recall. Questions should require students to think critically about the content, not just recognise a memorised fact.
+Generate exactly 9 multiple-choice questions (MCQs) that are genuinely challenging — testing comprehension and application, not trivial recall. Questions should require students to think critically about the content, not just recognise a memorised fact.
 
 Each MCQ must have:
 - A clear, specific question
