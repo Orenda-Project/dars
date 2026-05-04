@@ -130,9 +130,36 @@ Assessments are linked to lesson plans. Fetch by the `assessment_id` from the cu
 GET /api/v1/assessments/{assessment_id}
 ```
 
-Response includes `status`, `content_json` (structured question list), and `answers_json` (one answer per question). `content` (HTML) may be null — use `content_json` for structured access.
+Response includes `status`, `content_json` (questions + options, no answers), and `answers_json` (one answer + explanation per question). `content` (HTML) may be null — use `content_json` for structured access.
 
 **Intended audience:** Teachers. These are 3-question MCQ quizzes designed to verify the teacher's own understanding of the lesson content before they deliver it — questions test comprehension and application, not trivial recall.
+
+**Response shape:**
+
+`content_json` — show these to the user before they answer:
+```json
+[
+  {
+    "question": "Sa'ad's story talks about things he does every day with his family. Which of these BEST describes the main idea of the story?",
+    "options": {
+      "a": "Sa'ad loves to play with his toy train",
+      "b": "Sa'ad is a Pakistani boy who lives with his family and shares daily routines with them",
+      "c": "Sa'ad goes to school every morning",
+      "d": "Sa'ad's grandparents live in a big house"
+    }
+  }
+]
+```
+
+`answers_json` — parallel array, same index as `content_json`. Reveal after the user picks:
+```json
+[
+  {
+    "answer": "b",
+    "explanation": "The main idea covers what the whole story is about — Sa'ad, his family, and his everyday life. Option A is just one small detail, and options C and D are not supported as the central focus of the text."
+  }
+]
+```
 
 You can also trigger regeneration of the teacher assessment for any lesson plan:
 
@@ -162,7 +189,7 @@ You can also fetch directly by assessment ID if you have it:
 GET /api/v1/student-assessments/{assessment_id}
 ```
 
-Response includes `status`, `content_json` (questions without answers), and `answers_json` (one answer + explanation per question).
+Response structure is identical to the teacher assessment above — `content_json` has questions + options, `answers_json` has the correct answer letter and explanation at the matching index.
 
 ---
 
