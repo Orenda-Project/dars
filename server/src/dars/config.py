@@ -20,7 +20,11 @@ class Settings(BaseSettings):
     lp_assistant_api_key: str = ""
     eg_assistant_url: str = "https://exam-generator.taleemabad.com"
     eg_assistant_api_key: str = ""
-    cors_origins: list[str] = ["http://localhost:3000", "https://truthful-renewal-production-c9ce.up.railway.app"]
+    cors_origins: str = "http://localhost:3000,https://truthful-renewal-production-c9ce.up.railway.app"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     anthropic_api_key: str = ""
 
