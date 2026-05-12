@@ -20,6 +20,7 @@ import dars.assessments.models  # noqa: F401 — registers Assessment with SQLAl
 import dars.student_assessments.models  # noqa: F401 — registers StudentAssessment with SQLAlchemy Base
 import dars.custom_lesson_plans.models  # noqa: F401 — registers CustomLessonPlan with SQLAlchemy Base
 import dars.custom_exam_generations.models  # noqa: F401 — registers CustomExamGeneration with SQLAlchemy Base
+import dars.school.models  # noqa: F401 — registers school planning models with SQLAlchemy Base
 from dars.auth.router import auth_router
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
@@ -33,6 +34,7 @@ from dars.student_assessments.router import router as student_assessments_router
 from dars.custom_lesson_plans.router import router as custom_lesson_plans_router
 from dars.custom_exam_generations.router import router as custom_exam_generations_router
 from dars.analytics.router import router as analytics_router
+from dars.school.router import router as school_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -69,6 +71,7 @@ app.include_router(student_assessments_router)
 app.include_router(custom_lesson_plans_router)
 app.include_router(custom_exam_generations_router)
 app.include_router(analytics_router)
+app.include_router(school_router)
 
 
 @app.get("/health")
