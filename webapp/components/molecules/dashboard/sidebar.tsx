@@ -55,10 +55,20 @@ const IconAnalytics = (
   </svg>
 );
 
+const IconCalendar = (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
 const mainNavItems = [
   { label: "Lesson Plans", href: "/dashboard/lesson-plans", icon: IconLessonPlan },
   { label: "Exam Generator", href: "/dashboard/exam-generator", icon: IconExam },
   { label: "Analytics", href: "/dashboard/analytics", icon: IconAnalytics },
+  { label: "Planner", href: "/dashboard/curriculum-demo", icon: IconCalendar },
 ];
 
 const IconDownload = (
@@ -75,9 +85,7 @@ const adminNavItems = [
   { label: "Clients", href: "/dashboard/admin/clients", icon: IconUsers },
 ];
 
-const betaNavItems = [
-  { label: "Curriculum Demo", href: "/dashboard/curriculum-demo", icon: IconBook },
-];
+const betaNavItems: { label: string; href: string; icon: React.ReactNode }[] = [];
 
 function NavEntry({ label, href, icon, pathname }: { label: string; href: string; icon: React.ReactNode; pathname: string }) {
   const active = pathname === href || pathname.startsWith(href + "/");
