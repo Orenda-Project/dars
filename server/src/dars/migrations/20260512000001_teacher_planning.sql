@@ -1,6 +1,19 @@
 -- Teacher Planning Tool: academic years, holidays, classes, timetables,
 -- chapter plans, lesson slots, and assessment slots.
 
+-- teachers was dropped in the init migration; recreate it if absent
+CREATE TABLE IF NOT EXISTS teachers (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id  UUID        NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    name       TEXT        NOT NULL,
+    email      TEXT,
+    phone      TEXT,
+    school     TEXT,
+    is_active  BOOLEAN     NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS academic_years (
     id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id        UUID        NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
