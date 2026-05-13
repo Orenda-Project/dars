@@ -5,39 +5,15 @@ import Link from "next/link";
 import {
   getMyClasses,
   getAcademicYears,
+  getGrades,
+  getSubjects,
   createTeacherClass,
   type MyClassEntry,
   type AcademicYearRead,
   type TeacherClassCreated,
+  type GradeOption,
+  type SubjectOption,
 } from "@/lib/school-api";
-
-// ---------------------------------------------------------------------------
-// Lookup
-// ---------------------------------------------------------------------------
-
-interface SubjectOption {
-  id: number;
-  code: string;
-  display_name: string;
-}
-
-interface GradeOption {
-  id: number;
-  code: number;
-  display_name: string;
-}
-
-async function fetchSubjects(): Promise<SubjectOption[]> {
-  const res = await fetch("/api/v1/subjects");
-  if (!res.ok) return [];
-  return res.json() as Promise<SubjectOption[]>;
-}
-
-async function fetchGrades(): Promise<GradeOption[]> {
-  const res = await fetch("/api/v1/grades");
-  if (!res.ok) return [];
-  return res.json() as Promise<GradeOption[]>;
-}
 
 // ---------------------------------------------------------------------------
 // ProgressBar
@@ -146,8 +122,8 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
   useEffect(() => {
     Promise.all([
       getAcademicYears().then((r) => r.items),
-      fetchSubjects(),
-      fetchGrades(),
+      getSubjects(),
+      getGrades(),
     ])
       .then(([yrs, subs, grs]) => {
         setYears(yrs);
