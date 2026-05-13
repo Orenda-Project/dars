@@ -1,11 +1,11 @@
 """
 Lightweight migration runner.
 
-Scans supabase/migrations/*.sql in filename order, tracks applied migrations
-in a `schema_migrations` table, and runs any pending ones on startup.
+Scans server/src/dars/migrations/*.sql in filename order, tracks applied
+migrations in a `schema_migrations` table, and runs any pending ones on
+startup. Works against any PostgreSQL URL (Railway, local, etc).
 
-Uses a plain psycopg2-style connection via asyncpg directly so it works
-before SQLAlchemy models are set up.
+Uses asyncpg directly so it works before SQLAlchemy models are set up.
 """
 import logging
 import os

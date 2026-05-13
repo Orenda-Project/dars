@@ -8,40 +8,6 @@ from dars.database import Base
 
 
 # ---------------------------------------------------------------------------
-# Lookup tables
-# ---------------------------------------------------------------------------
-
-
-class Curriculum(Base):
-    __tablename__ = "curriculums"
-
-    code: Mapped[str] = mapped_column(Text, primary_key=True)
-
-
-class Subject(Base):
-    __tablename__ = "subjects"
-
-    code: Mapped[str] = mapped_column(Text, primary_key=True)
-
-
-class Grade(Base):
-    __tablename__ = "grades"
-
-    grade: Mapped[int] = mapped_column(Integer, primary_key=True)
-
-
-class CurriculumSubject(Base):
-    __tablename__ = "curriculum_subjects"
-
-    curriculum_code: Mapped[str] = mapped_column(
-        Text, ForeignKey("curriculums.code", ondelete="CASCADE"), primary_key=True
-    )
-    subject_code: Mapped[str] = mapped_column(
-        Text, ForeignKey("subjects.code", ondelete="CASCADE"), primary_key=True
-    )
-
-
-# ---------------------------------------------------------------------------
 # Books
 # ---------------------------------------------------------------------------
 
@@ -52,10 +18,10 @@ class Book(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    core_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    core_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     curriculum: Mapped[str] = mapped_column(Text, ForeignKey("curriculums.code"), nullable=False)
-    grade: Mapped[int] = mapped_column(Integer, ForeignKey("grades.grade"), nullable=False)
-    subject: Mapped[str] = mapped_column(Text, ForeignKey("subjects.code"), nullable=False)
+    grade: Mapped[int] = mapped_column(Integer, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     publisher: Mapped[str | None] = mapped_column(Text, nullable=True)
     edition: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -82,7 +48,7 @@ class BookChapter(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    core_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    core_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
     book_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("books.id", ondelete="CASCADE"), nullable=False
     )
@@ -148,7 +114,7 @@ class LessonSlot(Base):
     topic_subtopic: Mapped[str] = mapped_column(Text, nullable=False)
     lesson_plan_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("lesson_plans.id", ondelete="SET NULL"),
+        ForeignKey("generated_lesson_plans.id", ondelete="SET NULL"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(

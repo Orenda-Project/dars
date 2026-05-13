@@ -1,5 +1,4 @@
 import logging
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
@@ -7,8 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.clients.models import Client
-from dars.custom_exam_generations.models import CustomExamGeneration
-from dars.custom_lesson_plans.models import CustomLessonPlan
+from dars.generated_exams.models import GeneratedExam
+from dars.generated_lps.models import GeneratedLP
 from dars.database import get_db
 from dars.deps import get_current_client
 
@@ -36,42 +35,42 @@ async def get_analytics(
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
 
-    # ── Custom Lesson Plans ───────────────────────────────────────────────────
+    # ── Generated Lesson Plans ────────────────────────────────────────────────
 
     lp_status_rows = await db.execute(
-        select(CustomLessonPlan.status, func.count().label("cnt"))
-        .where(CustomLessonPlan.client_id == current_client.id)
-        .group_by(CustomLessonPlan.status)
+        select(GeneratedLP.status, func.count().label("cnt"))
+        .where(GeneratedLP.client_id == current_client.id)
+        .group_by(GeneratedLP.status)
     )
     lp_status: dict[str, int] = {r.status: r.cnt for r in lp_status_rows}
 
     lp_subject_rows = await db.execute(
-        select(CustomLessonPlan.subject, func.count().label("cnt"))
-        .where(CustomLessonPlan.client_id == current_client.id)
-        .group_by(CustomLessonPlan.subject)
+        select(GeneratedLP.subject, func.count().label("cnt"))
+        .where(GeneratedLP.client_id == current_client.id)
+        .group_by(GeneratedLP.subject)
         .order_by(func.count().desc())
     )
     lp_by_subject = [SubjectCount(subject=r.subject, count=r.cnt) for r in lp_subject_rows]
 
     lp_grade_rows = await db.execute(
-        select(CustomLessonPlan.grade, func.count().label("cnt"))
-        .where(CustomLessonPlan.client_id == current_client.id)
-        .group_by(CustomLessonPlan.grade)
-        .order_by(CustomLessonPlan.grade)
+        select(GeneratedLP.grade, func.count().label("cnt"))
+        .where(GeneratedLP.client_id == current_client.id)
+        .group_by(GeneratedLP.grade)
+        .order_by(GeneratedLP.grade)
     )
     lp_by_grade = [GradeCount(grade=r.grade, count=r.cnt) for r in lp_grade_rows]
 
     lp_daily_rows = await db.execute(
         select(
-            func.date(CustomLessonPlan.created_at).label("day"),
+            func.date(GeneratedLP.created_at).label("day"),
             func.count().label("cnt"),
         )
         .where(
-            CustomLessonPlan.client_id == current_client.id,
-            CustomLessonPlan.created_at >= cutoff,
+            GeneratedLP.client_id == current_client.id,
+            GeneratedLP.created_at >= cutoff,
         )
-        .group_by(func.date(CustomLessonPlan.created_at))
-        .order_by(func.date(CustomLessonPlan.created_at))
+        .group_by(func.date(GeneratedLP.created_at))
+        .order_by(func.date(GeneratedLP.created_at))
     )
     lp_daily = [DailyCount(date=str(r.day), count=r.cnt) for r in lp_daily_rows]
 
@@ -89,42 +88,42 @@ async def get_analytics(
         daily_last_30=lp_daily,
     )
 
-    # ── Custom Exam Generations ───────────────────────────────────────────────
+    # ── Generated Exams ───────────────────────────────────────────────────────
 
     eg_status_rows = await db.execute(
-        select(CustomExamGeneration.status, func.count().label("cnt"))
-        .where(CustomExamGeneration.client_id == current_client.id)
-        .group_by(CustomExamGeneration.status)
+        select(GeneratedExam.status, func.count().label("cnt"))
+        .where(GeneratedExam.client_id == current_client.id)
+        .group_by(GeneratedExam.status)
     )
     eg_status: dict[str, int] = {r.status: r.cnt for r in eg_status_rows}
 
     eg_subject_rows = await db.execute(
-        select(CustomExamGeneration.subject, func.count().label("cnt"))
-        .where(CustomExamGeneration.client_id == current_client.id)
-        .group_by(CustomExamGeneration.subject)
+        select(GeneratedExam.subject, func.count().label("cnt"))
+        .where(GeneratedExam.client_id == current_client.id)
+        .group_by(GeneratedExam.subject)
         .order_by(func.count().desc())
     )
     eg_by_subject = [SubjectCount(subject=r.subject, count=r.cnt) for r in eg_subject_rows]
 
     eg_grade_rows = await db.execute(
-        select(CustomExamGeneration.grade, func.count().label("cnt"))
-        .where(CustomExamGeneration.client_id == current_client.id)
-        .group_by(CustomExamGeneration.grade)
-        .order_by(CustomExamGeneration.grade)
+        select(GeneratedExam.grade, func.count().label("cnt"))
+        .where(GeneratedExam.client_id == current_client.id)
+        .group_by(GeneratedExam.grade)
+        .order_by(GeneratedExam.grade)
     )
     eg_by_grade = [GradeCount(grade=str(r.grade), count=r.cnt) for r in eg_grade_rows]
 
     eg_daily_rows = await db.execute(
         select(
-            func.date(CustomExamGeneration.created_at).label("day"),
+            func.date(GeneratedExam.created_at).label("day"),
             func.count().label("cnt"),
         )
         .where(
-            CustomExamGeneration.client_id == current_client.id,
-            CustomExamGeneration.created_at >= cutoff,
+            GeneratedExam.client_id == current_client.id,
+            GeneratedExam.created_at >= cutoff,
         )
-        .group_by(func.date(CustomExamGeneration.created_at))
-        .order_by(func.date(CustomExamGeneration.created_at))
+        .group_by(func.date(GeneratedExam.created_at))
+        .order_by(func.date(GeneratedExam.created_at))
     )
     eg_daily = [DailyCount(date=str(r.day), count=r.cnt) for r in eg_daily_rows]
 

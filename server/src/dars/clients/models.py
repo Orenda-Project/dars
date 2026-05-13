@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -20,9 +20,10 @@ class Client(Base):
     webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    supabase_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    curriculum: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    curriculum: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("curriculums.code"), nullable=True
+    )
     default_teacher_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         nullable=True,

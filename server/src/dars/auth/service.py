@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+VALID_CURRICULUMS = {"NCP", "SNC"}
+
 
 def _hash_password(password: str) -> str:
     return _pwd_context.hash(password)
@@ -25,9 +27,16 @@ def _verify_password(plain: str, hashed: str) -> bool:
 
 
 async def signup(
-    db: AsyncSession, email: str, password: str, name: str
+    db: AsyncSession, email: str, password: str, name: str, curriculum: str
 ) -> tuple[Client, str]:
-    logger.info("Signup: email=%s", email)
+    logger.info("Signup: email=%s curriculum=%s", email, curriculum)
+
+    if curriculum not in VALID_CURRICULUMS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"curriculum must be one of {sorted(VALID_CURRICULUMS)}",
+        )
+
     existing = await get_client_by_email(db, email)
     if existing is not None:
         raise HTTPException(
@@ -38,10 +47,20 @@ async def signup(
     client, raw_key = await create_db_client(db, name)
     client.email = email
     client.hashed_password = _hash_password(password)
+    client.curriculum = curriculum
+    await db.flush()
+
+    # Auto-create a default teacher
+    from dars.teachers.models import Teacher
+    teacher = Teacher(client_id=client.id, name=f"{name} Default Teacher")
+    db.add(teacher)
+    await db.flush()
+    client.default_teacher_id = teacher.id
+
     await db.commit()
     await db.refresh(client)
 
-    logger.info("Signup: client_id=%s email=%s", client.id, email)
+    logger.info("Signup: client_id=%s email=%s curriculum=%s", client.id, email, curriculum)
     return client, raw_key
 
 

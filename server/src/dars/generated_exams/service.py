@@ -7,8 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dars.config import settings
-from dars.custom_exam_generations.models import CustomExamGeneration
-from dars.custom_exam_generations.schemas import CustomExamGenerationCreateRequest
+from dars.generated_exams.models import GeneratedExam
+from dars.generated_exams.schemas import GeneratedExamCreate
 from dars.mapping import canonical_grade, canonical_subject
 
 logger = logging.getLogger(__name__)
@@ -17,97 +17,100 @@ POLL_INTERVAL = 5   # seconds between status checks
 POLL_TIMEOUT = 300  # give up after 5 minutes
 
 
-async def queue_custom_exam_generation(
+async def create_generated_exam(
     db: AsyncSession,
     client_id: uuid.UUID,
+    data: GeneratedExamCreate,
     curriculum: str,
-    request: CustomExamGenerationCreateRequest,
-) -> CustomExamGeneration:
+) -> GeneratedExam:
+    """Create a PENDING generated exam record and return it. Background task fires separately."""
     logger.info(
-        "queue_custom_exam_generation: client_id=%s curriculum=%s grade=%s subject=%s type=%s",
-        client_id, curriculum, request.grade, request.subject, request.generation_type,
+        "create_generated_exam: client_id=%s curriculum=%s grade=%s subject=%s type=%s",
+        client_id, curriculum, data.grade, data.subject, data.generation_type,
     )
-    eg = CustomExamGeneration(
+    exam = GeneratedExam(
         client_id=client_id,
         curriculum=curriculum,
-        grade=request.grade,
-        subject=request.subject,
-        page_ranges=request.page_ranges,
-        generation_type=request.generation_type,
-        external_id=request.external_id,
+        grade=data.grade,
+        subject=data.subject,
+        page_ranges=data.page_ranges,
+        generation_type=data.generation_type,
+        external_id=data.external_id,
         status="PENDING",
     )
-    db.add(eg)
+    db.add(exam)
     await db.commit()
-    await db.refresh(eg)
-    logger.info("queue_custom_exam_generation: queued eg_id=%s client_id=%s", eg.id, client_id)
-    return eg
+    await db.refresh(exam)
+    logger.info("create_generated_exam: queued exam_id=%s client_id=%s", exam.id, client_id)
+    return exam
 
 
-async def get_custom_exam_generation(
+async def get_generated_exam(
     db: AsyncSession,
+    exam_id: uuid.UUID,
     client_id: uuid.UUID,
-    eg_id: uuid.UUID,
-) -> CustomExamGeneration | None:
+) -> GeneratedExam | None:
+    """Fetch a single generated exam, always filtering by client_id."""
     result = await db.execute(
-        select(CustomExamGeneration).where(
-            CustomExamGeneration.id == eg_id,
-            CustomExamGeneration.client_id == client_id,
+        select(GeneratedExam).where(
+            GeneratedExam.id == exam_id,
+            GeneratedExam.client_id == client_id,
         )
     )
     return result.scalar_one_or_none()
 
 
-async def list_custom_exam_generations(
+async def list_generated_exams(
     db: AsyncSession,
     client_id: uuid.UUID,
     external_id: str | None = None,
-    offset: int = 0,
+    skip: int = 0,
     limit: int = 50,
-) -> tuple[list[CustomExamGeneration], int]:
-    base_filter = [CustomExamGeneration.client_id == client_id]
+) -> tuple[list[GeneratedExam], int]:
+    """Return (items, total) for paginated generated exam list, filtered by client_id."""
+    base_filter = [GeneratedExam.client_id == client_id]
     if external_id is not None:
-        base_filter.append(CustomExamGeneration.external_id == external_id)
+        base_filter.append(GeneratedExam.external_id == external_id)
 
     count_result = await db.execute(
-        select(func.count()).select_from(CustomExamGeneration).where(*base_filter)
+        select(func.count()).select_from(GeneratedExam).where(*base_filter)
     )
     total = count_result.scalar_one()
 
     items_result = await db.execute(
-        select(CustomExamGeneration)
+        select(GeneratedExam)
         .where(*base_filter)
-        .order_by(CustomExamGeneration.created_at.desc())
-        .offset(offset)
+        .order_by(GeneratedExam.created_at.desc())
+        .offset(skip)
         .limit(limit)
     )
     items = list(items_result.scalars().all())
     return items, total
 
 
-async def generate_custom_exam_task(
-    eg_id: uuid.UUID,
+async def generate_exam_task(
+    exam_id: uuid.UUID,
     client_id: uuid.UUID,
     curriculum: str,
-    request: CustomExamGenerationCreateRequest,
+    request: GeneratedExamCreate,
 ) -> None:
     """
     Background task: submit to UG_EG v2 async endpoint, poll for result, update record.
     Uses its own DB session (background tasks run outside request context).
     """
-    logger.info("generate_custom_exam_task: eg_id=%s client_id=%s", eg_id, client_id)
+    logger.info("generate_exam_task: exam_id=%s client_id=%s", exam_id, client_id)
     engine = create_async_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async with factory() as db:
-        eg = await db.get(CustomExamGeneration, eg_id)
-        if eg is None:
-            logger.error("generate_custom_exam_task: CustomExamGeneration %s not found", eg_id)
+        exam = await db.get(GeneratedExam, exam_id)
+        if exam is None:
+            logger.error("generate_exam_task: GeneratedExam %s not found", exam_id)
             await engine.dispose()
             return
 
         payload: dict = {
-            "callback_url": "https://dars.taleemabad.com/noop",  # required by v2; we poll instead
+            "callback_url": "https://dars.taleemabad.com/noop",
             "generation_type": request.generation_type,
             "curriculum": curriculum,
             "grade": canonical_grade(request.grade),
@@ -135,7 +138,6 @@ async def generate_custom_exam_task(
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as http:
-                # Submit to v2 async endpoint
                 submit_resp = await http.post(
                     f"{settings.eg_assistant_url}/api/v2/generate-exam",
                     json=payload,
@@ -143,8 +145,8 @@ async def generate_custom_exam_task(
                 )
                 if submit_resp.is_error:
                     logger.error(
-                        "EG v2 submit error for eg=%s: HTTP %s — %s",
-                        eg_id, submit_resp.status_code, submit_resp.text,
+                        "EG v2 submit error for exam=%s: HTTP %s — %s",
+                        exam_id, submit_resp.status_code, submit_resp.text,
                     )
                     submit_resp.raise_for_status()
 
@@ -152,11 +154,10 @@ async def generate_custom_exam_task(
                 if not job_id:
                     raise ValueError("EG v2 did not return job_id")
 
-                logger.info("generate_custom_exam_task: eg=%s submitted job_id=%s", eg_id, job_id)
-                eg.eg_job_id = job_id
+                logger.info("generate_exam_task: exam=%s submitted job_id=%s", exam_id, job_id)
+                exam.eg_job_id = job_id
                 await db.commit()
 
-            # Poll for result
             elapsed = 0
             result_data = None
             async with httpx.AsyncClient(timeout=15.0) as http:
@@ -170,16 +171,16 @@ async def generate_custom_exam_task(
                     )
                     if status_resp.is_error:
                         logger.warning(
-                            "generate_custom_exam_task: status poll failed eg=%s job=%s HTTP %s",
-                            eg_id, job_id, status_resp.status_code,
+                            "generate_exam_task: status poll failed exam=%s job=%s HTTP %s",
+                            exam_id, job_id, status_resp.status_code,
                         )
                         continue
 
                     body = status_resp.json()
                     job_status = body.get("job_status")
                     logger.info(
-                        "generate_custom_exam_task: eg=%s job=%s status=%s elapsed=%ds",
-                        eg_id, job_id, job_status, elapsed,
+                        "generate_exam_task: exam=%s job=%s status=%s elapsed=%ds",
+                        exam_id, job_id, job_status, elapsed,
                     )
 
                     if job_status == "completed":
@@ -188,23 +189,20 @@ async def generate_custom_exam_task(
                     elif job_status == "error":
                         error_msg = body.get("data", {}).get("error", "unknown error from EG")
                         raise ValueError(f"EG job failed: {error_msg}")
-                    # still "processing" — keep polling
 
             if result_data is None:
                 raise TimeoutError(f"EG job {job_id} did not complete within {POLL_TIMEOUT}s")
 
-            eg.result = result_data
-            eg.status = "READY"
+            exam.result = result_data
+            exam.status = "READY"
 
         except Exception as exc:
-            logger.error(
-                "Custom EG generation failed for eg=%s: %s", eg_id, exc, exc_info=True
-            )
-            eg.error_detail = str(exc)
-            eg.status = "ERROR"
+            logger.error("Exam generation failed for exam=%s: %s", exam_id, exc, exc_info=True)
+            exam.error_message = str(exc)
+            exam.status = "ERROR"
 
         await db.commit()
-        await db.refresh(eg)
-        logger.info("CustomExamGeneration %s marked %s", eg_id, eg.status)
+        await db.refresh(exam)
+        logger.info("GeneratedExam %s marked %s", exam_id, exam.status)
 
     await engine.dispose()

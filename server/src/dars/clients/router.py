@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 client_router = APIRouter(prefix="/api/v1", tags=["clients"])
 
+CURRICULUM_NAMES = {
+    "NCP": "National Curriculum of Pakistan",
+    "SNC": "Single National Curriculum",
+}
+
 
 @admin_router.post(
     "/clients",
@@ -80,29 +85,58 @@ async def list_clients_endpoint(db: AsyncSession = Depends(get_db)) -> ClientLis
     return ClientListResponse(items=[ClientAdminResponse.model_validate(c) for c in clients])
 
 
-@client_router.get("/me", response_model=ClientPublicResponse)
-async def get_me(current_client: Client = Depends(get_current_client)) -> ClientPublicResponse:
-    return ClientPublicResponse.model_validate(current_client)
+@client_router.get("/me")
+async def get_me(current_client: Client = Depends(get_current_client)) -> dict:
+    logger.info("get_me: client_id=%s", current_client.id)
+    curriculum_obj = None
+    if current_client.curriculum:
+        curriculum_obj = {
+            "code": current_client.curriculum,
+            "name": CURRICULUM_NAMES.get(current_client.curriculum, current_client.curriculum),
+        }
+    return {
+        "id": str(current_client.id),
+        "name": current_client.name,
+        "is_active": current_client.is_active,
+        "webhook_url": current_client.webhook_url,
+        "curriculum": curriculum_obj,
+        "default_teacher_id": str(current_client.default_teacher_id) if current_client.default_teacher_id else None,
+        "created_at": current_client.created_at.isoformat(),
+    }
 
 
-@client_router.patch("/me", response_model=ClientPublicResponse)
+@client_router.patch("/me")
 async def update_me(
     body: ClientSelfUpdateRequest,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
-) -> ClientPublicResponse:
+) -> dict:
     logger.info("update_me: client_id=%s", current_client.id)
-    VALID_CURRICULUMS = {"ICT", "Punjab"}
-    if body.curriculum is not None and body.curriculum not in VALID_CURRICULUMS:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"curriculum must be one of {sorted(VALID_CURRICULUMS)}")
     if body.curriculum is not None:
-        current_client.curriculum = body.curriculum
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="curriculum is immutable and cannot be changed after signup.",
+        )
     if body.webhook_url is not None:
         current_client.webhook_url = body.webhook_url
     await db.commit()
     await db.refresh(current_client)
-    logger.info("update_me: done client_id=%s curriculum=%s", current_client.id, current_client.curriculum)
-    return ClientPublicResponse.model_validate(current_client)
+    logger.info("update_me: done client_id=%s", current_client.id)
+    curriculum_obj = None
+    if current_client.curriculum:
+        curriculum_obj = {
+            "code": current_client.curriculum,
+            "name": CURRICULUM_NAMES.get(current_client.curriculum, current_client.curriculum),
+        }
+    return {
+        "id": str(current_client.id),
+        "name": current_client.name,
+        "is_active": current_client.is_active,
+        "webhook_url": current_client.webhook_url,
+        "curriculum": curriculum_obj,
+        "default_teacher_id": str(current_client.default_teacher_id) if current_client.default_teacher_id else None,
+        "created_at": current_client.created_at.isoformat(),
+    }
 
 
 class RotateKeyResponse(BaseModel):

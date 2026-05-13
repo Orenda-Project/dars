@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 from dars.mapping import canonical_grade, canonical_subject
 
 
-class CustomExamGenerationCreateRequest(BaseModel):
+class GeneratedExamCreate(BaseModel):
     grade: int
     subject: str
     page_ranges: str
@@ -36,7 +36,7 @@ class CustomExamGenerationCreateRequest(BaseModel):
         return canonical_grade(v)
 
 
-class CustomExamGenerationResponse(BaseModel):
+class GeneratedExamResponse(BaseModel):
     id: uuid.UUID
     client_id: uuid.UUID
     external_id: Optional[str] = None
@@ -46,14 +46,15 @@ class CustomExamGenerationResponse(BaseModel):
     subject: str
     page_ranges: str
     generation_type: str
+    eg_job_id: Optional[str] = None
     result: Optional[dict] = None
-    error_detail: Optional[str] = None
+    error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class CustomExamGenerationListResponse(BaseModel):
-    items: list[CustomExamGenerationResponse]
+class GeneratedExamListResponse(BaseModel):
+    items: list[GeneratedExamResponse]
     total: int

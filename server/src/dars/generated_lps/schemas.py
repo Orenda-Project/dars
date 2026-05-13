@@ -7,12 +7,13 @@ from pydantic import BaseModel, field_validator
 from dars.mapping import canonical_grade, canonical_subject
 
 
-class CustomLessonPlanCreateRequest(BaseModel):
+class GeneratedLPCreate(BaseModel):
     grade: int
     subject: str
     topic: Optional[str] = None
     page_number: Optional[str] = None
     class_strength: Optional[int] = None
+    lp_type: Optional[str] = None
     external_id: Optional[str] = None
     generate_bilingual: bool = False
 
@@ -27,7 +28,7 @@ class CustomLessonPlanCreateRequest(BaseModel):
         return canonical_grade(v)
 
 
-class CustomLessonPlanResponse(BaseModel):
+class GeneratedLPResponse(BaseModel):
     id: uuid.UUID
     client_id: uuid.UUID
     external_id: Optional[str] = None
@@ -37,16 +38,19 @@ class CustomLessonPlanResponse(BaseModel):
     curriculum: str
     topic: Optional[str] = None
     page_number: Optional[str] = None
+    class_strength: Optional[int] = None
+    lp_type: Optional[str] = None
     content: Optional[str] = None
     content_bilingual: Optional[str] = None
     tags: dict = {}
     metadata_: dict = {}
+    error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class CustomLessonPlanListResponse(BaseModel):
-    items: list[CustomLessonPlanResponse]
+class GeneratedLPListResponse(BaseModel):
+    items: list[GeneratedLPResponse]
     total: int

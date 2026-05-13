@@ -5,6 +5,7 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str
     name: str  # client/org name
+    curriculum: str  # required: "NCP" or "SNC"
 
 
 class LoginRequest(BaseModel):
@@ -18,3 +19,4 @@ class AuthResponse(BaseModel):
     name: str
     email: str
     is_admin: bool
+    curriculum: str | None = None
