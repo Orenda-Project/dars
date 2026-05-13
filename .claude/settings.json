@@ -74,7 +74,7 @@
     "postgres-dars": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://postgres.ojlioatiadtlindfyvik:uUkV1SnNKQsnGCXW@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres"]
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://postgres:DiMlRtJiSfKKyZOsYruwxRrdZIkWXNHs@trolley.proxy.rlwy.net:56090/railway"]
     }
   }
 }
