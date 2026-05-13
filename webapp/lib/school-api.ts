@@ -595,9 +595,9 @@ export function getAssessmentSlotsByCst(cstId: string): Promise<AssessmentSlotLi
 // ---------------------------------------------------------------------------
 
 export interface TeacherClassCreate {
-  grade: number;
+  grade_id: number;
   section: string;
-  subject: string;
+  subject_id: number;
   academic_year_id: string;
 }
 

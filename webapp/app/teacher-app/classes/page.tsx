@@ -16,7 +16,14 @@ import {
 // ---------------------------------------------------------------------------
 
 interface SubjectOption {
+  id: number;
   code: string;
+  display_name: string;
+}
+
+interface GradeOption {
+  id: number;
+  code: number;
   display_name: string;
 }
 
@@ -24,6 +31,12 @@ async function fetchSubjects(): Promise<SubjectOption[]> {
   const res = await fetch("/api/v1/subjects");
   if (!res.ok) return [];
   return res.json() as Promise<SubjectOption[]>;
+}
+
+async function fetchGrades(): Promise<GradeOption[]> {
+  const res = await fetch("/api/v1/grades");
+  if (!res.ok) return [];
+  return res.json() as Promise<GradeOption[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,25 +133,29 @@ interface CreateClassModalProps {
 function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
   const [years, setYears] = useState<AcademicYearRead[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [grades, setGrades] = useState<GradeOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [academicYearId, setAcademicYearId] = useState("");
-  const [grade, setGrade] = useState(5);
+  const [gradeId, setGradeId] = useState<number>(0);
   const [section, setSection] = useState("A");
-  const [subject, setSubject] = useState("");
+  const [subjectId, setSubjectId] = useState<number>(0);
 
   useEffect(() => {
     Promise.all([
       getAcademicYears().then((r) => r.items),
       fetchSubjects(),
+      fetchGrades(),
     ])
-      .then(([yrs, subs]) => {
+      .then(([yrs, subs, grs]) => {
         setYears(yrs);
         setSubjects(subs);
+        setGrades(grs);
         if (yrs.length > 0) setAcademicYearId(yrs[0].id);
-        if (subs.length > 0) setSubject(subs[0].code);
+        if (subs.length > 0) setSubjectId(subs[0].id);
+        if (grs.length > 0) setGradeId(grs[0].id);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load options"))
       .finally(() => setLoading(false));
@@ -146,7 +163,7 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!academicYearId || !subject) {
+    if (!academicYearId || !subjectId || !gradeId) {
       setError("Please fill in all fields.");
       return;
     }
@@ -154,9 +171,9 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
     setError(null);
     try {
       const result = await createTeacherClass({
-        grade,
+        grade_id: gradeId,
         section,
-        subject,
+        subject_id: subjectId,
         academic_year_id: academicYearId,
       });
       onCreated(result);
@@ -215,15 +232,23 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
                   <label className="block text-xs font-semibold text-gray-500 mb-1">
                     Grade
                   </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={grade}
-                    onChange={(e) => setGrade(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                    required
-                  />
+                  {grades.length === 0 ? (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                      No grades available.
+                    </p>
+                  ) : (
+                    <select
+                      value={gradeId}
+                      onChange={(e) => setGradeId(Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    >
+                      {grades.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1">
@@ -245,22 +270,17 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
                   Subject
                 </label>
                 {subjects.length === 0 ? (
-                  <input
-                    type="text"
-                    placeholder="e.g. english"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                    required
-                  />
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    No subjects available.
+                  </p>
                 ) : (
                   <select
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
+                    value={subjectId}
+                    onChange={(e) => setSubjectId(Number(e.target.value))}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                   >
                     {subjects.map((s) => (
-                      <option key={s.code} value={s.code}>
+                      <option key={s.id} value={s.id}>
                         {s.display_name}
                       </option>
                     ))}
@@ -283,7 +303,7 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
           <button
             type="button"
             onClick={(e) => void handleSubmit(e as unknown as React.FormEvent)}
-            disabled={saving || loading || years.length === 0}
+            disabled={saving || loading || years.length === 0 || grades.length === 0 || subjects.length === 0}
             className="px-5 py-2 bg-amber-600 text-white text-sm font-semibold rounded-md hover:bg-amber-700 transition-colors cursor-pointer border-none disabled:opacity-60 flex items-center gap-2"
           >
             {saving && (
