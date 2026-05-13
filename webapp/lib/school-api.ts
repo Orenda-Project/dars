@@ -589,3 +589,28 @@ export function getLessonSlotsByChapter(chapterPlanId: string): Promise<ClassLes
 export function getAssessmentSlotsByCst(cstId: string): Promise<AssessmentSlotListResponse> {
   return apiFetch<AssessmentSlotListResponse>(`/api/v1/assessment-slots?cst_id=${cstId}`);
 }
+
+// ---------------------------------------------------------------------------
+// Teacher App — class creation (Step 8)
+// ---------------------------------------------------------------------------
+
+export interface TeacherClassCreate {
+  grade: number;
+  section: string;
+  subject: string;
+  academic_year_id: string;
+}
+
+export interface TeacherClassCreated {
+  class_id: string;
+  cst_id: string;
+  chapter_count: number;
+  status: string; // "breakdown_pending"
+}
+
+export function createTeacherClass(data: TeacherClassCreate): Promise<TeacherClassCreated> {
+  return apiFetch<TeacherClassCreated>("/api/v1/teacher/classes", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

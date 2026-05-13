@@ -51,6 +51,8 @@ from dars.school.schemas import (
     SchoolClassListResponse,
     SchoolClassRead,
     SchoolClassWithSubjects,
+    TeacherClassCreate,
+    TeacherClassCreated,
     TeachingDaysResponse,
     TimetableResponse,
     TimetableSetRequest,
@@ -1176,6 +1178,174 @@ async def get_my_classes(
 
     logger.info("get_my_classes: returning %d entries", len(items))
     return MyClassListResponse(items=items)
+
+
+# ---------------------------------------------------------------------------
+# Teacher App — create class (Step 8)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/api/v1/teacher/classes",
+    response_model=TeacherClassCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_teacher_class(
+    body: TeacherClassCreate,
+    background_tasks: BackgroundTasks,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> TeacherClassCreated:
+    """
+    Teacher-owned class creation. Creates SchoolClass + ClassSubjectTeacher in one shot,
+    auto-resolves book from client curriculum, upserts chapter plans, fires AI breakdown.
+    """
+    logger.info(
+        "create_teacher_class: client_id=%s grade=%s section=%r subject=%r academic_year_id=%s",
+        current_client.id, body.grade, body.section, body.subject, body.academic_year_id,
+    )
+
+    # 1. Verify default_teacher_id is set
+    if current_client.default_teacher_id is None:
+        logger.info("create_teacher_class: no default_teacher_id for client_id=%s", current_client.id)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No default teacher configured — complete dashboard setup first.",
+        )
+
+    # 2. Verify curriculum is set
+    if not current_client.curriculum:
+        logger.info("create_teacher_class: no curriculum for client_id=%s", current_client.id)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Client curriculum is not set.",
+        )
+
+    # 3. Load and validate AcademicYear (must belong to this client)
+    year = await db.get(AcademicYear, body.academic_year_id)
+    if year is None or year.client_id != current_client.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Academic year not found.",
+        )
+
+    # 4. Create SchoolClass
+    school_class = SchoolClass(
+        client_id=current_client.id,
+        academic_year_id=body.academic_year_id,
+        grade=body.grade,
+        section=body.section,
+        name=f"Grade {body.grade}-{body.section}",
+    )
+    db.add(school_class)
+    await db.flush()
+    await db.refresh(school_class)
+    logger.info("create_teacher_class: created school_class id=%s", school_class.id)
+
+    # 5. Find Book for curriculum + grade + subject
+    book_result = await db.execute(
+        select(Book).where(
+            Book.curriculum == current_client.curriculum,
+            Book.grade == body.grade,
+            Book.subject == body.subject,
+        ).limit(1)
+    )
+    book = book_result.scalar_one_or_none()
+    if book is None:
+        # Roll back the class creation by aborting (flush was done but no commit yet)
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"No book configured for this grade/subject in your curriculum.",
+        )
+
+    # 6. Check no existing CST for this class+subject (defensive: class was just created so no duplicate)
+    existing_cst_result = await db.execute(
+        select(ClassSubjectTeacher).where(
+            ClassSubjectTeacher.class_id == school_class.id,
+            ClassSubjectTeacher.subject == body.subject,
+        )
+    )
+    existing_cst = existing_cst_result.scalar_one_or_none()
+    if existing_cst is not None:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Subject already assigned to this class.",
+        )
+
+    # 7. Create ClassSubjectTeacher
+    cst = ClassSubjectTeacher(
+        client_id=current_client.id,
+        class_id=school_class.id,
+        subject=body.subject,
+        teacher_id=current_client.default_teacher_id,
+        book_id=book.id,
+    )
+    db.add(cst)
+    await db.flush()
+    await db.refresh(cst)
+    logger.info("create_teacher_class: created cst id=%s", cst.id)
+
+    # 8. Load prefill chapter plans (via cst_id — needs to be committed first)
+    await db.commit()
+
+    prefill_items = await get_prefill_chapter_plans(cst.id, db)
+    logger.info(
+        "create_teacher_class: prefill_items=%d for cst_id=%s", len(prefill_items), cst.id
+    )
+
+    # 9. Upsert chapter plans for this CST
+    chapter_plan_ids: list[uuid.UUID] = []
+    for item in prefill_items:
+        position = item["suggested_position"] if item["suggested_position"] is not None else 0
+        teaching_days = item["suggested_teaching_days"] if item["suggested_teaching_days"] is not None else 5
+
+        existing_plan_result = await db.execute(
+            select(ChapterPlan).where(
+                ChapterPlan.class_subject_teacher_id == cst.id,
+                ChapterPlan.chapter_id == item["chapter_id"],
+            )
+        )
+        existing_plan = existing_plan_result.scalar_one_or_none()
+        if existing_plan:
+            existing_plan.position = position
+            existing_plan.teaching_days = teaching_days
+            await db.flush()
+            await db.refresh(existing_plan)
+            chapter_plan_ids.append(existing_plan.id)
+        else:
+            plan = ChapterPlan(
+                client_id=current_client.id,
+                class_subject_teacher_id=cst.id,
+                chapter_id=item["chapter_id"],
+                position=position,
+                teaching_days=teaching_days,
+            )
+            db.add(plan)
+            await db.flush()
+            await db.refresh(plan)
+            chapter_plan_ids.append(plan.id)
+
+    await db.commit()
+    logger.info(
+        "create_teacher_class: upserted %d chapter plans for cst_id=%s", len(chapter_plan_ids), cst.id
+    )
+
+    # 10. Fire AI breakdown for each chapter plan as background task
+    for cp_id in chapter_plan_ids:
+        background_tasks.add_task(ai_breakdown_chapter, cp_id, db)
+
+    logger.info(
+        "create_teacher_class: done class_id=%s cst_id=%s chapter_count=%d",
+        school_class.id, cst.id, len(chapter_plan_ids),
+    )
+    return TeacherClassCreated(
+        class_id=school_class.id,
+        cst_id=cst.id,
+        chapter_count=len(chapter_plan_ids),
+        status="breakdown_pending",
+    )
 
 
 # ---------------------------------------------------------------------------
