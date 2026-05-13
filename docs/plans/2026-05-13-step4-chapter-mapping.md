@@ -18,7 +18,7 @@ The chapter plan is the year plan — it defines when each chapter starts and en
 
 ### DB
 
-Migration: `server/src/dars/migrations/20260513000005_chapter_mapping.sql`
+Migration: `server/src/dars/migrations/20260513000006_chapter_mapping.sql`
 
 ```sql
 -- Admin-level chapter schedule defaults per curriculum

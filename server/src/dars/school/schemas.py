@@ -194,6 +194,8 @@ class ChapterPlanRead(BaseModel):
 class ChapterPlanWithDates(ChapterPlanRead):
     start_date: date | None = None
     end_date: date | None = None
+    suggested_teaching_days: int | None = None
+    suggested_position: int | None = None
 
 
 class ChapterPlanUpdate(BaseModel):

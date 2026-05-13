@@ -10,6 +10,7 @@ import {
   assignSubject,
   setTimetable,
   getChapterPlans,
+  getPrefillChapterPlans,
   generateLessonSlots,
   getLessonSlots,
   markTaught,
@@ -18,6 +19,7 @@ import {
   updateAssessmentSlot,
   getToday,
   getClass,
+  upsertChapterPlans,
   type AcademicYearRead,
   type SchoolClassRead,
   type CSTRead,
@@ -26,6 +28,7 @@ import {
   type AssessmentSlotRead,
   type TodaySlotEntry,
   type SchoolClassWithSubjects,
+  type PrefillChapterPlan,
 } from "@/lib/school-api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1510,6 +1513,13 @@ function SyllabusTab({
   const [newChapterDays, setNewChapterDays] = useState(10);
   const [addingPlan, setAddingPlan] = useState(false);
 
+  // Prefill state
+  const [prefillItems, setPrefillItems] = useState<PrefillChapterPlan[]>([]);
+  const [prefillDays, setPrefillDays] = useState<Record<string, number>>({});
+  const [showPrefill, setShowPrefill] = useState(false);
+  const [loadingPrefill, setLoadingPrefill] = useState(false);
+  const [savingPrefill, setSavingPrefill] = useState(false);
+
   // Load subjects when class changes
   useEffect(() => {
     if (!selectedClassId) return;
@@ -1590,6 +1600,47 @@ function SyllabusTab({
       setError(e instanceof Error ? e.message : "Failed to add chapter plan");
     } finally {
       setAddingPlan(false);
+    }
+  }
+
+  async function handleLoadPrefill() {
+    if (!selectedClassId || !selectedCstId) return;
+    setLoadingPrefill(true);
+    setError(null);
+    try {
+      const res = await getPrefillChapterPlans(selectedClassId, selectedCstId);
+      setPrefillItems(res.items);
+      const days: Record<string, number> = {};
+      for (const item of res.items) {
+        days[item.chapter_id] = item.suggested_teaching_days ?? 10;
+      }
+      setPrefillDays(days);
+      setShowPrefill(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load prefill");
+    } finally {
+      setLoadingPrefill(false);
+    }
+  }
+
+  async function handleSavePrefill() {
+    if (!selectedClassId || !selectedCstId || prefillItems.length === 0) return;
+    setSavingPrefill(true);
+    setError(null);
+    try {
+      const res = await upsertChapterPlans(selectedClassId, selectedCstId, {
+        plans: prefillItems.map((item, i) => ({
+          chapter_id: item.chapter_id,
+          position: item.suggested_position ?? i + 1,
+          teaching_days: prefillDays[item.chapter_id] ?? 10,
+        })),
+      });
+      setChapterPlans(res.items);
+      setShowPrefill(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save syllabus");
+    } finally {
+      setSavingPrefill(false);
     }
   }
 
@@ -1694,18 +1745,100 @@ function SyllabusTab({
       ) : chapterPlans.length === 0 ? (
         <div className="py-8">
           <p className="text-sm text-dars-muted mb-4">
-            No chapter plans yet. Add them below.
+            No chapter plans yet. Load curriculum defaults or add manually.
           </p>
-          {!showAddForm ? (
-            <button
-              type="button"
-              onClick={() => setShowAddForm(true)}
-              className="px-4 py-2 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 cursor-pointer border-none"
-            >
-              + Add Chapter Plan
-            </button>
+
+          {showPrefill ? (
+            <div className="bg-dars-parchment border border-dars-rule-light rounded-lg p-4 max-w-xl">
+              <h3 className="text-sm font-semibold text-dars-ink mb-3">
+                Syllabus Defaults — edit teaching days then save
+              </h3>
+              {prefillItems.length === 0 ? (
+                <p className="text-xs text-dars-muted italic">
+                  No curriculum defaults configured for this book. Use the admin panel to set chapter schedules.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-2 mb-4">
+                    {prefillItems.map((item) => (
+                      <div key={item.chapter_id} className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-dars-muted w-6 shrink-0">
+                          {item.chapter_number}.
+                        </span>
+                        <span className="flex-1 text-sm text-dars-ink truncate">{item.title}</span>
+                        {item.term && (
+                          <span className="text-[10px] font-medium text-dars-muted bg-dars-parchment-deep px-1.5 py-0.5 rounded shrink-0">
+                            {item.term}
+                          </span>
+                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <label className="text-xs text-dars-muted">Days</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={60}
+                            value={prefillDays[item.chapter_id] ?? 10}
+                            onChange={(e) =>
+                              setPrefillDays((prev) => ({
+                                ...prev,
+                                [item.chapter_id]: Number(e.target.value),
+                              }))
+                            }
+                            className="w-16 border border-dars-rule-dark rounded px-2 py-1 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
+                          />
+                          {item.suggested_teaching_days !== null && (
+                            <span className="text-[10px] text-dars-muted">
+                              (suggested: {item.suggested_teaching_days})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleSavePrefill()}
+                      disabled={savingPrefill}
+                      className="px-4 py-2 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 cursor-pointer border-none disabled:opacity-60 flex items-center gap-2"
+                    >
+                      {savingPrefill && <Spinner />}
+                      Save Syllabus
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPrefill(false)}
+                      className="px-4 py-2 text-sm font-semibold rounded-md border border-dars-rule-dark text-dars-muted hover:text-dars-ink cursor-pointer bg-white"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           ) : (
-            <div className="bg-dars-parchment border border-dars-rule-light rounded-lg p-4 max-w-md">
+            <div className="flex gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => void handleLoadPrefill()}
+                disabled={loadingPrefill}
+                className="px-4 py-2 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 cursor-pointer border-none disabled:opacity-60 flex items-center gap-2"
+              >
+                {loadingPrefill && <Spinner />}
+                Load Curriculum Defaults
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(true)}
+                className="px-4 py-2 text-sm font-semibold rounded-md border border-dars-rule-dark text-dars-muted hover:text-dars-ink cursor-pointer bg-white"
+              >
+                + Add Manually
+              </button>
+            </div>
+          )}
+
+          {showAddForm && !showPrefill && (
+            <div className="bg-dars-parchment border border-dars-rule-light rounded-lg p-4 max-w-md mt-4">
               <div className="flex gap-3 mb-3">
                 <div className="flex-1">
                   <label className="block text-xs font-semibold text-dars-muted mb-1">

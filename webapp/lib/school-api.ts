@@ -398,3 +398,29 @@ export interface TeachingDaysResponse {
 export function getTeachingDays(yearId: string): Promise<TeachingDaysResponse> {
   return apiFetch<TeachingDaysResponse>(`/api/v1/academic-years/${yearId}/teaching-days`);
 }
+
+// ---------------------------------------------------------------------------
+// Chapter Mapping / Prefill
+// ---------------------------------------------------------------------------
+
+export interface PrefillChapterPlan {
+  chapter_id: string;
+  title: string;
+  chapter_number: number;
+  suggested_teaching_days: number | null;
+  suggested_position: number | null;
+  term: string | null;
+}
+
+export interface PrefillResponse {
+  items: PrefillChapterPlan[];
+}
+
+export function getPrefillChapterPlans(
+  classId: string,
+  cstId: string
+): Promise<PrefillResponse> {
+  return apiFetch<PrefillResponse>(
+    `/api/v1/classes/${classId}/subjects/${cstId}/chapter-plans/prefill`
+  );
+}

@@ -51,11 +51,13 @@ from dars.school.schemas import (
     TimetableSlotRead,
     TodaySlotEntry,
 )
+from dars.curriculum.schemas import PrefillChapterPlan, PrefillResponse
 from dars.school.service import (
     auto_schedule_formative_assessments,
     compute_chapter_date_ranges,
     compute_teaching_days_for_year,
     generate_lesson_sequence,
+    get_prefill_chapter_plans,
 )
 from dars.teachers.models import Teacher
 
@@ -464,9 +466,12 @@ async def bulk_upsert_chapter_plans(
 
     await db.commit()
 
-    # Attach computed date ranges
+    # Attach computed date ranges and curriculum defaults
     date_ranges_list = await compute_chapter_date_ranges(cst_id, db)
     dr_map = {dr["chapter_plan_id"]: dr for dr in date_ranges_list}
+
+    prefill_items = await get_prefill_chapter_plans(cst_id, db)
+    prefill_map = {str(p["chapter_id"]): p for p in prefill_items}
 
     items: list[ChapterPlanWithDates] = []
     for plan in sorted(results, key=lambda p: p.position):
@@ -474,6 +479,9 @@ async def bulk_upsert_chapter_plans(
         r = ChapterPlanWithDates.model_validate(plan)
         r.start_date = dr.get("start_date")
         r.end_date = dr.get("end_date")
+        pf = prefill_map.get(str(plan.chapter_id), {})
+        r.suggested_teaching_days = pf.get("suggested_teaching_days")
+        r.suggested_position = pf.get("suggested_position")
         items.append(r)
 
     logger.info("bulk_upsert_chapter_plans: done cst_id=%s count=%d", cst_id, len(items))
@@ -505,16 +513,42 @@ async def list_chapter_plans(
     date_ranges_list = await compute_chapter_date_ranges(cst_id, db)
     dr_map = {dr["chapter_plan_id"]: dr for dr in date_ranges_list}
 
+    # Fetch curriculum defaults keyed by chapter_id
+    prefill_items = await get_prefill_chapter_plans(cst_id, db)
+    prefill_map = {str(p["chapter_id"]): p for p in prefill_items}
+
     items: list[ChapterPlanWithDates] = []
     for plan in plans:
         dr = dr_map.get(plan.id, {})
         r = ChapterPlanWithDates.model_validate(plan)
         r.start_date = dr.get("start_date")
         r.end_date = dr.get("end_date")
+        pf = prefill_map.get(str(plan.chapter_id), {})
+        r.suggested_teaching_days = pf.get("suggested_teaching_days")
+        r.suggested_position = pf.get("suggested_position")
         items.append(r)
 
     logger.info("list_chapter_plans: cst_id=%s count=%d", cst_id, len(items))
     return ChapterPlanListResponse(items=items)
+
+
+@router.get(
+    "/api/v1/classes/{class_id}/subjects/{cst_id}/chapter-plans/prefill",
+    response_model=PrefillResponse,
+)
+async def prefill_chapter_plans(
+    class_id: uuid.UUID,
+    cst_id: uuid.UUID,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> PrefillResponse:
+    logger.info("prefill_chapter_plans: cst_id=%s", cst_id)
+    obj = await db.get(ClassSubjectTeacher, cst_id)
+    if obj is None or obj.client_id != current_client.id or obj.class_id != class_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject assignment not found")
+    items = await get_prefill_chapter_plans(cst_id, db)
+    logger.info("prefill_chapter_plans: cst_id=%s returned=%d", cst_id, len(items))
+    return PrefillResponse(items=[PrefillChapterPlan(**item) for item in items])
 
 
 @router.patch("/api/v1/chapter-plans/{plan_id}", response_model=ChapterPlanRead)
