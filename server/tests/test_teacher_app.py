@@ -8,11 +8,29 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import dars.clients.models  # noqa
+import dars.curriculum.models  # noqa
+import dars.curriculum_data.models  # noqa
+import dars.generated_exams.models  # noqa
+import dars.generated_lps.models  # noqa
+import dars.lookup.models  # noqa
+import dars.school.models  # noqa
+import dars.teachers.models  # noqa
+import dars.webhooks.models  # noqa
+
 from dars.clients.models import Client
+from dars.curriculum_data.models import CurriculumData
 from dars.database import Base, get_db
+from dars.lookup.models import Grade, Subject
 from dars.main import app
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
+
+# Seeded IDs (assigned after first commit)
+_GRADE_5_CODE = 5
+_GRADE_6_CODE = 6
+_SUBJECT_ENG = "english"
+_SUBJECT_MATHS = "maths"
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +45,13 @@ async def db_session():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        session.add(CurriculumData(code="NCP", name="National Curriculum of Pakistan"))
+        session.add(CurriculumData(code="SNC", name="Single National Curriculum"))
+        session.add(Grade(code=5, display_name="Grade 5"))
+        session.add(Grade(code=6, display_name="Grade 6"))
+        session.add(Subject(code="english", display_name="English"))
+        session.add(Subject(code="maths", display_name="Maths"))
+        await session.commit()
         yield session
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -71,14 +96,24 @@ async def _make_academic_year(http_client, key: str) -> dict:
     return resp.json()
 
 
-async def _make_class(http_client, key: str, year_id: str, grade: int = 5) -> dict:
+async def _get_grade_id(db_session: AsyncSession, code: int) -> int:
+    result = await db_session.execute(select(Grade).where(Grade.code == code))
+    return result.scalar_one().id
+
+
+async def _get_subject_id(db_session: AsyncSession, code: str) -> int:
+    result = await db_session.execute(select(Subject).where(Subject.code == code))
+    return result.scalar_one().id
+
+
+async def _make_class(http_client, key: str, year_id: str, grade_id: int) -> dict:
     resp = await http_client.post(
         "/api/v1/classes",
         json={
             "academic_year_id": year_id,
-            "grade": grade,
+            "grade_id": grade_id,
             "section": "A",
-            "name": f"Grade {grade}-A",
+            "name": f"Class A",
         },
         headers=headers(key),
     )
@@ -87,9 +122,9 @@ async def _make_class(http_client, key: str, year_id: str, grade: int = 5) -> di
 
 
 async def _assign_subject(
-    http_client, key: str, class_id: str, subject: str = "English", teacher_id: str | None = None
+    http_client, key: str, class_id: str, subject_id: int, teacher_id: str | None = None
 ) -> dict:
-    body: dict = {"subject": subject}
+    body: dict = {"subject_id": subject_id}
     if teacher_id:
         body["teacher_id"] = teacher_id
     resp = await http_client.post(
@@ -107,19 +142,22 @@ async def _assign_subject(
 
 
 @pytest.mark.asyncio
-async def test_my_classes_returns_teacher_csts(http_client):
+async def test_my_classes_returns_teacher_csts(http_client, db_session):
     """
     GET /api/v1/me/classes returns CSTs assigned to the default_teacher_id.
     Signup auto-creates a default teacher; assign a class subject to that teacher.
     """
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
+
     key = await _signup(http_client, "teacher1@school.com", "School A")
     me = await _get_me(http_client, key)
     default_teacher_id = me["default_teacher_id"]
     assert default_teacher_id is not None, "signup should auto-create a default teacher"
 
     year = await _make_academic_year(http_client, key)
-    school_class = await _make_class(http_client, key, year["id"], grade=5)
-    cst = await _assign_subject(http_client, key, school_class["id"], "English", default_teacher_id)
+    school_class = await _make_class(http_client, key, year["id"], grade_id)
+    cst = await _assign_subject(http_client, key, school_class["id"], subject_id, default_teacher_id)
 
     resp = await http_client.get("/api/v1/me/classes", headers=headers(key))
     assert resp.status_code == 200, resp.text
@@ -129,9 +167,9 @@ async def test_my_classes_returns_teacher_csts(http_client):
 
     item = data["items"][0]
     assert item["cst_id"] == cst["id"]
-    assert item["subject"] == "English"
-    assert item["grade"] == 5
-    assert item["class_name"] == "Grade 5-A"
+    assert item["subject_id"] == subject_id
+    assert item["grade_id"] == grade_id
+    assert item["class_name"] == "Class A"
     assert item["chapter_count"] == 0
     assert item["taught_count"] == 0
     assert item["next_slot"] is None
@@ -158,8 +196,13 @@ async def test_my_classes_returns_empty_when_default_teacher_has_no_csts(http_cl
 
 
 @pytest.mark.asyncio
-async def test_my_classes_client_isolation(http_client):
+async def test_my_classes_client_isolation(http_client, db_session):
     """Client A cannot see Client B's classes via GET /api/v1/me/classes."""
+    grade5_id = await _get_grade_id(db_session, 5)
+    grade6_id = await _get_grade_id(db_session, 6)
+    eng_id = await _get_subject_id(db_session, "english")
+    maths_id = await _get_subject_id(db_session, "maths")
+
     key_a = await _signup(http_client, "clientA@school.com", "School A")
     key_b = await _signup(http_client, "clientB@school.com", "School B")
 
@@ -168,14 +211,13 @@ async def test_my_classes_client_isolation(http_client):
     teacher_b_id = me_b["default_teacher_id"]
 
     year_b = await _make_academic_year(http_client, key_b)
-    class_b = await _make_class(http_client, key_b, year_b["id"], grade=6)
-    await _assign_subject(http_client, key_b, class_b["id"], "Maths", teacher_b_id)
+    class_b = await _make_class(http_client, key_b, year_b["id"], grade6_id)
+    await _assign_subject(http_client, key_b, class_b["id"], maths_id, teacher_b_id)
 
     # Client A: no CSTs assigned to their default teacher
     resp_a = await http_client.get("/api/v1/me/classes", headers=headers(key_a))
     assert resp_a.status_code == 200, resp_a.text
     data_a = resp_a.json()
-    # Client A has no CSTs assigned to their teacher, so empty
     assert data_a["items"] == []
 
     # Client B sees their own data only
@@ -183,6 +225,5 @@ async def test_my_classes_client_isolation(http_client):
     assert resp_b.status_code == 200, resp_b.text
     data_b = resp_b.json()
     assert len(data_b["items"]) == 1
-    assert data_b["items"][0]["subject"] == "Maths"
-    # Confirm B's item does not contain A's class
-    assert data_b["items"][0]["grade"] == 6
+    assert data_b["items"][0]["subject_id"] == maths_id
+    assert data_b["items"][0]["grade_id"] == grade6_id

@@ -77,11 +77,16 @@ async def _make_school_setup(
     session: AsyncSession,
 ) -> tuple[Client, ClassSubjectTeacher, ChapterPlan, ClassLessonSlot, AssessmentSlot]:
     """Create a full school hierarchy; return (client, cst, chapter_plan, lesson_slot, assessment_slot)."""
+    from sqlalchemy import select as _sel
+    ncp = (await session.execute(_sel(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
+    eng = (await session.execute(_sel(Subject).where(Subject.code == "Eng"))).scalar_one()
+    grade5 = (await session.execute(_sel(Grade).where(Grade.code == 5))).scalar_one()
+
     client = Client(
         email="gen@school.com",
         name="Gen School",
         api_key_hash="deadbeef01",
-        curriculum="NCP",
+        curriculum_id=ncp.id,
     )
     session.add(client)
     await session.flush()
@@ -100,7 +105,7 @@ async def _make_school_setup(
     school_class = SchoolClass(
         client_id=client.id,
         academic_year_id=year.id,
-        grade=5,
+        grade_id=grade5.id,
         section="A",
         name="Grade 5-A",
     )
@@ -109,9 +114,9 @@ async def _make_school_setup(
     await session.refresh(school_class)
 
     book = Book(
-        curriculum="NCP",
-        grade=5,
-        subject="Eng",
+        curriculum_id=ncp.id,
+        grade_id=grade5.id,
+        subject_id=eng.id,
         title="Grade 5 English",
     )
     session.add(book)
@@ -130,7 +135,7 @@ async def _make_school_setup(
     cst = ClassSubjectTeacher(
         client_id=client.id,
         class_id=school_class.id,
-        subject="English",
+        subject_id=eng.id,
         book_id=book.id,
     )
     session.add(cst)
@@ -182,11 +187,16 @@ async def _make_second_client_setup(
     session: AsyncSession,
 ) -> tuple[Client, ClassLessonSlot, AssessmentSlot]:
     """Create a second client with their own slot (for isolation tests)."""
+    from sqlalchemy import select as _sel
+    ncp = (await session.execute(_sel(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
+    eng = (await session.execute(_sel(Subject).where(Subject.code == "Eng"))).scalar_one()
+    grade6 = (await session.execute(_sel(Grade).where(Grade.code == 6))).scalar_one()
+
     client2 = Client(
         email="other@school.com",
         name="Other School",
         api_key_hash="deadbeef02",
-        curriculum="NCP",
+        curriculum_id=ncp.id,
     )
     session.add(client2)
     await session.flush()
@@ -205,7 +215,7 @@ async def _make_second_client_setup(
     class2 = SchoolClass(
         client_id=client2.id,
         academic_year_id=year2.id,
-        grade=6,
+        grade_id=grade6.id,
         section="B",
         name="Grade 6-B",
     )
@@ -213,7 +223,7 @@ async def _make_second_client_setup(
     await session.flush()
     await session.refresh(class2)
 
-    book2 = Book(curriculum="NCP", grade=6, subject="Eng", title="Grade 6 English")
+    book2 = Book(curriculum_id=ncp.id, grade_id=grade6.id, subject_id=eng.id, title="Grade 6 English")
     session.add(book2)
     await session.flush()
     await session.refresh(book2)
@@ -226,7 +236,7 @@ async def _make_second_client_setup(
     cst2 = ClassSubjectTeacher(
         client_id=client2.id,
         class_id=class2.id,
-        subject="English",
+        subject_id=eng.id,
         book_id=book2.id,
     )
     session.add(cst2)
@@ -302,7 +312,7 @@ async def test_generate_lp_for_slot_creates_lp_and_links(db_session):
     )
     lp_db = lp_db_result.scalar_one()
     assert lp_db.status == "PENDING"
-    assert lp_db.curriculum == "NCP"
+    assert lp_db.curriculum_id is not None
 
 
 @pytest.mark.asyncio

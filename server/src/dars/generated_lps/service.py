@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from dars.config import settings
 from dars.generated_lps.models import GeneratedLP
 from dars.generated_lps.schemas import GeneratedLPCreate
-from dars.lookup.service import validate_grade, validate_subject
+from dars.lookup.service import resolve_curriculum_id, resolve_grade_id, resolve_subject_id, validate_grade, validate_subject
 from dars.mapping import canonical_grade, canonical_subject
 
 logger = logging.getLogger(__name__)
@@ -24,13 +24,14 @@ async def create_generated_lp(
         "create_generated_lp: client_id=%s curriculum=%s grade=%s subject=%s topic=%s",
         client_id, curriculum, data.grade, data.subject, data.topic,
     )
-    await validate_grade(db, data.grade)
-    await validate_subject(db, data.subject)
+    grade_obj = await validate_grade(db, data.grade)
+    subject_obj = await validate_subject(db, data.subject)
+    curriculum_id = await resolve_curriculum_id(db, curriculum)
     lp = GeneratedLP(
         client_id=client_id,
-        curriculum=curriculum,
-        grade=str(data.grade),
-        subject=data.subject,
+        curriculum_id=curriculum_id,
+        grade_id=grade_obj.id,
+        subject_id=subject_obj.id,
         topic=data.topic,
         page_number=data.page_number or None,
         class_strength=data.class_strength,

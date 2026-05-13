@@ -36,23 +36,30 @@ async def create_lp_endpoint(
         "create_lp_endpoint: client_id=%s grade=%s subject=%s",
         current_client.id, body.grade, body.subject,
     )
-    if not current_client.curriculum:
+    if not current_client.curriculum_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Client has no curriculum configured.",
+        )
+    from dars.lookup.service import get_curriculum_code
+    curriculum_code = await get_curriculum_code(db, current_client.curriculum_id)
+    if not curriculum_code:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Client curriculum could not be resolved.",
         )
 
     lp = await create_generated_lp(
         db,
         client_id=current_client.id,
         data=body,
-        curriculum=current_client.curriculum,
+        curriculum=curriculum_code,
     )
     background_tasks.add_task(
         generate_lp_task,
         lp_id=lp.id,
         client_id=current_client.id,
-        curriculum=current_client.curriculum,
+        curriculum=curriculum_code,
         request=body,
     )
     logger.info("create_lp_endpoint: queued lp_id=%s client_id=%s", lp.id, current_client.id)

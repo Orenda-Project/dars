@@ -105,6 +105,16 @@ def headers(key: str) -> dict:
     return {"X-API-Key": key}
 
 
+async def _get_grade_id(db_session: AsyncSession, code: int) -> int:
+    result = await db_session.execute(select(Grade).where(Grade.code == code))
+    return result.scalar_one().id
+
+
+async def _get_subject_id(db_session: AsyncSession, code: str) -> int:
+    result = await db_session.execute(select(Subject).where(Subject.code == code))
+    return result.scalar_one().id
+
+
 async def _make_academic_year(http_client, key: str) -> dict:
     resp = await http_client.post(
         "/api/v1/academic-years",
@@ -117,10 +127,15 @@ async def _make_academic_year(http_client, key: str) -> dict:
 
 async def _seed_book_and_chapters(db_session: AsyncSession) -> tuple[Book, list[BookChapter]]:
     """Seed a Book + 3 BookChapters + CurriculumChapterSchedule rows for NCP/grade5/english."""
+    from sqlalchemy import select as _sel
+    ncp = (await db_session.execute(_sel(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
+    eng = (await db_session.execute(_sel(Subject).where(Subject.code == "english"))).scalar_one()
+    grade5 = (await db_session.execute(_sel(Grade).where(Grade.code == 5))).scalar_one()
+
     book = Book(
-        curriculum="NCP",
-        grade=5,
-        subject="english",
+        curriculum_id=ncp.id,
+        grade_id=grade5.id,
+        subject_id=eng.id,
         title="Grade 5 English NCP",
     )
     db_session.add(book)
@@ -139,9 +154,8 @@ async def _seed_book_and_chapters(db_session: AsyncSession) -> tuple[Book, list[
         await db_session.refresh(bc)
         chapters.append(bc)
 
-        # Add curriculum schedule
         sched = CurriculumChapterSchedule(
-            curriculum="NCP",
+            curriculum_id=ncp.id,
             book_id=book.id,
             chapter_id=bc.id,
             suggested_teaching_days=5,
@@ -164,13 +178,15 @@ async def test_create_teacher_class_happy_path(http_client, api_key, db_session)
     await _seed_book_and_chapters(db_session)
     # signup auto-creates default_teacher_id
     year = await _make_academic_year(http_client, api_key)
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
 
     resp = await http_client.post(
         "/api/v1/teacher/classes",
         json={
-            "grade": 5,
+            "grade_id": grade_id,
             "section": "A",
-            "subject": "english",
+            "subject_id": subject_id,
             "academic_year_id": year["id"],
         },
         headers=headers(api_key),
@@ -189,7 +205,7 @@ async def test_create_teacher_class_happy_path(http_client, api_key, db_session)
     )
     sc = sc_result.scalar_one_or_none()
     assert sc is not None
-    assert sc.grade == 5
+    assert sc.grade_id == grade_id
     assert sc.section == "A"
     assert sc.name == "Grade 5-A"
 
@@ -199,7 +215,7 @@ async def test_create_teacher_class_happy_path(http_client, api_key, db_session)
     )
     cst = cst_result.scalar_one_or_none()
     assert cst is not None
-    assert cst.subject == "english"
+    assert cst.subject_id == subject_id
     assert cst.book_id is not None
 
     # Verify chapter plans upserted
@@ -227,13 +243,15 @@ async def test_create_teacher_class_no_default_teacher_422(http_client, api_key,
     await db_session.commit()
 
     year = await _make_academic_year(http_client, api_key)
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
 
     resp = await http_client.post(
         "/api/v1/teacher/classes",
         json={
-            "grade": 5,
+            "grade_id": grade_id,
             "section": "A",
-            "subject": "english",
+            "subject_id": subject_id,
             "academic_year_id": year["id"],
         },
         headers=headers(api_key),
@@ -247,13 +265,15 @@ async def test_create_teacher_class_no_book_422(http_client, api_key, db_session
     """No book for this grade/subject combination → 422."""
     # signup auto-creates default_teacher_id; no book seeded for grade 5 / maths
     year = await _make_academic_year(http_client, api_key)
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "maths")  # No book seeded for this
 
     resp = await http_client.post(
         "/api/v1/teacher/classes",
         json={
-            "grade": 5,
+            "grade_id": grade_id,
             "section": "B",
-            "subject": "maths",  # No book seeded for this
+            "subject_id": subject_id,
             "academic_year_id": year["id"],
         },
         headers=headers(api_key),
@@ -267,13 +287,15 @@ async def test_create_teacher_class_invalid_year_404(http_client, api_key, db_se
     """Invalid academic_year_id (non-existent) → 404."""
     await _seed_book_and_chapters(db_session)
     # signup auto-creates default_teacher_id
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
 
     resp = await http_client.post(
         "/api/v1/teacher/classes",
         json={
-            "grade": 5,
+            "grade_id": grade_id,
             "section": "A",
-            "subject": "english",
+            "subject_id": subject_id,
             "academic_year_id": 99999,  # non-existent integer id
         },
         headers=headers(api_key),
@@ -289,14 +311,16 @@ async def test_create_teacher_class_client_isolation_404(http_client, api_key, a
 
     # Create academic year for client2
     year2 = await _make_academic_year(http_client, api_key2)
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
 
     # Client1 tries to use client2's academic year
     resp = await http_client.post(
         "/api/v1/teacher/classes",
         json={
-            "grade": 5,
+            "grade_id": grade_id,
             "section": "A",
-            "subject": "english",
+            "subject_id": subject_id,
             "academic_year_id": year2["id"],
         },
         headers=headers(api_key),

@@ -40,9 +40,9 @@ class GeneratedExamResponse(BaseModel):
     client_id: int
     external_id: Optional[str] = None
     status: str
-    curriculum: str
-    grade: int
-    subject: str
+    curriculum_id: int
+    grade_id: int
+    subject_id: int
     page_ranges: str
     generation_type: str
     eg_job_id: Optional[str] = None

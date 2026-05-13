@@ -32,9 +32,9 @@ class GeneratedLPResponse(BaseModel):
     client_id: int
     external_id: Optional[str] = None
     status: str
-    grade: str
-    subject: str
-    curriculum: str
+    grade_id: int
+    subject_id: int
+    curriculum_id: int
     topic: Optional[str] = None
     page_number: Optional[str] = None
     class_strength: Optional[int] = None

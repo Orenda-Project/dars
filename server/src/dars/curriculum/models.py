@@ -7,10 +7,9 @@ from dars.database import Base
 class SLO(Base):
     __tablename__ = "slos"
 
-    # curriculum and subject kept as denormalized text codes (no FK constraint)
-    curriculum: Mapped[str] = mapped_column(Text, nullable=False)
-    grade: Mapped[int] = mapped_column(Integer, nullable=False)
-    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    curriculum_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("curriculums.id"), nullable=False)
+    grade_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("grades.id"), nullable=False)
+    subject_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("subjects.id"), nullable=False)
     code: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -36,10 +35,9 @@ class Book(Base):
     __tablename__ = "books"
 
     core_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # curriculum kept as denormalized text code (no FK constraint)
-    curriculum: Mapped[str] = mapped_column(Text, nullable=False)
-    grade: Mapped[int] = mapped_column(Integer, nullable=False)
-    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    curriculum_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("curriculums.id"), nullable=False)
+    grade_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("grades.id"), nullable=False)
+    subject_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("subjects.id"), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     publisher: Mapped[str | None] = mapped_column(Text, nullable=True)
     edition: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -80,11 +78,10 @@ class Topic(Base):
 class CurriculumChapterSchedule(Base):
     __tablename__ = "curriculum_chapter_schedule"
     __table_args__ = (
-        UniqueConstraint("curriculum", "chapter_id", name="uq_ccs_curriculum_chapter"),
+        UniqueConstraint("curriculum_id", "chapter_id", name="uq_ccs_curriculum_chapter"),
     )
 
-    # curriculum kept as denormalized text code (no FK constraint)
-    curriculum: Mapped[str] = mapped_column(Text, nullable=False)
+    curriculum_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("curriculums.id"), nullable=False)
     book_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("books.id", ondelete="CASCADE"), nullable=False
     )

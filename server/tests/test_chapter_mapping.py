@@ -42,10 +42,12 @@ async def db_session():
 
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        from dars.lookup.models import Grade as _Grade
         session.add(CurriculumData(code="NCP", name="National Curriculum of Pakistan"))
         session.add(CurriculumData(code="SNC", name="Single National Curriculum"))
         session.add(Subject(code="Eng", display_name="English"))
         session.add(Subject(code="Maths", display_name="Mathematics"))
+        session.add(_Grade(code=5, display_name="Grade 5"))
         await session.commit()
         yield session
 
@@ -91,7 +93,6 @@ async def admin_key(http_client, db_session):
     from dars.clients.service import get_client_by_api_key
     client = await get_client_by_api_key(db_session, key)
     client.is_admin = True
-    client.curriculum = "NCP"
     await db_session.commit()
 
     yield key, _cfg.settings
@@ -107,10 +108,15 @@ def admin_headers(key: str) -> dict:
 
 
 async def _make_book(db_session, curriculum="NCP") -> Book:
+    from sqlalchemy import select as _sel
+    curr = (await db_session.execute(_sel(CurriculumData).where(CurriculumData.code == curriculum))).scalar_one()
+    eng = (await db_session.execute(_sel(Subject).where(Subject.code == "Eng"))).scalar_one()
+    from dars.lookup.models import Grade as _Grade
+    grade5 = (await db_session.execute(_sel(_Grade).where(_Grade.code == 5))).scalar_one()
     book = Book(
-        curriculum=curriculum,
-        grade=5,
-        subject="Eng",
+        curriculum_id=curr.id,
+        grade_id=grade5.id,
+        subject_id=eng.id,
         title="Grade 5 English",
     )
     db_session.add(book)
@@ -131,8 +137,14 @@ async def _make_chapter(db_session, book_id: uuid.UUID, number: int, title: str)
     return ch
 
 
-async def _make_school_setup(http_client, key: str, book_id: uuid.UUID | None = None) -> tuple[str, str]:
+async def _make_school_setup(http_client, key: str, db_session: AsyncSession,
+                             book_id: int | None = None) -> tuple[str, str]:
     """Create academic year + class + CST. Returns (class_id, cst_id)."""
+    from sqlalchemy import select as _sel
+    from dars.lookup.models import Grade as _Grade
+    grade5 = (await db_session.execute(_sel(_Grade).where(_Grade.code == 5))).scalar_one()
+    eng = (await db_session.execute(_sel(Subject).where(Subject.code == "Eng"))).scalar_one()
+
     year_resp = await http_client.post(
         "/api/v1/academic-years",
         json={"name": "2025-26", "start_date": "2025-04-01", "end_date": "2026-03-31"},
@@ -143,15 +155,15 @@ async def _make_school_setup(http_client, key: str, book_id: uuid.UUID | None = 
 
     class_resp = await http_client.post(
         "/api/v1/classes",
-        json={"academic_year_id": year_id, "grade": 5, "section": "A", "name": "Grade 5-A"},
+        json={"academic_year_id": year_id, "grade_id": grade5.id, "section": "A", "name": "Grade 5-A"},
         headers=headers(key),
     )
     assert class_resp.status_code == 201, class_resp.text
     class_id = class_resp.json()["id"]
 
-    cst_body = {"subject": "Eng"}
+    cst_body: dict = {"subject_id": eng.id}
     if book_id:
-        cst_body["book_id"] = str(book_id)
+        cst_body["book_id"] = book_id
 
     cst_resp = await http_client.post(
         f"/api/v1/classes/{class_id}/subjects",
@@ -297,7 +309,7 @@ async def test_prefill_returns_chapters_with_defaults(http_client, api_key, admi
     assert sched_resp.status_code == 200, sched_resp.text
 
     # Client creates class + CST with the book
-    class_id, cst_id = await _make_school_setup(http_client, client_key, book_id=book.id)
+    class_id, cst_id = await _make_school_setup(http_client, client_key, db_session, book_id=book.id)
 
     prefill_resp = await http_client.get(
         f"/api/v1/classes/{class_id}/subjects/{cst_id}/chapter-plans/prefill",
@@ -314,9 +326,9 @@ async def test_prefill_returns_chapters_with_defaults(http_client, api_key, admi
 
 
 @pytest.mark.asyncio
-async def test_prefill_no_book_returns_empty(http_client, api_key):
+async def test_prefill_no_book_returns_empty(http_client, api_key, db_session):
     """CST with no book_id → prefill returns empty list."""
-    class_id, cst_id = await _make_school_setup(http_client, api_key, book_id=None)
+    class_id, cst_id = await _make_school_setup(http_client, api_key, db_session, book_id=None)
 
     resp = await http_client.get(
         f"/api/v1/classes/{class_id}/subjects/{cst_id}/chapter-plans/prefill",
@@ -335,7 +347,7 @@ async def test_prefill_no_defaults_returns_nulls(http_client, api_key, db_sessio
     await _make_chapter(db_session, book.id, 2, "Chapter Two")
     await db_session.commit()
 
-    class_id, cst_id = await _make_school_setup(http_client, api_key, book_id=book.id)
+    class_id, cst_id = await _make_school_setup(http_client, api_key, db_session, book_id=book.id)
 
     resp = await http_client.get(
         f"/api/v1/classes/{class_id}/subjects/{cst_id}/chapter-plans/prefill",
@@ -370,7 +382,7 @@ async def test_client_cannot_see_other_client_chapter_plans(http_client, db_sess
     key_b = resp_b.json()["api_key"]
 
     # Client A sets up a class + CST
-    class_id_a, cst_id_a = await _make_school_setup(http_client, key_a)
+    class_id_a, cst_id_a = await _make_school_setup(http_client, key_a, db_session)
 
     # Client B tries to access Client A's prefill — should get 404
     resp = await http_client.get(

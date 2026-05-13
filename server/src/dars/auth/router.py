@@ -28,7 +28,8 @@ async def signup_endpoint(
         name=client.name,
         email=client.email,  # type: ignore[arg-type]
         is_admin=client.is_admin,
-        curriculum=client.curriculum,
+        curriculum_id=client.curriculum_id,
+        curriculum=body.curriculum,
     )
 
 
@@ -44,11 +45,16 @@ async def login_endpoint(
     Update your stored key after each call.
     """
     client, raw_key = await login(db, body.email, body.password)
+    from dars.lookup.service import get_curriculum_code
+    curr_code: str | None = None
+    if client.curriculum_id:
+        curr_code = await get_curriculum_code(db, client.curriculum_id)
     return AuthResponse(
         api_key=raw_key,
         client_id=str(client.id),
         name=client.name,
         email=client.email,  # type: ignore[arg-type]
         is_admin=client.is_admin,
-        curriculum=client.curriculum,
+        curriculum_id=client.curriculum_id,
+        curriculum=curr_code,
     )

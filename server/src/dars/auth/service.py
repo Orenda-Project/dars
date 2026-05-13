@@ -2,6 +2,7 @@ import logging
 
 from fastapi import HTTPException, status
 from passlib.context import CryptContext
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.clients.models import Client
@@ -10,6 +11,7 @@ from dars.clients.service import (
     get_client_by_email,
     rotate_api_key,
 )
+from dars.curriculum_data.models import CurriculumData
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +46,19 @@ async def signup(
             detail="An account with this email already exists.",
         )
 
+    # Resolve curriculum code → id
+    curr_result = await db.execute(select(CurriculumData).where(CurriculumData.code == curriculum))
+    curr_row = curr_result.scalar_one_or_none()
+    if curr_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"curriculum '{curriculum}' not found in database.",
+        )
+
     client, raw_key = await create_db_client(db, name)
     client.email = email
     client.hashed_password = _hash_password(password)
-    client.curriculum = curriculum
+    client.curriculum_id = curr_row.id
     await db.flush()
 
     # Auto-create a default teacher

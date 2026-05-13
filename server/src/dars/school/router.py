@@ -243,7 +243,7 @@ async def create_class(
     db: AsyncSession = Depends(get_db),
 ) -> SchoolClassRead:
     logger.info(
-        "create_class: client_id=%s grade=%s section=%r", current_client.id, body.grade, body.section
+        "create_class: client_id=%s grade_id=%s section=%r", current_client.id, body.grade_id, body.section
     )
     year = await db.get(AcademicYear, body.academic_year_id)
     if year is None or year.client_id != current_client.id:
@@ -251,7 +251,7 @@ async def create_class(
     obj = SchoolClass(
         client_id=current_client.id,
         academic_year_id=body.academic_year_id,
-        grade=body.grade,
+        grade_id=body.grade_id,
         section=body.section,
         name=body.name,
         start_date=body.start_date,
@@ -318,7 +318,7 @@ async def assign_subject(
     db: AsyncSession = Depends(get_db),
 ) -> CSTRead:
     logger.info(
-        "assign_subject: class_id=%s subject=%r client_id=%s", class_id, body.subject, current_client.id
+        "assign_subject: class_id=%s subject_id=%s client_id=%s", class_id, body.subject_id, current_client.id
     )
     sc = await db.get(SchoolClass, class_id)
     if sc is None or sc.client_id != current_client.id:
@@ -326,7 +326,7 @@ async def assign_subject(
     obj = ClassSubjectTeacher(
         client_id=current_client.id,
         class_id=class_id,
-        subject=body.subject,
+        subject_id=body.subject_id,
         teacher_id=body.teacher_id,
         book_id=body.book_id,
     )
@@ -878,25 +878,29 @@ async def generate_lp_for_lesson_slot(
     logger.info(
         "generate_lp_for_lesson_slot: slot_id=%s client_id=%s", slot_id, current_client.id
     )
-    if not current_client.curriculum:
+    if not current_client.curriculum_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Client curriculum is not set",
         )
+    from dars.lookup.service import get_curriculum_code as _gcc, get_grade_code as _rgc, get_subject_code as _rsc
+    curriculum_code = await _gcc(db, current_client.curriculum_id)
     lp = await generate_lp_for_slot(
-        db, slot_id, current_client.id, current_client.curriculum
+        db, slot_id, current_client.id, curriculum_code
     )
     # Build request object for background task (re-use lp fields)
     from dars.generated_lps.schemas import GeneratedLPCreate as _LPCreate
+    grade_code = await _rgc(db, lp.grade_id)
+    subject_code = await _rsc(db, lp.subject_id)
     lp_req = _LPCreate(
-        grade=int(lp.grade),
-        subject=lp.subject,
+        grade=grade_code,
+        subject=subject_code,
         topic=lp.topic,
         lp_type=lp.lp_type,
         external_id=lp.external_id,
     )
     background_tasks.add_task(
-        generate_lp_task, lp.id, current_client.id, current_client.curriculum, lp_req
+        generate_lp_task, lp.id, current_client.id, curriculum_code, lp_req
     )
     logger.info(
         "generate_lp_for_lesson_slot: queued lp_id=%s slot_id=%s", lp.id, slot_id
@@ -918,18 +922,20 @@ async def generate_all_lps_for_chapter_plan(
     logger.info(
         "generate_all_lps_for_chapter_plan: plan_id=%s client_id=%s", plan_id, current_client.id
     )
-    if not current_client.curriculum:
+    if not current_client.curriculum_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Client curriculum is not set",
         )
+    from dars.lookup.service import get_curriculum_code as _gcc2
+    curriculum_code2 = await _gcc2(db, current_client.curriculum_id)
     queued_pairs, skipped = await generate_all_lps_for_chapter(
-        db, plan_id, current_client.id, current_client.curriculum
+        db, plan_id, current_client.id, curriculum_code2
     )
     from dars.generated_lps.schemas import GeneratedLPCreate as _LPCreate
     for lp_id, lp_req in queued_pairs:
         background_tasks.add_task(
-            generate_lp_task, lp_id, current_client.id, current_client.curriculum, lp_req
+            generate_lp_task, lp_id, current_client.id, curriculum_code2, lp_req
         )
     logger.info(
         "generate_all_lps_for_chapter_plan: plan_id=%s queued=%d skipped=%d",
@@ -952,24 +958,28 @@ async def generate_exam_for_assessment_slot(
     logger.info(
         "generate_exam_for_assessment_slot: slot_id=%s client_id=%s", slot_id, current_client.id
     )
-    if not current_client.curriculum:
+    if not current_client.curriculum_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Client curriculum is not set",
         )
+    from dars.lookup.service import get_curriculum_code as _gcc2, get_grade_code as _rgc2, get_subject_code as _rsc2
+    curriculum_code2 = await _gcc2(db, current_client.curriculum_id) or "NCP"
     exam = await generate_exam_for_slot(
-        db, slot_id, current_client.id, current_client.curriculum
+        db, slot_id, current_client.id, curriculum_code2
     )
     from dars.generated_exams.schemas import GeneratedExamCreate as _ExamCreate
+    grade_code2 = await _rgc2(db, exam.grade_id)
+    subject_code2 = await _rsc2(db, exam.subject_id)
     exam_req = _ExamCreate(
-        grade=exam.grade,
-        subject=exam.subject,
+        grade=grade_code2,
+        subject=subject_code2 or "General",
         page_ranges=exam.page_ranges,
         generation_type=exam.generation_type,
         external_id=exam.external_id,
     )
     background_tasks.add_task(
-        generate_exam_task, exam.id, current_client.id, current_client.curriculum, exam_req
+        generate_exam_task, exam.id, current_client.id, curriculum_code2, exam_req
     )
     logger.info(
         "generate_exam_for_assessment_slot: queued exam_id=%s slot_id=%s", exam.id, slot_id
@@ -1060,7 +1070,7 @@ async def get_today_schedule(
             TodaySlotEntry(
                 class_id=cst.class_id,
                 class_name=sc.name,
-                subject=cst.subject,
+                subject_id=cst.subject_id,
                 cst_id=cst_id,
                 teacher_id=cst.teacher_id,
                 teacher_name=teacher_name,
@@ -1162,8 +1172,8 @@ async def get_my_classes(
             MyClassEntry(
                 cst_id=cst.id,
                 class_name=sc.name,
-                subject=cst.subject,
-                grade=sc.grade,
+                subject_id=cst.subject_id,
+                grade_id=sc.grade_id,
                 book_title=book_title,
                 chapter_count=chapter_count,
                 taught_count=taught_count,
@@ -1200,8 +1210,8 @@ async def create_teacher_class(
     auto-resolves book from client curriculum, upserts chapter plans, fires AI breakdown.
     """
     logger.info(
-        "create_teacher_class: client_id=%s grade=%s section=%r subject=%r academic_year_id=%s",
-        current_client.id, body.grade, body.section, body.subject, body.academic_year_id,
+        "create_teacher_class: client_id=%s grade_id=%s section=%r subject_id=%s academic_year_id=%s",
+        current_client.id, body.grade_id, body.section, body.subject_id, body.academic_year_id,
     )
 
     # 1. Verify default_teacher_id is set
@@ -1213,7 +1223,7 @@ async def create_teacher_class(
         )
 
     # 2. Verify curriculum is set
-    if not current_client.curriculum:
+    if not current_client.curriculum_id:
         logger.info("create_teacher_class: no curriculum for client_id=%s", current_client.id)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1229,12 +1239,14 @@ async def create_teacher_class(
         )
 
     # 4. Create SchoolClass
+    from dars.lookup.service import get_grade_code as _ggc
+    grade_code_for_name = await _ggc(db, body.grade_id) or body.grade_id
     school_class = SchoolClass(
         client_id=current_client.id,
         academic_year_id=body.academic_year_id,
-        grade=body.grade,
+        grade_id=body.grade_id,
         section=body.section,
-        name=f"Grade {body.grade}-{body.section}",
+        name=f"Grade {grade_code_for_name}-{body.section}",
     )
     db.add(school_class)
     await db.flush()
@@ -1244,25 +1256,24 @@ async def create_teacher_class(
     # 5. Find Book for curriculum + grade + subject
     book_result = await db.execute(
         select(Book).where(
-            Book.curriculum == current_client.curriculum,
-            Book.grade == body.grade,
-            Book.subject == body.subject,
+            Book.curriculum_id == current_client.curriculum_id,
+            Book.grade_id == body.grade_id,
+            Book.subject_id == body.subject_id,
         ).limit(1)
     )
     book = book_result.scalar_one_or_none()
     if book is None:
-        # Roll back the class creation by aborting (flush was done but no commit yet)
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"No book configured for this grade/subject in your curriculum.",
+            detail="No book configured for this grade/subject in your curriculum.",
         )
 
     # 6. Check no existing CST for this class+subject (defensive: class was just created so no duplicate)
     existing_cst_result = await db.execute(
         select(ClassSubjectTeacher).where(
             ClassSubjectTeacher.class_id == school_class.id,
-            ClassSubjectTeacher.subject == body.subject,
+            ClassSubjectTeacher.subject_id == body.subject_id,
         )
     )
     existing_cst = existing_cst_result.scalar_one_or_none()
@@ -1277,7 +1288,7 @@ async def create_teacher_class(
     cst = ClassSubjectTeacher(
         client_id=current_client.id,
         class_id=school_class.id,
-        subject=body.subject,
+        subject_id=body.subject_id,
         teacher_id=current_client.default_teacher_id,
         book_id=book.id,
     )

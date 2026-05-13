@@ -14,9 +14,12 @@ import dars.clients.models  # noqa — register with Base
 import dars.curriculum.models  # noqa — register with Base
 import dars.curriculum_data.models  # noqa — register with Base
 import dars.generated_lps.models  # noqa — register with Base
+import dars.lookup.models  # noqa — register with Base
 from dars.clients.service import create_client
 from dars.curriculum.models import Book, BookChapter, LessonSlot, Topic
+from dars.curriculum_data.models import CurriculumData
 from dars.database import Base, get_db
+from dars.lookup.models import Grade, Subject
 from dars.main import app
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
@@ -34,6 +37,10 @@ async def db_session():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        session.add(CurriculumData(code="ICT", name="ICT Curriculum"))
+        session.add(Grade(code=5, display_name="Grade 5"))
+        session.add(Subject(code="Math", display_name="Mathematics"))
+        await session.commit()
         yield session
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -56,11 +63,15 @@ async def authed_client(db_session):
 
 
 async def _make_book(db: AsyncSession, **kwargs) -> Book:
+    from sqlalchemy import select
+    ict = (await db.execute(select(CurriculumData).where(CurriculumData.code == "ICT"))).scalar_one()
+    grade5 = (await db.execute(select(Grade).where(Grade.code == 5))).scalar_one()
+    math = (await db.execute(select(Subject).where(Subject.code == "Math"))).scalar_one()
     defaults = {
         "core_id": 1,
-        "curriculum": "ICT",
-        "grade": 5,
-        "subject": "Math",
+        "curriculum_id": ict.id,
+        "grade_id": grade5.id,
+        "subject_id": math.id,
         "title": "Math Book Grade 5",
     }
     defaults.update(kwargs)

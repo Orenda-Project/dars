@@ -85,14 +85,20 @@ async def list_clients_endpoint(db: AsyncSession = Depends(get_db)) -> ClientLis
 
 
 @client_router.get("/me")
-async def get_me(current_client: Client = Depends(get_current_client)) -> dict:
+async def get_me(
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     logger.info("get_me: client_id=%s", current_client.id)
     curriculum_obj = None
-    if current_client.curriculum:
-        curriculum_obj = {
-            "code": current_client.curriculum,
-            "name": CURRICULUM_NAMES.get(current_client.curriculum, current_client.curriculum),
-        }
+    if current_client.curriculum_id:
+        from dars.lookup.service import get_curriculum_code
+        code = await get_curriculum_code(db, current_client.curriculum_id)
+        if code:
+            curriculum_obj = {
+                "code": code,
+                "name": CURRICULUM_NAMES.get(code, code),
+            }
     return {
         "id": str(current_client.id),
         "name": current_client.name,
@@ -122,11 +128,14 @@ async def update_me(
     await db.refresh(current_client)
     logger.info("update_me: done client_id=%s", current_client.id)
     curriculum_obj = None
-    if current_client.curriculum:
-        curriculum_obj = {
-            "code": current_client.curriculum,
-            "name": CURRICULUM_NAMES.get(current_client.curriculum, current_client.curriculum),
-        }
+    if current_client.curriculum_id:
+        from dars.lookup.service import get_curriculum_code
+        code = await get_curriculum_code(db, current_client.curriculum_id)
+        if code:
+            curriculum_obj = {
+                "code": code,
+                "name": CURRICULUM_NAMES.get(code, code),
+            }
     return {
         "id": str(current_client.id),
         "name": current_client.name,

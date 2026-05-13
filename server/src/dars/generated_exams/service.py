@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from dars.config import settings
 from dars.generated_exams.models import GeneratedExam
 from dars.generated_exams.schemas import GeneratedExamCreate
-from dars.lookup.service import validate_grade, validate_subject
+from dars.lookup.service import resolve_curriculum_id, validate_grade, validate_subject
 from dars.mapping import canonical_grade, canonical_subject
 
 logger = logging.getLogger(__name__)
@@ -28,13 +28,14 @@ async def create_generated_exam(
         "create_generated_exam: client_id=%s curriculum=%s grade=%s subject=%s type=%s",
         client_id, curriculum, data.grade, data.subject, data.generation_type,
     )
-    await validate_grade(db, data.grade)
-    await validate_subject(db, data.subject)
+    grade_obj = await validate_grade(db, data.grade)
+    subject_obj = await validate_subject(db, data.subject)
+    curriculum_id = await resolve_curriculum_id(db, curriculum)
     exam = GeneratedExam(
         client_id=client_id,
-        curriculum=curriculum,
-        grade=data.grade,
-        subject=data.subject,
+        curriculum_id=curriculum_id,
+        grade_id=grade_obj.id,
+        subject_id=subject_obj.id,
         page_ranges=data.page_ranges,
         generation_type=data.generation_type,
         external_id=data.external_id,

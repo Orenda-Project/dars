@@ -4,6 +4,7 @@ from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.curriculum.models import Book, BookChapter, CurriculumChapterSchedule, SLO, TopicSLO
+from dars.lookup.service import resolve_curriculum_id, resolve_grade_id, resolve_subject_id
 
 logger = logging.getLogger(__name__)
 
@@ -14,16 +15,19 @@ async def list_slos(
     grade: int | None = None,
     subject: str | None = None,
 ) -> tuple[list[SLO], int]:
-    query = select(SLO).where(SLO.curriculum == curriculum)
+    curriculum_id = await resolve_curriculum_id(db, curriculum)
+    query = select(SLO).where(SLO.curriculum_id == curriculum_id)
     if grade is not None:
-        query = query.where(SLO.grade == grade)
+        grade_id = await resolve_grade_id(db, grade)
+        query = query.where(SLO.grade_id == grade_id)
     if subject is not None:
-        query = query.where(SLO.subject == subject)
+        subject_id = await resolve_subject_id(db, subject)
+        query = query.where(SLO.subject_id == subject_id)
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()
 
-    items_result = await db.execute(query.order_by(SLO.grade, SLO.subject, SLO.code))
+    items_result = await db.execute(query.order_by(SLO.grade_id, SLO.subject_id, SLO.code))
     return list(items_result.scalars().all()), total
 
 
@@ -42,24 +46,27 @@ async def import_slos(
     curriculum: str,
     slos_data: list[dict],
 ) -> dict[str, int]:
+    curriculum_id = await resolve_curriculum_id(db, curriculum)
     imported = updated = 0
     for item in slos_data:
+        grade_id = await resolve_grade_id(db, item["grade"])
+        subject_id = await resolve_subject_id(db, item["subject"])
         existing = await db.execute(
-            select(SLO).where(SLO.curriculum == curriculum, SLO.code == item["code"])
+            select(SLO).where(SLO.curriculum_id == curriculum_id, SLO.code == item["code"])
         )
         row = existing.scalar_one_or_none()
         if row is None:
             db.add(SLO(
-                curriculum=curriculum,
-                grade=item["grade"],
-                subject=item["subject"],
+                curriculum_id=curriculum_id,
+                grade_id=grade_id,
+                subject_id=subject_id,
                 code=item["code"],
                 description=item["description"],
             ))
             imported += 1
         else:
-            row.grade = item["grade"]
-            row.subject = item["subject"]
+            row.grade_id = grade_id
+            row.subject_id = subject_id
             row.description = item["description"]
             updated += 1
     await db.commit()
@@ -73,8 +80,9 @@ async def map_topic_slos(
     slo_codes: list[str],
     curriculum: str,
 ) -> int:
+    curriculum_id = await resolve_curriculum_id(db, curriculum)
     slo_result = await db.execute(
-        select(SLO).where(SLO.curriculum == curriculum, SLO.code.in_(slo_codes))
+        select(SLO).where(SLO.curriculum_id == curriculum_id, SLO.code.in_(slo_codes))
     )
     slos = list(slo_result.scalars().all())
     found_codes = {s.code for s in slos}
@@ -107,11 +115,14 @@ async def list_books(
 ) -> tuple[list[Book], int]:
     query = select(Book)
     if curriculum is not None:
-        query = query.where(Book.curriculum == curriculum)
+        curriculum_id = await resolve_curriculum_id(db, curriculum)
+        query = query.where(Book.curriculum_id == curriculum_id)
     if grade is not None:
-        query = query.where(Book.grade == grade)
+        grade_id = await resolve_grade_id(db, grade)
+        query = query.where(Book.grade_id == grade_id)
     if subject is not None:
-        query = query.where(Book.subject == subject)
+        subject_id = await resolve_subject_id(db, subject)
+        query = query.where(Book.subject_id == subject_id)
 
     count_result = await db.execute(
         select(func.count()).select_from(query.subquery())
@@ -141,11 +152,12 @@ async def upsert_chapter_schedule(
     items: list,
 ) -> list[CurriculumChapterSchedule]:
     logger.info("upsert_chapter_schedule: curriculum=%s count=%d", curriculum, len(items))
+    curriculum_id = await resolve_curriculum_id(db, curriculum)
     upserted: list[CurriculumChapterSchedule] = []
     for item in items:
         existing_result = await db.execute(
             select(CurriculumChapterSchedule).where(
-                CurriculumChapterSchedule.curriculum == curriculum,
+                CurriculumChapterSchedule.curriculum_id == curriculum_id,
                 CurriculumChapterSchedule.chapter_id == item.chapter_id,
             )
         )
@@ -160,7 +172,7 @@ async def upsert_chapter_schedule(
             upserted.append(existing)
         else:
             row = CurriculumChapterSchedule(
-                curriculum=curriculum,
+                curriculum_id=curriculum_id,
                 book_id=item.book_id,
                 chapter_id=item.chapter_id,
                 suggested_teaching_days=item.suggested_teaching_days,
@@ -181,9 +193,10 @@ async def list_chapter_schedule(
     curriculum: str,
 ) -> list[CurriculumChapterSchedule]:
     logger.info("list_chapter_schedule: curriculum=%s", curriculum)
+    curriculum_id = await resolve_curriculum_id(db, curriculum)
     result = await db.execute(
         select(CurriculumChapterSchedule)
-        .where(CurriculumChapterSchedule.curriculum == curriculum)
+        .where(CurriculumChapterSchedule.curriculum_id == curriculum_id)
         .order_by(CurriculumChapterSchedule.suggested_position)
     )
     items = list(result.scalars().all())

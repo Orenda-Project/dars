@@ -11,6 +11,7 @@ from dars.config import settings
 from dars.curriculum.admin_service import breakdown_chapter
 from dars.curriculum.import_service import import_books, import_single_book, list_known_books, preview_book
 from dars.curriculum.models import Book, BookChapter, LessonSlot, Topic
+from dars.lookup.service import get_curriculum_code, resolve_curriculum_id, resolve_grade_id, resolve_subject_id
 from dars.curriculum.schemas import (
     BookChapterListResponse,
     BookChapterResponse,
@@ -86,9 +87,9 @@ async def list_books_endpoint(
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> BookListResponse:
-    curriculum = current_client.curriculum
-    logger.info("list_books_endpoint: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, curriculum, grade, subject)
-    items, total = await list_books(db, curriculum=curriculum, grade=grade, subject=subject)
+    curriculum_code = await get_curriculum_code(db, current_client.curriculum_id) if current_client.curriculum_id else None
+    logger.info("list_books_endpoint: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, curriculum_code, grade, subject)
+    items, total = await list_books(db, curriculum=curriculum_code, grade=grade, subject=subject)
     logger.info("list_books_endpoint: returning count=%d total=%d", len(items), total)
     return BookListResponse(
         items=[BookResponse.model_validate(b) for b in items],
@@ -103,10 +104,11 @@ async def list_slos_endpoint(
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> SLOListResponse:
-    if not current_client.curriculum:
+    if not current_client.curriculum_id:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Client has no curriculum configured")
-    logger.info("list_slos_endpoint: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, current_client.curriculum, grade, subject)
-    items, total = await list_slos(db, curriculum=current_client.curriculum, grade=grade, subject=subject)
+    curriculum_code = await get_curriculum_code(db, current_client.curriculum_id)
+    logger.info("list_slos_endpoint: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, curriculum_code, grade, subject)
+    items, total = await list_slos(db, curriculum=curriculum_code, grade=grade, subject=subject)
     logger.info("list_slos_endpoint: returning count=%d", total)
     return SLOListResponse(items=[SLORead.model_validate(s) for s in items], total=total)
 
@@ -180,16 +182,18 @@ async def get_book_curriculum(
     Returns chapters → topics → lessons (with lesson_plan_id).
     Client's curriculum is read from their profile — they don't need to send it.
     """
-    if not current_client.curriculum:
+    if not current_client.curriculum_id:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Client has no curriculum configured")
 
-    logger.info("get_book_curriculum: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, current_client.curriculum, grade, subject)
+    grade_id = await resolve_grade_id(db, grade)
+    subject_id = await resolve_subject_id(db, subject)
+    logger.info("get_book_curriculum: client_id=%s curriculum_id=%s grade=%s subject=%s", current_client.id, current_client.curriculum_id, grade, subject)
 
     book_result = await db.execute(
         select(Book).where(
-            Book.curriculum == current_client.curriculum,
-            Book.grade == grade,
-            Book.subject == subject,
+            Book.curriculum_id == current_client.curriculum_id,
+            Book.grade_id == grade_id,
+            Book.subject_id == subject_id,
         )
     )
     book = book_result.scalar_one_or_none()
@@ -321,11 +325,16 @@ async def generate_slot_lp(
                 t.topic_text,
                 ls.topic_subtopic AS topic,
                 t.start_page, t.end_page,
-                b.grade, b.subject, b.curriculum
+                b.grade_id, b.subject_id, b.curriculum_id,
+                g.code AS grade_code, s.code AS subject_code,
+                c.code AS curriculum_code
             FROM lesson_slots ls
             JOIN topics t ON t.id = ls.topic_id
             JOIN book_chapters bc ON bc.id = t.chapter_id
             JOIN books b ON b.id = bc.book_id
+            LEFT JOIN grades g ON g.id = b.grade_id
+            LEFT JOIN subjects s ON s.id = b.subject_id
+            LEFT JOIN curriculums c ON c.id = b.curriculum_id
             WHERE ls.id = :slot_id
         """),
         {"slot_id": str(slot_id)},
@@ -336,11 +345,16 @@ async def generate_slot_lp(
     if not data["topic_text"]:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Slot has no topic_text — run chapter breakdown first")
 
+    from dars.lookup.service import resolve_curriculum_id as _rc, resolve_grade_id as _rg, resolve_subject_id as _rs
+    from dars.mapping import canonical_grade, canonical_subject
+    lp_curriculum_id = await _rc(db, data["curriculum"])
+    lp_grade_id = await _rg(db, int(data["grade"]))
+    lp_subject_id = await _rs(db, data["subject"])
     lp = GeneratedLP(
         client_id=current_client.id,
-        curriculum=data["curriculum"],
-        grade=str(data["grade"]),
-        subject=data["subject"],
+        curriculum_id=lp_curriculum_id,
+        grade_id=lp_grade_id,
+        subject_id=lp_subject_id,
         topic=data["topic"],
         page_number=_format_page_range(data["start_page"], data["end_page"]),
         status="PENDING",
@@ -365,9 +379,9 @@ async def generate_slot_lp(
         engine = create_async_engine(settings.database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
 
-        curriculum = slot_data["curriculum"]
-        subject = canonical_subject(slot_data["subject"])
-        grade = canonical_grade(slot_data["grade"])
+        curriculum = slot_data["curriculum_code"]
+        subject = canonical_subject(slot_data["subject_code"])
+        grade = canonical_grade(slot_data["grade_code"])
 
         payload = {
             "grade": grade,
@@ -640,8 +654,11 @@ async def map_topic_slos_endpoint(
     book = await db.get(Book, chapter.book_id) if chapter else None
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    book_curriculum_code = await get_curriculum_code(db, book.curriculum_id)
+    if not book_curriculum_code:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Book has no curriculum")
     try:
-        count = await map_topic_slos(db, topic_id, body.slo_codes, book.curriculum)
+        count = await map_topic_slos(db, topic_id, body.slo_codes, book_curriculum_code)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return {"mapped": count}
@@ -854,11 +871,16 @@ async def build_remaining_endpoint(
                             SELECT ls.id AS slot_id, ls.lesson_plan_id,
                                    t.topic_text, ls.topic_subtopic AS topic,
                                    t.start_page, t.end_page,
-                                   b.grade, b.subject, b.curriculum
+                                   b.grade_id, b.subject_id, b.curriculum_id,
+                                   g.code AS grade_code, s.code AS subject_code,
+                                   c.code AS curriculum_code
                             FROM lesson_slots ls
                             JOIN topics t ON t.id = ls.topic_id
                             JOIN book_chapters bc ON bc.id = t.chapter_id
                             JOIN books b ON b.id = bc.book_id
+                            LEFT JOIN grades g ON g.id = b.grade_id
+                            LEFT JOIN subjects s ON s.id = b.subject_id
+                            LEFT JOIN curriculums c ON c.id = b.curriculum_id
                             WHERE t.chapter_id = :cid AND ls.lesson_plan_id IS NULL
                               AND t.topic_text IS NOT NULL AND t.topic_text != ''
                         """),
@@ -872,9 +894,9 @@ async def build_remaining_endpoint(
                         # We borrow book curriculum for client_id=null scenario
                         lp = GeneratedLP(
                             client_id=book_id,  # placeholder; admin bulk job
-                            curriculum=slot["curriculum"],
-                            grade=str(slot["grade"]),
-                            subject=slot["subject"],
+                            curriculum_id=slot["curriculum_id"],
+                            grade_id=slot["grade_id"],
+                            subject_id=slot["subject_id"],
                             topic=slot["topic"],
                             page_number=_format_page_range(slot["start_page"], slot["end_page"]),
                             status="PENDING",
@@ -888,9 +910,9 @@ async def build_remaining_endpoint(
                         await session.commit()
 
                         payload = {
-                            "grade": canonical_grade(slot["grade"]),
-                            "curriculum": slot["curriculum"],
-                            "subject": canonical_subject(slot["subject"]),
+                            "grade": canonical_grade(slot["grade_code"]),
+                            "curriculum": slot["curriculum_code"],
+                            "subject": canonical_subject(slot["subject_code"]),
                             "topic": slot["topic"],
                             "page_content": slot["topic_text"] or "",
                         }
@@ -950,11 +972,16 @@ async def bulk_generate_lps_endpoint(
         text("""
             SELECT ls.id AS slot_id, ls.lesson_plan_id, t.topic_text,
                    ls.topic_subtopic AS topic, t.start_page, t.end_page,
-                   b.grade, b.subject, b.curriculum
+                   b.grade_id, b.subject_id, b.curriculum_id,
+                   g.code AS grade_code, s.code AS subject_code,
+                   c.code AS curriculum_code
             FROM lesson_slots ls
             JOIN topics t ON t.id = ls.topic_id
             JOIN book_chapters bc ON bc.id = t.chapter_id
             JOIN books b ON b.id = bc.book_id
+            LEFT JOIN grades g ON g.id = b.grade_id
+            LEFT JOIN subjects s ON s.id = b.subject_id
+            LEFT JOIN curriculums c ON c.id = b.curriculum_id
             WHERE t.chapter_id = :chapter_id
         """),
         {"chapter_id": str(chapter_id)},
@@ -972,9 +999,9 @@ async def bulk_generate_lps_endpoint(
 
         lp = GeneratedLP(
             client_id=admin_client.id if admin_client else chapter_id,
-            curriculum=slot["curriculum"],
-            grade=str(slot["grade"]),
-            subject=slot["subject"],
+            curriculum_id=slot["curriculum_id"],
+            grade_id=slot["grade_id"],
+            subject_id=slot["subject_id"],
             topic=slot["topic"],
             page_number=_format_page_range(slot["start_page"], slot["end_page"]),
             status="PENDING",
@@ -995,9 +1022,9 @@ async def bulk_generate_lps_endpoint(
             engine = create_async_engine(settings.database_url)
             factory = async_sessionmaker(engine, expire_on_commit=False)
             payload = {
-                "grade": canonical_grade(sd["grade"]),
-                "curriculum": sd["curriculum"],
-                "subject": canonical_subject(sd["subject"]),
+                "grade": canonical_grade(sd["grade_code"]),
+                "curriculum": sd["curriculum_code"],
+                "subject": canonical_subject(sd["subject_code"]),
                 "topic": sd["topic"],
                 "page_content": sd["topic_text"] or "",
             }

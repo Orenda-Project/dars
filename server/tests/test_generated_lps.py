@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from dars.curriculum_data.models import CurriculumData
 from dars.database import Base, get_db
 from dars.lookup.models import Grade, Subject
 from dars.main import app
@@ -19,6 +20,8 @@ async def db_session():
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         session.add_all([
+            CurriculumData(code="NCP", name="National Curriculum of Pakistan"),
+            CurriculumData(code="SNC", name="Single National Curriculum"),
             Grade(code=1, display_name="Grade 1"),
             Grade(code=2, display_name="Grade 2"),
             Grade(code=3, display_name="Grade 3"),
@@ -79,7 +82,7 @@ async def test_create_lp_returns_202_pending(http_client):
     assert resp.status_code == 202
     data = resp.json()
     assert data["status"] == "PENDING"
-    assert data["curriculum"] == "NCP"
+    assert data["curriculum_id"] is not None
     assert "id" in data
 
 

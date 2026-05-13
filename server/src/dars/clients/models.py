@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, String, Text
+from sqlalchemy import BigInteger, Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from dars.database import Base
@@ -14,6 +14,5 @@ class Client(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # curriculum stored as denormalized text code (e.g. "NCP", "SNC") — no FK constraint
-    curriculum: Mapped[str | None] = mapped_column(Text, nullable=True)
+    curriculum_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("curriculums.id"), nullable=True)
     default_teacher_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
