@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dars.database import Base, get_db
+from dars.lookup.models import Grade, Subject
 from dars.main import app
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
@@ -17,6 +18,21 @@ async def db_session():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        session.add_all([
+            Grade(code=1, display_name="Grade 1"),
+            Grade(code=2, display_name="Grade 2"),
+            Grade(code=3, display_name="Grade 3"),
+            Grade(code=4, display_name="Grade 4"),
+            Grade(code=5, display_name="Grade 5"),
+            Subject(code="Eng", display_name="English"),
+            Subject(code="Maths", display_name="Mathematics"),
+            Subject(code="Urdu", display_name="Urdu"),
+            Subject(code="Science", display_name="Science"),
+            Subject(code="GK", display_name="General Knowledge"),
+            Subject(code="Islamiat", display_name="Islamiat"),
+            Subject(code="SST", display_name="Social Studies"),
+        ])
+        await session.commit()
         yield session
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -142,3 +158,23 @@ async def test_client_isolation_list(http_client):
     )
     assert list_resp.status_code == 200
     assert list_resp.json()["total"] == 0
+
+
+async def test_create_lp_unknown_subject_422(http_client):
+    api_key = await _signup(http_client, "badsubj@test.com")
+    resp = await http_client.post(
+        "/api/v1/lesson-plans",
+        json={"grade": 5, "subject": "Klingon", "topic": "test"},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 422
+
+
+async def test_create_lp_unknown_grade_422(http_client):
+    api_key = await _signup(http_client, "badgrade@test.com")
+    resp = await http_client.post(
+        "/api/v1/lesson-plans",
+        json={"grade": 99, "subject": "Maths", "topic": "test"},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 422

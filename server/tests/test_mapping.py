@@ -1,13 +1,14 @@
 """
 Unit tests for the canonical value mapping module (dars.mapping).
+
+mapping.py is now normalisation-only — it no longer raises on unknown
+subjects/grades. DB validation is handled by dars.lookup.service.
 """
-import pytest
 
 from dars.mapping import (
     canonical_curriculum,
     canonical_grade,
     canonical_subject,
-    validate_curriculum_subject,
 )
 
 
@@ -34,11 +35,16 @@ def test_canonical_subject_aliases_normalised():
     assert canonical_subject("science") == "Science"
     assert canonical_subject("gk") == "GK"
     assert canonical_subject("generalknowledge") == "GK"
+    assert canonical_subject("Islamiat") == "Islamiat"
+    assert canonical_subject("islamiat") == "Islamiat"
+    assert canonical_subject("sst") == "SST"
+    assert canonical_subject("socialstudies") == "SST"
 
 
-def test_canonical_subject_unknown_raises():
-    with pytest.raises(ValueError, match="Unknown subject"):
-        canonical_subject("physics")
+def test_canonical_subject_unknown_returns_value_as_is():
+    # No longer raises — passes through for DB to validate
+    assert canonical_subject("physics") == "physics"
+    assert canonical_subject("Klingon") == "Klingon"
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +65,7 @@ def test_canonical_curriculum_aliases():
 
 
 def test_canonical_curriculum_unknown_raises():
+    import pytest
     with pytest.raises(ValueError, match="Unknown curriculum"):
         canonical_curriculum("AKU")
 
@@ -78,28 +85,7 @@ def test_canonical_grade_accepts_strings():
     assert canonical_grade("5") == 5
 
 
-def test_canonical_grade_out_of_range_raises():
-    with pytest.raises(ValueError, match="Grade"):
-        canonical_grade(0)
-    with pytest.raises(ValueError, match="Grade"):
-        canonical_grade(6)
-
-
-# ---------------------------------------------------------------------------
-# validate_curriculum_subject
-# ---------------------------------------------------------------------------
-
-
-def test_validate_curriculum_subject_valid():
-    validate_curriculum_subject("ICT", "Eng")
-    validate_curriculum_subject("ICT", "Maths")
-    validate_curriculum_subject("Sindh", "GK")
-    validate_curriculum_subject("Punjab", "Urdu")
-
-
-def test_validate_curriculum_subject_invalid():
-    with pytest.raises(ValueError, match="not valid for curriculum"):
-        validate_curriculum_subject("Punjab", "GK")
-
-    with pytest.raises(ValueError, match="not valid for curriculum"):
-        validate_curriculum_subject("ICT", "GK")
+def test_canonical_grade_out_of_range_returns_int():
+    # No longer raises — passes through for DB to validate
+    assert canonical_grade(0) == 0
+    assert canonical_grade(99) == 99
