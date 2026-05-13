@@ -53,6 +53,13 @@ async def run_migrations(database_url: str) -> None:
             sql = path.read_text(encoding="utf-8")
             log.info("Applying migration: %s", path.name)
             await conn.execute(sql)
+            # Recreate schema_migrations in case the migration just dropped it (reset migration)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    filename TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
             await conn.execute(
                 "INSERT INTO schema_migrations (filename) VALUES ($1)", path.name
             )
