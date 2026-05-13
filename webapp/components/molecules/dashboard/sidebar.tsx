@@ -172,6 +172,28 @@ export function Sidebar() {
           Sign out
         </button>
       </div>
+
+      <div className="px-3 py-3 border-t border-dars-rule-dark">
+        <p className="px-3 py-1 text-[10px] font-semibold tracking-widest uppercase text-dars-muted-light/40 mb-1">
+          Sample App
+        </p>
+        <a
+          href="/teacher-app"
+          className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors no-underline text-dars-muted-light/70 hover:bg-white/10 hover:text-dars-parchment"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          <span className="text-xs">Teacher App</span>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 ml-auto opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="7" y1="17" x2="17" y2="7" />
+            <polyline points="7 7 17 7 17 17" />
+          </svg>
+        </a>
+      </div>
     </aside>
   );
 }
