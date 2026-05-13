@@ -23,6 +23,10 @@ import {
   getToday,
   getClass,
   upsertChapterPlans,
+  generateLPForSlot,
+  generateAllLPs,
+  getLessonPlan,
+  generateExamForSlot,
   type AcademicYearRead,
   type SchoolClassRead,
   type CSTRead,
@@ -32,6 +36,7 @@ import {
   type TodaySlotEntry,
   type SchoolClassWithSubjects,
   type PrefillChapterPlan,
+  type GeneratedLPResponse,
 } from "@/lib/school-api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2164,6 +2169,15 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
   const [breakdowningYear, setBreakdowningYear] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // LP generation state
+  const [generatingLP, setGeneratingLP] = useState<string | null>(null); // slot_id being generated
+  const [generatingAllLPs, setGeneratingAllLPs] = useState(false);
+  // Maps slot_id → lp_id for polling
+  const [lpPolling, setLpPolling] = useState<Record<string, string>>({});
+  // Maps lp_id → GeneratedLPResponse for ready LPs
+  const [lpCache, setLpCache] = useState<Record<string, GeneratedLPResponse>>({});
+  // Slide-over: slot_id whose LP we're viewing
+  const [lpSlideOver, setLpSlideOver] = useState<string | null>(null);
   const [viewedLP, setViewedLP] = useState<string | null>(null);
   const [marking, setMarking] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
@@ -2272,6 +2286,90 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
       setMarking(null);
     }
   }
+
+  async function handleGenerateLP(slot: ClassLessonSlotRead) {
+    setGeneratingLP(slot.id);
+    setError(null);
+    try {
+      const res = await generateLPForSlot(slot.id);
+      // Start polling
+      setLpPolling((prev) => ({ ...prev, [slot.id]: res.lesson_plan_id }));
+      // Update slot in list with new lesson_plan_id
+      setSlots((prev) =>
+        prev.map((s) =>
+          s.id === slot.id ? { ...s, lesson_plan_id: res.lesson_plan_id } : s
+        )
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "LP generation failed");
+    } finally {
+      setGeneratingLP(null);
+    }
+  }
+
+  async function handleGenerateAllLPs() {
+    if (!selectedPlanId) return;
+    setGeneratingAllLPs(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await generateAllLPs(selectedPlanId);
+      setSuccessMsg(
+        `Queued ${res.queued} LP${res.queued !== 1 ? "s" : ""} for generation. ${res.skipped > 0 ? `(${res.skipped} already had LPs)` : ""}`
+      );
+      // Reload slots to get updated lesson_plan_ids
+      const slotsRes = await getLessonSlots(selectedPlanId);
+      setSlots(slotsRes.items);
+      // Start polling for all newly-linked slots
+      const newPolling: Record<string, string> = {};
+      for (const s of slotsRes.items) {
+        if (s.lesson_plan_id && !lpCache[s.lesson_plan_id]) {
+          newPolling[s.id] = s.lesson_plan_id;
+        }
+      }
+      if (Object.keys(newPolling).length > 0) {
+        setLpPolling((prev) => ({ ...prev, ...newPolling }));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Generate all LPs failed");
+    } finally {
+      setGeneratingAllLPs(false);
+    }
+  }
+
+  // Poll for LP readiness
+  useEffect(() => {
+    const slotIds = Object.keys(lpPolling);
+    if (slotIds.length === 0) return;
+
+    const interval = setInterval(() => {
+      void (async () => {
+        const toRemove: string[] = [];
+        for (const slotId of slotIds) {
+          const lpId = lpPolling[slotId];
+          if (!lpId) continue;
+          try {
+            const lp = await getLessonPlan(lpId);
+            if (lp.status === "READY" || lp.status === "ERROR") {
+              setLpCache((prev) => ({ ...prev, [lpId]: lp }));
+              toRemove.push(slotId);
+            }
+          } catch {
+            toRemove.push(slotId);
+          }
+        }
+        if (toRemove.length > 0) {
+          setLpPolling((prev) => {
+            const next = { ...prev };
+            for (const id of toRemove) delete next[id];
+            return next;
+          });
+        }
+      })();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [lpPolling, lpCache]);
 
   function startEditTitle(slot: ClassLessonSlotRead) {
     setEditingTitle(slot.id);
@@ -2422,6 +2520,15 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
             <div className="flex gap-2">
               <button
                 type="button"
+                onClick={() => void handleGenerateAllLPs()}
+                disabled={generatingAllLPs}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-dars-terra border border-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-white disabled:opacity-60"
+              >
+                {generatingAllLPs && <Spinner />}
+                Generate All LPs
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleGenerate()}
                 disabled={generating}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-dars-terra text-white rounded-md hover:opacity-90 cursor-pointer border-none disabled:opacity-60"
@@ -2503,29 +2610,83 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
                     </button>
                   )}
 
-                  {/* View LP */}
-                  <button
-                    type="button"
-                    onClick={() => setViewedLP(viewedLP === slot.id ? null : slot.id)}
-                    className="shrink-0 px-3 py-1.5 text-xs font-semibold border border-dars-terra text-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-transparent"
-                  >
-                    {viewedLP === slot.id ? "Close" : "View LP"}
-                  </button>
+                  {/* LP generation / view */}
+                  {(() => {
+                    const lpId = slot.lesson_plan_id;
+                    const isGenerating = generatingLP === slot.id;
+                    const isPolling = lpId ? !!lpPolling[slot.id] : false;
+                    const readyLP = lpId ? lpCache[lpId] : null;
+
+                    if (isGenerating) {
+                      return (
+                        <span className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-dars-muted border border-dars-rule-dark rounded-md">
+                          <Spinner />
+                          Queuing…
+                        </span>
+                      );
+                    }
+                    if (!lpId) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => void handleGenerateLP(slot)}
+                          className="shrink-0 px-3 py-1.5 text-xs font-semibold border border-dars-terra text-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-transparent"
+                        >
+                          Generate LP
+                        </button>
+                      );
+                    }
+                    if (isPolling || (lpId && !readyLP)) {
+                      return (
+                        <span className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-600 border border-amber-300 rounded-md bg-amber-50">
+                          <Spinner />
+                          Generating…
+                        </span>
+                      );
+                    }
+                    if (readyLP?.status === "ERROR") {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => void handleGenerateLP(slot)}
+                          className="shrink-0 px-3 py-1.5 text-xs font-semibold border border-red-400 text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer bg-transparent"
+                        >
+                          Retry LP
+                        </button>
+                      );
+                    }
+                    // READY
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setLpSlideOver(lpSlideOver === slot.id ? null : slot.id)}
+                        className="shrink-0 px-3 py-1.5 text-xs font-semibold border border-dars-terra text-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-transparent"
+                      >
+                        {lpSlideOver === slot.id ? "Close" : "View LP"}
+                      </button>
+                    );
+                  })()}
                 </div>
 
-                {viewedLP === slot.id && (
+                {lpSlideOver === slot.id && slot.lesson_plan_id && lpCache[slot.lesson_plan_id] && (
                   <div className="border border-t-0 border-dars-rule-light rounded-b-lg bg-white px-6 py-5">
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-sm font-serif font-semibold text-dars-ink">
-                        Lesson Plan Preview
+                        Lesson Plan
                       </h4>
-                      <span className="text-[10px] font-semibold tracking-wide uppercase bg-dars-parchment-deep text-dars-muted px-2 py-0.5 rounded">
-                        Sample
+                      <span className={`text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded ${
+                        lpCache[slot.lesson_plan_id]?.status === "READY"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {lpCache[slot.lesson_plan_id]?.status}
                       </span>
                     </div>
                     <div
-                      className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: SAMPLE_LP_HTML }}
+                      className="prose prose-sm max-w-none overflow-y-auto max-h-96"
+                      dangerouslySetInnerHTML={{
+                        __html: lpCache[slot.lesson_plan_id]?.content ?? "<p>No content available.</p>"
+                      }}
                     />
                   </div>
                 )}
@@ -2548,6 +2709,8 @@ function AssessmentsTab({ classes }: { classes: SchoolClassRead[] }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [generatingExam, setGeneratingExam] = useState<string | null>(null); // slot_id
+  const [examPolling, setExamPolling] = useState<Record<string, string>>({}); // slot_id → exam_id
 
   // Load subjects on class change
   useEffect(() => {
@@ -2585,6 +2748,22 @@ function AssessmentsTab({ classes }: { classes: SchoolClassRead[] }) {
       setError(e instanceof Error ? e.message : "Failed to update status");
     } finally {
       setUpdating(null);
+    }
+  }
+
+  async function handleGenerateExam(slot: AssessmentSlotRead) {
+    setGeneratingExam(slot.id);
+    setError(null);
+    try {
+      const res = await generateExamForSlot(slot.id);
+      setExamPolling((prev) => ({ ...prev, [slot.id]: res.exam_id }));
+      setSlots((prev) =>
+        prev.map((s) => (s.id === slot.id ? { ...s, exam_id: res.exam_id } : s))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Exam generation failed");
+    } finally {
+      setGeneratingExam(null);
     }
   }
 
@@ -2674,6 +2853,9 @@ function AssessmentsTab({ classes }: { classes: SchoolClassRead[] }) {
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-dars-muted uppercase tracking-wide border-b border-dars-rule-light">
                   Status
                 </th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-dars-muted uppercase tracking-wide border-b border-dars-rule-light">
+                  Exam
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -2685,7 +2867,7 @@ function AssessmentsTab({ classes }: { classes: SchoolClassRead[] }) {
                   <td className="px-4 py-3">
                     <span
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                        slot.assessment_type === "FA"
+                        slot.assessment_type === "FA" || slot.assessment_type === "formative"
                           ? "bg-blue-100 text-blue-800"
                           : "bg-violet-100 text-violet-800"
                       }`}
@@ -2708,6 +2890,33 @@ function AssessmentsTab({ classes }: { classes: SchoolClassRead[] }) {
                       <option value="completed">Completed</option>
                       <option value="skipped">Skipped</option>
                     </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    {generatingExam === slot.id ? (
+                      <span className="flex items-center gap-1 text-xs text-dars-muted">
+                        <Spinner />
+                        Queuing…
+                      </span>
+                    ) : examPolling[slot.id] || slot.exam_id ? (
+                      slot.exam_id && !examPolling[slot.id] ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                          Generated
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-amber-600">
+                          <Spinner />
+                          Generating…
+                        </span>
+                      )
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateExam(slot)}
+                        className="px-2 py-1 text-xs font-semibold border border-dars-terra text-dars-terra rounded hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-transparent"
+                      >
+                        Generate Exam
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
