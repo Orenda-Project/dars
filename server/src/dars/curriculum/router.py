@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -114,7 +113,7 @@ async def list_slos_endpoint(
 
 @router.get("/api/v1/topics/{topic_id}/slos", response_model=TopicSLOsResponse)
 async def get_topic_slos_endpoint(
-    topic_id: uuid.UUID,
+    topic_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> TopicSLOsResponse:
@@ -128,7 +127,7 @@ async def get_topic_slos_endpoint(
 
 @router.get("/api/v1/books/{book_id}/chapters", response_model=BookChapterListResponse)
 async def list_book_chapters_endpoint(
-    book_id: uuid.UUID,
+    book_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> BookChapterListResponse:
@@ -145,7 +144,7 @@ async def list_book_chapters_endpoint(
 
 @router.get("/api/v1/books/{book_id}/stats")
 async def get_book_stats(
-    book_id: uuid.UUID,
+    book_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -224,11 +223,11 @@ async def get_book_curriculum(
     )
     all_rows = rows.mappings().all()
 
-    chapters: dict[uuid.UUID, CurriculumChapter] = {}
-    topics: dict[uuid.UUID, CurriculumTopic] = {}
+    chapters: dict[int, CurriculumChapter] = {}
+    topics: dict[int, CurriculumTopic] = {}
 
     for r in all_rows:
-        ch_id = uuid.UUID(str(r["chapter_id"]))
+        ch_id = int(r["chapter_id"])
         if ch_id not in chapters:
             chapters[ch_id] = CurriculumChapter(
                 id=ch_id,
@@ -241,7 +240,7 @@ async def get_book_curriculum(
 
         if r["topic_id"] is None:
             continue
-        t_id = uuid.UUID(str(r["topic_id"]))
+        t_id = int(r["topic_id"])
         if t_id not in topics:
             topic = CurriculumTopic(
                 id=t_id,
@@ -257,10 +256,10 @@ async def get_book_curriculum(
         if r["slot_id"] is None:
             continue
         topics[t_id].lessons.append(CurriculumLesson(
-            id=uuid.UUID(str(r["slot_id"])),
+            id=int(r["slot_id"]),
             day_number=r["day_number"],
             title=r["topic_subtopic"],
-            lesson_plan_id=uuid.UUID(str(r["lesson_plan_id"])) if r["lesson_plan_id"] else None,
+            lesson_plan_id=int(r["lesson_plan_id"]) if r["lesson_plan_id"] else None,
             assessment_id=None,
         ))
 
@@ -273,8 +272,8 @@ async def get_book_curriculum(
     response_model=TopicListResponse,
 )
 async def list_chapter_topics(
-    book_id: uuid.UUID,
-    chapter_id: uuid.UUID,
+    book_id: int,
+    chapter_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> TopicListResponse:
@@ -308,7 +307,7 @@ async def list_chapter_topics(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def generate_slot_lp(
-    slot_id: uuid.UUID,
+    slot_id: int,
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -413,7 +412,7 @@ async def generate_slot_lp(
 
 @router.get("/api/v1/topics/{topic_id}/slots", response_model=LessonSlotListResponse)
 async def list_topic_slots(
-    topic_id: uuid.UUID,
+    topic_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> LessonSlotListResponse:
@@ -450,7 +449,7 @@ async def list_topic_slots(
 
 
 class CreateTopicRequest(BaseModel):
-    chapter_id: uuid.UUID
+    chapter_id: int
     topic_number: int
     title: str
     start_page: int | None = None
@@ -465,7 +464,7 @@ class CreateSlotRequest(BaseModel):
 
 @router.post("/api/v1/chapters/{chapter_id}/topics", response_model=TopicResponse, status_code=201)
 async def create_topic(
-    chapter_id: uuid.UUID,
+    chapter_id: int,
     body: CreateTopicRequest,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
@@ -491,7 +490,7 @@ async def create_topic(
 
 @router.post("/api/v1/topics/{topic_id}/slots", response_model=LessonSlotResponse, status_code=201)
 async def create_slot(
-    topic_id: uuid.UUID,
+    topic_id: int,
     body: CreateSlotRequest,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
@@ -515,7 +514,7 @@ async def create_slot(
 
 @router.delete("/api/v1/chapters/{chapter_id}/breakdown", status_code=204)
 async def delete_chapter_breakdown(
-    chapter_id: uuid.UUID,
+    chapter_id: int,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -528,7 +527,7 @@ async def delete_chapter_breakdown(
 
 @router.delete("/api/v1/topics/{topic_id}", status_code=204)
 async def delete_topic(
-    topic_id: uuid.UUID,
+    topic_id: int,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -543,7 +542,7 @@ async def delete_topic(
 
 @router.delete("/api/v1/slots/{slot_id}", status_code=204)
 async def delete_slot(
-    slot_id: uuid.UUID,
+    slot_id: int,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -558,7 +557,7 @@ async def delete_slot(
 
 @router.delete("/api/v1/lesson-plans/{lp_id}", status_code=204)
 async def delete_lesson_plan(
-    lp_id: uuid.UUID,
+    lp_id: int,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -591,7 +590,7 @@ async def delete_lesson_plan(
     dependencies=[Depends(get_admin_client)],
 )
 async def breakdown_chapter_endpoint(
-    chapter_id: uuid.UUID,
+    chapter_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> BreakdownResponse:
     logger.info("breakdown_chapter_endpoint: chapter_id=%s", chapter_id)
@@ -628,7 +627,7 @@ async def import_slos_endpoint(
 
 @admin_router.post("/topics/{topic_id}/slos")
 async def map_topic_slos_endpoint(
-    topic_id: uuid.UUID,
+    topic_id: int,
     body: TopicSLOMapRequest,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
@@ -650,7 +649,7 @@ async def map_topic_slos_endpoint(
 
 @admin_router.delete("/topics/{topic_id}/slos", status_code=204)
 async def clear_topic_slos_endpoint(
-    topic_id: uuid.UUID,
+    topic_id: int,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -800,9 +799,9 @@ async def import_single_book_endpoint(
 
 @admin_router.post("/books/{book_id}/build-remaining")
 async def build_remaining_endpoint(
-    book_id: uuid.UUID,
+    book_id: int,
     background_tasks: BackgroundTasks,
-    chapter_id: uuid.UUID | None = None,
+    chapter_id: int | None = None,
     _admin: Client = Depends(get_admin_client),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -934,7 +933,7 @@ async def build_remaining_endpoint(
 
 @admin_router.post("/chapters/{chapter_id}/generate-lps")
 async def bulk_generate_lps_endpoint(
-    chapter_id: uuid.UUID,
+    chapter_id: int,
     background_tasks: BackgroundTasks,
     force: bool = Query(default=False),
     _admin: Client = Depends(get_admin_client),

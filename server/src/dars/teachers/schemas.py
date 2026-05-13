@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
@@ -19,8 +18,8 @@ class TeacherUpdateRequest(BaseModel):
 
 
 class TeacherResponse(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
+    id: int
+    client_id: int
     name: str
     email: str | None
     phone: str | None

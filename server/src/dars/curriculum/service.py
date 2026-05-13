@@ -1,4 +1,3 @@
-import uuid
 import logging
 
 from sqlalchemy import delete as sa_delete, func, select
@@ -28,7 +27,7 @@ async def list_slos(
     return list(items_result.scalars().all()), total
 
 
-async def get_topic_slos(db: AsyncSession, topic_id: uuid.UUID) -> list[SLO]:
+async def get_topic_slos(db: AsyncSession, topic_id: int) -> list[SLO]:
     result = await db.execute(
         select(SLO)
         .join(TopicSLO, TopicSLO.slo_id == SLO.id)
@@ -70,7 +69,7 @@ async def import_slos(
 
 async def map_topic_slos(
     db: AsyncSession,
-    topic_id: uuid.UUID,
+    topic_id: int,
     slo_codes: list[str],
     curriculum: str,
 ) -> int:
@@ -94,7 +93,7 @@ async def map_topic_slos(
     return len(slos)
 
 
-async def clear_topic_slos(db: AsyncSession, topic_id: uuid.UUID) -> None:
+async def clear_topic_slos(db: AsyncSession, topic_id: int) -> None:
     await db.execute(sa_delete(TopicSLO).where(TopicSLO.topic_id == topic_id))
     await db.commit()
     logger.info("clear_topic_slos: topic_id=%s cleared", topic_id)
@@ -126,7 +125,7 @@ async def list_books(
 
 async def list_book_chapters(
     db: AsyncSession,
-    book_id: uuid.UUID,
+    book_id: int,
 ) -> list[BookChapter]:
     result = await db.execute(
         select(BookChapter)

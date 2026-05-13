@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import uuid
 
 import httpx
 from sqlalchemy import func, select
@@ -20,7 +19,7 @@ POLL_TIMEOUT = 300  # give up after 5 minutes
 
 async def create_generated_exam(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    client_id: int,
     data: GeneratedExamCreate,
     curriculum: str,
 ) -> GeneratedExam:
@@ -50,8 +49,8 @@ async def create_generated_exam(
 
 async def get_generated_exam(
     db: AsyncSession,
-    exam_id: uuid.UUID,
-    client_id: uuid.UUID,
+    exam_id: int,
+    client_id: int,
 ) -> GeneratedExam | None:
     """Fetch a single generated exam, always filtering by client_id."""
     result = await db.execute(
@@ -65,7 +64,7 @@ async def get_generated_exam(
 
 async def list_generated_exams(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    client_id: int,
     external_id: str | None = None,
     skip: int = 0,
     limit: int = 50,
@@ -92,8 +91,8 @@ async def list_generated_exams(
 
 
 async def generate_exam_task(
-    exam_id: uuid.UUID,
-    client_id: uuid.UUID,
+    exam_id: int,
+    client_id: int,
     curriculum: str,
     request: GeneratedExamCreate,
 ) -> None:
@@ -105,107 +104,110 @@ async def generate_exam_task(
     engine = create_async_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
-    async with factory() as db:
-        exam = await db.get(GeneratedExam, exam_id)
-        if exam is None:
-            logger.error("generate_exam_task: GeneratedExam %s not found", exam_id)
-            await engine.dispose()
-            return
+    try:
+        async with factory() as db:
+            exam = await db.get(GeneratedExam, exam_id)
+            if exam is None:
+                logger.error("generate_exam_task: GeneratedExam %s not found", exam_id)
+                return
 
-        payload: dict = {
-            "callback_url": "https://dars.taleemabad.com/noop",
-            "generation_type": request.generation_type,
-            "curriculum": curriculum,
-            "grade": canonical_grade(request.grade),
-            "subject": canonical_subject(request.subject),
-            "page_ranges": request.page_ranges,
-            "include_answer_key": request.include_answer_key,
-            "image_generation_enabled": request.image_generation_enabled,
-            "enable_review": request.enable_review,
-            "question_types": request.question_types or ["seen", "unseen"],
-        }
-        if request.seen_categories is not None:
-            payload["seen_categories"] = request.seen_categories
-        if request.unseen_categories is not None:
-            payload["unseen_categories"] = request.unseen_categories
-        if request.unseen_objective_types is not None:
-            payload["unseen_objective_types"] = request.unseen_objective_types
-        if request.unseen_subjective_types is not None:
-            payload["unseen_subjective_types"] = request.unseen_subjective_types
-        if request.unseen_objective_counts is not None:
-            payload["unseen_objective_counts"] = request.unseen_objective_counts
-        if request.unseen_subjective_counts is not None:
-            payload["unseen_subjective_counts"] = request.unseen_subjective_counts
-        if request.long_question_sub_types is not None:
-            payload["long_question_sub_types"] = request.long_question_sub_types
+            payload: dict = {
+                "callback_url": "https://dars.taleemabad.com/noop",
+                "generation_type": request.generation_type,
+                "curriculum": curriculum,
+                "grade": canonical_grade(request.grade),
+                "subject": canonical_subject(request.subject),
+                "page_ranges": request.page_ranges,
+                "include_answer_key": request.include_answer_key,
+                "image_generation_enabled": request.image_generation_enabled,
+                "enable_review": request.enable_review,
+                "question_types": request.question_types or ["seen", "unseen"],
+            }
+            if request.seen_categories is not None:
+                payload["seen_categories"] = request.seen_categories
+            if request.unseen_categories is not None:
+                payload["unseen_categories"] = request.unseen_categories
+            if request.unseen_objective_types is not None:
+                payload["unseen_objective_types"] = request.unseen_objective_types
+            if request.unseen_subjective_types is not None:
+                payload["unseen_subjective_types"] = request.unseen_subjective_types
+            if request.unseen_objective_counts is not None:
+                payload["unseen_objective_counts"] = request.unseen_objective_counts
+            if request.unseen_subjective_counts is not None:
+                payload["unseen_subjective_counts"] = request.unseen_subjective_counts
+            if request.long_question_sub_types is not None:
+                payload["long_question_sub_types"] = request.long_question_sub_types
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as http:
-                submit_resp = await http.post(
-                    f"{settings.eg_assistant_url}/api/v2/generate-exam",
-                    json=payload,
-                    headers={"api-key": settings.eg_assistant_api_key},
-                )
-                if submit_resp.is_error:
-                    logger.error(
-                        "EG v2 submit error for exam=%s: HTTP %s — %s",
-                        exam_id, submit_resp.status_code, submit_resp.text,
-                    )
-                    submit_resp.raise_for_status()
-
-                job_id = submit_resp.json().get("job_id")
-                if not job_id:
-                    raise ValueError("EG v2 did not return job_id")
-
-                logger.info("generate_exam_task: exam=%s submitted job_id=%s", exam_id, job_id)
-                exam.eg_job_id = job_id
-                await db.commit()
-
-            elapsed = 0
-            result_data = None
-            async with httpx.AsyncClient(timeout=15.0) as http:
-                while elapsed < POLL_TIMEOUT:
-                    await asyncio.sleep(POLL_INTERVAL)
-                    elapsed += POLL_INTERVAL
-
-                    status_resp = await http.get(
-                        f"{settings.eg_assistant_url}/api/v2/webhook-status/{job_id}",
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as http:
+                    submit_resp = await http.post(
+                        f"{settings.eg_assistant_url}/api/v2/generate-exam",
+                        json=payload,
                         headers={"api-key": settings.eg_assistant_api_key},
                     )
-                    if status_resp.is_error:
-                        logger.warning(
-                            "generate_exam_task: status poll failed exam=%s job=%s HTTP %s",
-                            exam_id, job_id, status_resp.status_code,
+                    if submit_resp.is_error:
+                        logger.error(
+                            "EG v2 submit error for exam=%s: HTTP %s — %s",
+                            exam_id, submit_resp.status_code, submit_resp.text,
                         )
-                        continue
+                        submit_resp.raise_for_status()
 
-                    body = status_resp.json()
-                    job_status = body.get("job_status")
-                    logger.info(
-                        "generate_exam_task: exam=%s job=%s status=%s elapsed=%ds",
-                        exam_id, job_id, job_status, elapsed,
-                    )
+                    job_id = submit_resp.json().get("job_id")
+                    if not job_id:
+                        raise ValueError("EG v2 did not return job_id")
 
-                    if job_status == "completed":
-                        result_data = body.get("data")
-                        break
-                    elif job_status == "error":
-                        error_msg = body.get("data", {}).get("error", "unknown error from EG")
-                        raise ValueError(f"EG job failed: {error_msg}")
+                    logger.info("generate_exam_task: exam=%s submitted job_id=%s", exam_id, job_id)
+                    exam.eg_job_id = job_id
+                    await db.commit()
 
-            if result_data is None:
-                raise TimeoutError(f"EG job {job_id} did not complete within {POLL_TIMEOUT}s")
+                elapsed = 0
+                result_data = None
+                async with httpx.AsyncClient(timeout=15.0) as http:
+                    while elapsed < POLL_TIMEOUT:
+                        await asyncio.sleep(POLL_INTERVAL)
+                        elapsed += POLL_INTERVAL
 
-            exam.result = result_data
-            exam.status = "READY"
+                        status_resp = await http.get(
+                            f"{settings.eg_assistant_url}/api/v2/webhook-status/{job_id}",
+                            headers={"api-key": settings.eg_assistant_api_key},
+                        )
+                        if status_resp.is_error:
+                            logger.warning(
+                                "generate_exam_task: status poll failed exam=%s job=%s HTTP %s",
+                                exam_id, job_id, status_resp.status_code,
+                            )
+                            continue
 
-        except Exception as exc:
-            logger.error("Exam generation failed for exam=%s: %s", exam_id, exc, exc_info=True)
-            exam.error_message = str(exc)
-            exam.status = "ERROR"
+                        body = status_resp.json()
+                        job_status = body.get("job_status")
+                        logger.info(
+                            "generate_exam_task: exam=%s job=%s status=%s elapsed=%ds",
+                            exam_id, job_id, job_status, elapsed,
+                        )
 
-        await db.commit()
-        await db.refresh(exam)
-        logger.info("GeneratedExam %s marked %s", exam_id, exam.status)
+                        if job_status == "completed":
+                            result_data = body.get("data")
+                            break
+                        elif job_status == "error":
+                            error_msg = body.get("data", {}).get("error", "unknown error from EG")
+                            raise ValueError(f"EG job failed: {error_msg}")
 
-    await engine.dispose()
+                if result_data is None:
+                    raise TimeoutError(f"EG job {job_id} did not complete within {POLL_TIMEOUT}s")
+
+                exam.result = result_data
+                exam.status = "READY"
+
+            except Exception as exc:
+                logger.error("Exam generation failed for exam=%s: %s", exam_id, exc, exc_info=True)
+                exam.error_message = str(exc)
+                exam.status = "ERROR"
+
+            await db.commit()
+            await db.refresh(exam)
+            logger.info("GeneratedExam %s marked %s", exam_id, exam.status)
+
+    except Exception as exc:
+        logger.error("generate_exam_task: DB error for exam_id=%s: %s", exam_id, exc, exc_info=True)
+    finally:
+        await engine.dispose()

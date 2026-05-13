@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -9,7 +8,7 @@ class ClientCreateRequest(BaseModel):
 
 
 class ClientCreateResponse(BaseModel):
-    id: uuid.UUID
+    id: int
     name: str
     is_active: bool
     created_at: datetime
@@ -19,7 +18,7 @@ class ClientCreateResponse(BaseModel):
 
 
 class ClientPublicResponse(BaseModel):
-    id: uuid.UUID
+    id: int
     name: str
     is_active: bool
     webhook_url: str | None = None
@@ -39,7 +38,7 @@ class ClientSelfUpdateRequest(BaseModel):
 
 
 class ClientAdminResponse(BaseModel):
-    id: uuid.UUID
+    id: int
     name: str
     email: str | None = None
     is_active: bool

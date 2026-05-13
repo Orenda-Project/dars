@@ -101,7 +101,7 @@ async def _make_book(db: AsyncSession, curriculum: str = "NCP", **kwargs) -> Boo
     return book
 
 
-async def _make_chapter(db: AsyncSession, book_id: uuid.UUID) -> BookChapter:
+async def _make_chapter(db: AsyncSession, book_id: int) -> BookChapter:
     chapter = BookChapter(book_id=book_id, title="Ch1", chapter_number=1)
     db.add(chapter)
     await db.commit()
@@ -109,7 +109,7 @@ async def _make_chapter(db: AsyncSession, book_id: uuid.UUID) -> BookChapter:
     return chapter
 
 
-async def _make_topic(db: AsyncSession, chapter_id: uuid.UUID) -> Topic:
+async def _make_topic(db: AsyncSession, chapter_id: int) -> Topic:
     topic = Topic(chapter_id=chapter_id, topic_number=1, title="Topic 1")
     db.add(topic)
     await db.commit()
@@ -281,7 +281,7 @@ async def test_map_and_get_topic_slos(db_session):
         get_resp = await http.get(f"/api/v1/topics/{topic.id}/slos", headers={"X-API-Key": reader_key})
         assert get_resp.status_code == 200
         data = get_resp.json()
-        assert data["topic_id"] == str(topic.id)
+        assert data["topic_id"] == topic.id
         codes = [s["code"] for s in data["slos"]]
         assert "R1.1" in codes
         assert "R1.2" in codes

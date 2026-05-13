@@ -1,11 +1,10 @@
-import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
 
 class BookResponse(BaseModel):
-    id: uuid.UUID
+    id: int
     core_id: int | None = None
     curriculum: str
     grade: int
@@ -28,9 +27,9 @@ class BookListResponse(BaseModel):
 
 
 class BookChapterResponse(BaseModel):
-    id: uuid.UUID
+    id: int
     core_id: int | None = None
-    book_id: uuid.UUID
+    book_id: int
     title: str
     chapter_number: int
     start_page: int | None
@@ -50,8 +49,8 @@ class BookChapterListResponse(BaseModel):
 
 
 class TopicResponse(BaseModel):
-    id: uuid.UUID
-    chapter_id: uuid.UUID
+    id: int
+    chapter_id: int
     topic_number: int
     title: str
     start_page: int | None
@@ -72,13 +71,13 @@ class TopicListResponse(BaseModel):
 
 
 class LessonSlotResponse(BaseModel):
-    id: uuid.UUID
-    topic_id: uuid.UUID
+    id: int
+    topic_id: int
     day_number: int
     scheduled_date: str | None
     topic_subtopic: str
-    lesson_plan_id: uuid.UUID | None
-    assessment_id: uuid.UUID | None = None
+    lesson_plan_id: int | None
+    assessment_id: int | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -94,15 +93,15 @@ class LessonSlotListResponse(BaseModel):
 
 
 class CurriculumLesson(BaseModel):
-    id: uuid.UUID
+    id: int
     day_number: int
     title: str
-    lesson_plan_id: uuid.UUID | None
-    assessment_id: uuid.UUID | None
+    lesson_plan_id: int | None
+    assessment_id: int | None
 
 
 class CurriculumTopic(BaseModel):
-    id: uuid.UUID
+    id: int
     topic_number: int
     title: str
     start_page: int | None
@@ -111,7 +110,7 @@ class CurriculumTopic(BaseModel):
 
 
 class CurriculumChapter(BaseModel):
-    id: uuid.UUID
+    id: int
     chapter_number: int
     title: str
     start_page: int | None
@@ -120,7 +119,7 @@ class CurriculumChapter(BaseModel):
 
 
 class BookCurriculumResponse(BaseModel):
-    book_id: uuid.UUID
+    book_id: int
     book_title: str
     chapters: list[CurriculumChapter]
 
@@ -206,7 +205,7 @@ class ImportSingleBookResponse(BaseModel):
 
 
 class SLORead(BaseModel):
-    id: uuid.UUID
+    id: int
     curriculum: str
     grade: int
     subject: str
@@ -244,7 +243,7 @@ class TopicSLOMapRequest(BaseModel):
 
 
 class TopicSLOsResponse(BaseModel):
-    topic_id: uuid.UUID
+    topic_id: int
     slos: list[SLORead]
 
 
@@ -254,8 +253,8 @@ class TopicSLOsResponse(BaseModel):
 
 
 class ChapterScheduleItem(BaseModel):
-    book_id: uuid.UUID
-    chapter_id: uuid.UUID
+    book_id: int
+    chapter_id: int
     suggested_teaching_days: int
     suggested_position: int
     term: str | None = None
@@ -266,10 +265,10 @@ class ChapterScheduleUpsertRequest(BaseModel):
 
 
 class ChapterScheduleRead(BaseModel):
-    id: uuid.UUID
+    id: int
     curriculum: str
-    book_id: uuid.UUID
-    chapter_id: uuid.UUID
+    book_id: int
+    chapter_id: int
     suggested_teaching_days: int
     suggested_position: int
     term: str | None
@@ -283,7 +282,7 @@ class ChapterScheduleListResponse(BaseModel):
 
 
 class PrefillChapterPlan(BaseModel):
-    chapter_id: uuid.UUID
+    chapter_id: int
     title: str
     chapter_number: int
     suggested_teaching_days: int | None

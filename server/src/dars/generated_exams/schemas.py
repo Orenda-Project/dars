@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -37,8 +36,8 @@ class GeneratedExamCreate(BaseModel):
 
 
 class GeneratedExamResponse(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
+    id: int
+    client_id: int
     external_id: Optional[str] = None
     status: str
     curriculum: str

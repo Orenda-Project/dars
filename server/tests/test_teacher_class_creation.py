@@ -10,8 +10,6 @@ Scenarios:
 5. Client isolation: academic_year from another client → 404
 """
 
-import uuid
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -187,7 +185,7 @@ async def test_create_teacher_class_happy_path(http_client, api_key, db_session)
 
     # Verify SchoolClass in DB
     sc_result = await db_session.execute(
-        select(SchoolClass).where(SchoolClass.id == uuid.UUID(data["class_id"]))
+        select(SchoolClass).where(SchoolClass.id == int(data["class_id"]))
     )
     sc = sc_result.scalar_one_or_none()
     assert sc is not None
@@ -197,7 +195,7 @@ async def test_create_teacher_class_happy_path(http_client, api_key, db_session)
 
     # Verify CST in DB
     cst_result = await db_session.execute(
-        select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == uuid.UUID(data["cst_id"]))
+        select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == int(data["cst_id"]))
     )
     cst = cst_result.scalar_one_or_none()
     assert cst is not None
@@ -206,7 +204,7 @@ async def test_create_teacher_class_happy_path(http_client, api_key, db_session)
 
     # Verify chapter plans upserted
     cp_result = await db_session.execute(
-        select(ChapterPlan).where(ChapterPlan.class_subject_teacher_id == uuid.UUID(data["cst_id"]))
+        select(ChapterPlan).where(ChapterPlan.class_subject_teacher_id == int(data["cst_id"]))
     )
     plans = list(cp_result.scalars().all())
     assert len(plans) == 3
@@ -220,7 +218,7 @@ async def test_create_teacher_class_no_default_teacher_422(http_client, api_key,
     # Clear default_teacher_id on the client (signup auto-creates one, so we undo it)
     resp = await http_client.get("/api/v1/me", headers=headers(api_key))
     assert resp.status_code == 200, resp.text
-    client_id = uuid.UUID(resp.json()["id"])
+    client_id = int(resp.json()["id"])
 
     from dars.clients.models import Client
     client_result = await db_session.execute(select(Client).where(Client.id == client_id))
@@ -276,7 +274,7 @@ async def test_create_teacher_class_invalid_year_404(http_client, api_key, db_se
             "grade": 5,
             "section": "A",
             "subject": "english",
-            "academic_year_id": str(uuid.uuid4()),  # random non-existent
+            "academic_year_id": 99999,  # non-existent integer id
         },
         headers=headers(api_key),
     )

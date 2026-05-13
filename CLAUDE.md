@@ -53,18 +53,19 @@ Use the Agent tool for any self-contained backend or frontend build that would o
 4. **Never store API keys plain** — SHA-256 hash on creation, shown once only
 5. **Use `hmac.compare_digest`** for all secret comparisons — plain `!=` is timing-attackable
 6. **Use `sqlalchemy.types.Uuid`** not `sqlalchemy.dialects.postgresql.UUID` — PG dialect breaks SQLite tests
-7. **Open a bead before starting any non-trivial task** — see [.beads/README.md](.beads/README.md)
-8. **Design work:** read `theme.pen` via pencil MCP before touching colors or typography
-9. **Check deferred tools before claiming unavailability** — before telling the user you cannot access a service or tool, check the deferred tools list in the system-reminder. If a relevant MCP tool is listed, use ToolSearch to load its schema and proceed. Never say "I can't access X" without checking first.
-10. **Structured logging on every flow** — every service function, endpoint, and background task must log:
+7. **Never run DDL or migrations manually** — no `psql` DDL, no local migration commands. Migrations run automatically on Railway deployment. Write the `.sql` file; the deploy applies it.
+8. **Open a bead before starting any non-trivial task** — see [.beads/README.md](.beads/README.md)
+9. **Design work:** read `theme.pen` via pencil MCP before touching colors or typography
+10. **Check deferred tools before claiming unavailability** — before telling the user you cannot access a service or tool, check the deferred tools list in the system-reminder. If a relevant MCP tool is listed, use ToolSearch to load its schema and proceed. Never say "I can't access X" without checking first.
+11. **Structured logging on every flow** — every service function, endpoint, and background task must log:
     - Entry at `INFO` with relevant IDs and input context
     - Exit/completion at `INFO` with status and key output (counts, IDs)
     - Errors at `ERROR` with `exc_info=True`
     - Use `logger = logging.getLogger(__name__)` — never `print()`
-11. **Default execution mode: autonomous** — never pause to confirm understanding before proceeding. Just proceed; the user will redirect if needed. The only valid exception is a genuine blocker (missing spec, missing credential).
-12. **No pre-action narration** — never write "I'll now X" or "Let me Y" before a tool call. Do X, then state the result. Output text that reports findings, not announces intentions.
-13. **After any PR merge — poll Railway automatically** — if Railway MCP is in the deferred tools list, immediately use `mcp__Railway__list-deployments` to find the latest deployment and begin polling. Do not wait for the user to ask.
-14. **Before editing a file modified earlier in the same session, re-read it first** — never assume file state matches your earlier write.
+12. **Default execution mode: autonomous** — never pause to confirm understanding before proceeding. Just proceed; the user will redirect if needed. The only valid exception is a genuine blocker (missing spec, missing credential).
+13. **No pre-action narration** — never write "I'll now X" or "Let me Y" before a tool call. Do X, then state the result. Output text that reports findings, not announces intentions.
+14. **After any PR merge — poll Railway automatically** — if Railway MCP is in the deferred tools list, immediately use `mcp__Railway__list-deployments` to find the latest deployment and begin polling. Do not wait for the user to ask.
+15. **Before editing a file modified earlier in the same session, re-read it first** — never assume file state matches your earlier write.
 
 ---
 

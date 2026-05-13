@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import uuid
 from datetime import date, timedelta
 
 import anthropic
@@ -41,7 +40,7 @@ _DEFAULT_CYCLE = ["Introduction", "Practice", "Review", "Revision-cycle"]
 
 
 async def compute_teaching_days_for_year(
-    academic_year_id: uuid.UUID,
+    academic_year_id: int,
     db: AsyncSession,
 ) -> int:
     """
@@ -77,7 +76,7 @@ async def compute_teaching_days_for_year(
 
 
 async def compute_teaching_days(
-    cst_id: uuid.UUID,
+    cst_id: int,
     db: AsyncSession,
 ) -> list[date]:
     """
@@ -146,7 +145,7 @@ async def compute_teaching_days(
 
 
 async def compute_chapter_date_ranges(
-    cst_id: uuid.UUID,
+    cst_id: int,
     db: AsyncSession,
 ) -> list[dict]:
     """
@@ -195,7 +194,7 @@ async def compute_chapter_date_ranges(
 
 
 async def auto_schedule_formative_assessments(
-    cst_id: uuid.UUID,
+    cst_id: int,
     db: AsyncSession,
 ) -> list[AssessmentSlot]:
     """
@@ -272,7 +271,7 @@ async def auto_schedule_formative_assessments(
 
 
 async def get_prefill_chapter_plans(
-    cst_id: uuid.UUID,
+    cst_id: int,
     db: AsyncSession,
 ) -> list[dict]:
     """
@@ -322,7 +321,7 @@ async def get_prefill_chapter_plans(
         return []
 
     # Load curriculum schedule rows for these chapter IDs
-    schedule_map: dict[uuid.UUID, CurriculumChapterSchedule] = {}
+    schedule_map: dict[int, CurriculumChapterSchedule] = {}
     if curriculum:
         chapter_ids = [c.id for c in chapters]
         sched_result = await db.execute(
@@ -419,7 +418,7 @@ def _extract_json_array_from_response(response: str) -> list:
 
 
 async def ai_breakdown_chapter(
-    chapter_plan_id: uuid.UUID,
+    chapter_plan_id: int,
     db: AsyncSession,
 ) -> dict:
     """
@@ -589,7 +588,7 @@ async def ai_breakdown_chapter(
 
 
 async def ai_breakdown_all(
-    cst_id: uuid.UUID,
+    cst_id: int,
     db: AsyncSession,
 ) -> dict:
     """
@@ -631,8 +630,8 @@ async def ai_breakdown_all(
 
 async def generate_lp_for_slot(
     db: AsyncSession,
-    slot_id: uuid.UUID,
-    client_id: uuid.UUID,
+    slot_id: int,
+    client_id: int,
     curriculum: str,
 ) -> GeneratedLP:
     """
@@ -701,10 +700,10 @@ async def generate_lp_for_slot(
 
 async def generate_all_lps_for_chapter(
     db: AsyncSession,
-    chapter_plan_id: uuid.UUID,
-    client_id: uuid.UUID,
+    chapter_plan_id: int,
+    client_id: int,
     curriculum: str,
-) -> tuple[list[tuple[uuid.UUID, GeneratedLPCreate]], int]:
+) -> tuple[list[tuple[int, GeneratedLPCreate]], int]:
     """
     Queue LP generation for all 'planned' slots in a chapter_plan that don't have a lesson_plan_id yet.
     Returns (list_of_(lp_id, request_data), skipped_count).
@@ -746,7 +745,7 @@ async def generate_all_lps_for_chapter(
     )
     all_slots = list(slots_result.scalars().all())
 
-    queued_pairs: list[tuple[uuid.UUID, GeneratedLPCreate]] = []
+    queued_pairs: list[tuple[int, GeneratedLPCreate]] = []
     skipped = 0
 
     for slot in all_slots:
@@ -776,8 +775,8 @@ async def generate_all_lps_for_chapter(
 
 async def generate_exam_for_slot(
     db: AsyncSession,
-    slot_id: uuid.UUID,
-    client_id: uuid.UUID,
+    slot_id: int,
+    client_id: int,
     curriculum: str,
 ) -> GeneratedExam:
     """
@@ -838,7 +837,7 @@ async def generate_exam_for_slot(
 
 
 async def generate_lesson_sequence(
-    chapter_plan_id: uuid.UUID,
+    chapter_plan_id: int,
     db: AsyncSession,
 ) -> list[ClassLessonSlot]:
     """

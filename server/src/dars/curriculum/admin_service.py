@@ -5,7 +5,6 @@ Orchestrates the two-step AI pipeline (topic breakdown → day plan) and
 persists the results into `topics` and `lesson_slots` tables.
 """
 import logging
-import uuid
 
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +15,7 @@ from dars.curriculum.models import BookChapter, LessonSlot, Topic
 log = logging.getLogger("curriculum.admin_service")
 
 
-async def breakdown_chapter(db: AsyncSession, chapter_id: uuid.UUID) -> dict:
+async def breakdown_chapter(db: AsyncSession, chapter_id: int) -> dict:
     """
     Run the full AI breakdown pipeline for a chapter and persist results.
 

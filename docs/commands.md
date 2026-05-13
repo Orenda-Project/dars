@@ -28,15 +28,12 @@ make test         # Run test suite (SQLite, no Supabase needed)
 ## Database
 
 ```bash
-make db-migrate   # Apply pending migrations to the configured DATABASE_URL
 make db-new       # Create a new empty migration file (prompts for name)
 ```
 
 Migrations are plain SQL files in `server/src/dars/migrations/` named `YYYYMMDDHHMMSS_description.sql`.
 
-The migration runner (`server/src/dars/migrations.py`) tracks applied migrations in a `schema_migrations` table and runs any pending ones on app startup as well. Works against any PostgreSQL URL — Railway (prod/staging), local Docker, or any other Postgres instance.
-
-Set `DATABASE_URL` in `server/.env` to point at whichever environment you want to migrate.
+The migration runner (`server/src/dars/migrations.py`) runs automatically on app startup — it picks up any pending migrations and applies them. **Never run migrations manually via psql or any local command.** Migrations only run via Railway deployment (staging or production).
 
 ## Webapp
 
