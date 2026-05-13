@@ -12,8 +12,11 @@ import {
   getChapterPlans,
   getPrefillChapterPlans,
   generateLessonSlots,
+  regenerateLessonSlots,
+  breakdownYear,
   getLessonSlots,
   markTaught,
+  updateLessonSlot,
   autoScheduleFAs,
   getAssessmentSlots,
   updateAssessmentSlot,
@@ -67,14 +70,29 @@ const CHAPTER_COLORS = [
 
 const LP_TYPE_BADGE: Record<string, string> = {
   "Reading": "bg-blue-100 text-blue-800",
-  "Comprehension — Word Meanings": "bg-emerald-100 text-emerald-800",
+  "Vocabulary": "bg-purple-100 text-purple-800",
+  "Comprehension (Word Meanings)": "bg-cyan-100 text-cyan-800",
+  "Comprehension (Q&A)": "bg-teal-100 text-teal-800",
+  "Comprehension — Word Meanings": "bg-cyan-100 text-cyan-800",
   "Comprehension — Q&A": "bg-teal-100 text-teal-800",
-  "Grammar": "bg-violet-100 text-violet-800",
-  "Creative Writing": "bg-orange-100 text-orange-800",
-  "Revision": "bg-red-100 text-red-800",
-  "Concrete": "bg-cyan-100 text-cyan-800",
+  "Grammar": "bg-indigo-100 text-indigo-800",
+  "Creative Writing": "bg-emerald-100 text-emerald-800",
+  "Revision": "bg-amber-100 text-amber-800",
+  "Concept Introduction": "bg-orange-100 text-orange-800",
+  "Concept": "bg-orange-100 text-orange-800",
+  "Concrete Practice": "bg-yellow-100 text-yellow-800",
+  "Concrete": "bg-yellow-100 text-yellow-800",
   "Pictorial & Abstract": "bg-indigo-100 text-indigo-800",
   "Word Problems": "bg-amber-100 text-amber-800",
+  "Practice": "bg-yellow-100 text-yellow-800",
+  "Introduction": "bg-blue-100 text-blue-800",
+  "Review": "bg-amber-100 text-amber-800",
+  "Qiraat": "bg-blue-100 text-blue-800",
+  "Lughat": "bg-purple-100 text-purple-800",
+  "Tehrir": "bg-emerald-100 text-emerald-800",
+  "Islah": "bg-orange-100 text-orange-800",
+  "Dohrai": "bg-amber-100 text-amber-800",
+  "formative": "bg-rose-100 text-rose-800",
 };
 
 const SAMPLE_LP_HTML = `
@@ -2142,9 +2160,14 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
   const [slots, setSlots] = useState<ClassLessonSlotRead[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [breakdowningYear, setBreakdowningYear] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [viewedLP, setViewedLP] = useState<string | null>(null);
   const [marking, setMarking] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const [editingTitleValue, setEditingTitleValue] = useState("");
 
   // Load subjects on class change
   useEffect(() => {
@@ -2193,13 +2216,48 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
     if (!selectedPlanId) return;
     setGenerating(true);
     setError(null);
+    setSuccessMsg(null);
     try {
       const res = await generateLessonSlots(selectedPlanId);
       setSlots(res.items);
+      setSuccessMsg(`AI generated ${res.items.length} lesson slots.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleRegenerate() {
+    if (!selectedPlanId) return;
+    if (!window.confirm("Regenerate lesson slots? This will replace existing slots.")) return;
+    setRegenerating(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await regenerateLessonSlots(selectedPlanId);
+      setSlots(res.items);
+      setSuccessMsg(`Regenerated ${res.items.length} lesson slots.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Regeneration failed");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  async function handleBreakdownYear() {
+    if (!selectedClassId || !selectedCstId) return;
+    if (!window.confirm("Generate AI lesson breakdowns for ALL chapters? This may take a moment.")) return;
+    setBreakdowningYear(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await breakdownYear(selectedClassId, selectedCstId);
+      setSuccessMsg(`Breakdown queued for ${res.chapters} chapters. Slots will appear as processing completes.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Breakdown year failed");
+    } finally {
+      setBreakdowningYear(false);
     }
   }
 
@@ -2215,11 +2273,28 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
     }
   }
 
+  function startEditTitle(slot: ClassLessonSlotRead) {
+    setEditingTitle(slot.id);
+    setEditingTitleValue(slot.title);
+  }
+
+  async function commitEditTitle(slot: ClassLessonSlotRead) {
+    const newTitle = editingTitleValue.trim();
+    setEditingTitle(null);
+    if (!newTitle || newTitle === slot.title) return;
+    try {
+      const updated = await updateLessonSlot(slot.id, { title: newTitle });
+      setSlots((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update title");
+    }
+  }
+
   return (
     <div>
       {/* Selectors */}
-      <div className="bg-dars-parchment border border-dars-rule-light rounded-lg p-5 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="bg-dars-parchment border border-dars-rule-light rounded-lg p-5 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide">
               Class
@@ -2263,7 +2338,7 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
               disabled={chapterPlans.length === 0}
               className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra disabled:opacity-60"
             >
-              {chapterPlans.map((p, i) => (
+              {chapterPlans.map((p) => (
                 <option key={p.id} value={p.id}>
                   Chapter {p.position} ({p.teaching_days} days)
                 </option>
@@ -2271,11 +2346,34 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
             </select>
           </div>
         </div>
+
+        {/* CST-level action: Generate Whole Year */}
+        {selectedCstId && chapterPlans.length > 0 && (
+          <div className="flex items-center gap-2 pt-3 border-t border-dars-rule-light">
+            <button
+              type="button"
+              onClick={() => void handleBreakdownYear()}
+              disabled={breakdowningYear}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-dars-terra border border-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-white disabled:opacity-60"
+            >
+              {breakdowningYear && <Spinner />}
+              Generate Whole Year (AI)
+            </button>
+            <span className="text-xs text-dars-muted">
+              Queues AI breakdown for all {chapterPlans.length} chapters
+            </span>
+          </div>
+        )}
       </div>
 
       {error && (
         <div className="mb-4">
           <ErrorMsg msg={error} />
+        </div>
+      )}
+      {successMsg && (
+        <div className="mb-4 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+          {successMsg}
         </div>
       )}
 
@@ -2309,72 +2407,132 @@ function LessonsTab({ classes }: { classes: SchoolClassRead[] }) {
               className="px-5 py-2 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 cursor-pointer border-none disabled:opacity-60 flex items-center gap-2 mx-auto"
             >
               {generating && <Spinner />}
-              Generate Lesson Breakdown
+              AI Generate Lesson Breakdown
             </button>
           )}
         </div>
       ) : (
-        <div className="space-y-2">
-          {slots.map((slot) => (
-            <div key={slot.id}>
-              <div className="border border-dars-rule-light rounded-lg bg-white px-4 py-3 flex items-center gap-4">
-                <span className="text-xs font-bold text-dars-muted w-6 shrink-0">
-                  {slot.day_number}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-dars-ink">{slot.title}</p>
-                </div>
-                <span
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded shrink-0 ${
-                    LP_TYPE_BADGE[slot.lp_type] ?? "bg-gray-100 text-gray-700"
-                  }`}
-                >
-                  {slot.lp_type}
-                </span>
-                {slot.status === "taught" && (
-                  <span className="text-[10px] font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded shrink-0">
-                    Taught
+        <>
+          {/* Action bar above slot list */}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-dars-muted">
+              {slots.length} slots &nbsp;·&nbsp;{" "}
+              {slots.filter((s) => s.status === "taught").length} taught
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleGenerate()}
+                disabled={generating}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-dars-terra text-white rounded-md hover:opacity-90 cursor-pointer border-none disabled:opacity-60"
+              >
+                {generating && <Spinner />}
+                AI Generate
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRegenerate()}
+                disabled={regenerating}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-dars-terra border border-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-white disabled:opacity-60"
+              >
+                {regenerating && <Spinner />}
+                Regenerate
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            {slots.map((slot) => (
+              <div key={slot.id}>
+                <div className="border border-dars-rule-light rounded-lg bg-white px-4 py-3 flex items-center gap-3">
+                  {/* Day number */}
+                  <span className="text-xs font-bold text-dars-muted w-6 shrink-0 text-center">
+                    {slot.day_number}
                   </span>
-                )}
-                {slot.status === "planned" && (
+
+                  {/* LP type badge */}
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded shrink-0 ${
+                      LP_TYPE_BADGE[slot.lp_type] ?? "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {slot.lp_type}
+                  </span>
+
+                  {/* Inline-editable title */}
+                  <div className="flex-1 min-w-0">
+                    {editingTitle === slot.id ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingTitleValue}
+                        onChange={(e) => setEditingTitleValue(e.target.value)}
+                        onBlur={() => void commitEditTitle(slot)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void commitEditTitle(slot);
+                          if (e.key === "Escape") setEditingTitle(null);
+                        }}
+                        className="w-full text-sm text-dars-ink border border-dars-terra rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-dars-terra bg-white"
+                      />
+                    ) : (
+                      <p
+                        className="text-sm font-medium text-dars-ink cursor-text hover:underline hover:decoration-dashed"
+                        onClick={() => startEditTitle(slot)}
+                        title="Click to edit title"
+                      >
+                        {slot.title}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Status */}
+                  {slot.status === "taught" && (
+                    <span className="text-[10px] font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded shrink-0">
+                      Taught
+                    </span>
+                  )}
+                  {slot.status === "planned" && (
+                    <button
+                      type="button"
+                      onClick={() => void handleMarkTaught(slot.id)}
+                      disabled={marking === slot.id}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-60"
+                    >
+                      {marking === slot.id && <Spinner />}
+                      Mark Taught
+                    </button>
+                  )}
+
+                  {/* View LP */}
                   <button
                     type="button"
-                    onClick={() => void handleMarkTaught(slot.id)}
-                    disabled={marking === slot.id}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-60"
+                    onClick={() => setViewedLP(viewedLP === slot.id ? null : slot.id)}
+                    className="shrink-0 px-3 py-1.5 text-xs font-semibold border border-dars-terra text-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-transparent"
                   >
-                    {marking === slot.id && <Spinner />}
-                    Mark Taught
+                    {viewedLP === slot.id ? "Close" : "View LP"}
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setViewedLP(viewedLP === slot.id ? null : slot.id)}
-                  className="shrink-0 px-3 py-1.5 text-xs font-semibold border border-dars-terra text-dars-terra rounded-md hover:bg-dars-terra hover:text-white transition-colors cursor-pointer bg-transparent"
-                >
-                  {viewedLP === slot.id ? "Close" : "View LP"}
-                </button>
-              </div>
-
-              {viewedLP === slot.id && (
-                <div className="border border-t-0 border-dars-rule-light rounded-b-lg bg-white px-6 py-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-serif font-semibold text-dars-ink">
-                      Lesson Plan Preview
-                    </h4>
-                    <span className="text-[10px] font-semibold tracking-wide uppercase bg-dars-parchment-deep text-dars-muted px-2 py-0.5 rounded">
-                      Sample
-                    </span>
-                  </div>
-                  <div
-                    className="prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: SAMPLE_LP_HTML }}
-                  />
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+
+                {viewedLP === slot.id && (
+                  <div className="border border-t-0 border-dars-rule-light rounded-b-lg bg-white px-6 py-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-serif font-semibold text-dars-ink">
+                        Lesson Plan Preview
+                      </h4>
+                      <span className="text-[10px] font-semibold tracking-wide uppercase bg-dars-parchment-deep text-dars-muted px-2 py-0.5 rounded">
+                        Sample
+                      </span>
+                    </div>
+                    <div
+                      className="prose prose-sm max-w-none"
+                      dangerouslySetInnerHTML={{ __html: SAMPLE_LP_HTML }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

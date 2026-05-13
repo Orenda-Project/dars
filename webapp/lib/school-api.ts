@@ -424,3 +424,46 @@ export function getPrefillChapterPlans(
     `/api/v1/classes/${classId}/subjects/${cstId}/chapter-plans/prefill`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Lesson Slot — update (inline edit)
+// ---------------------------------------------------------------------------
+
+export interface ClassLessonSlotUpdate {
+  lp_type?: string;
+  title?: string;
+  lesson_plan_id?: string | null;
+}
+
+export function updateLessonSlot(
+  slotId: string,
+  body: ClassLessonSlotUpdate
+): Promise<ClassLessonSlotRead> {
+  return apiFetch<ClassLessonSlotRead>(
+    `/api/v1/class-lesson-slots/${slotId}`,
+    { method: "PATCH", body: JSON.stringify(body) }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI Lesson Breakdown
+// ---------------------------------------------------------------------------
+
+export interface BreakdownYearResponse {
+  status: string;
+  chapters: number;
+}
+
+export function regenerateLessonSlots(chapterPlanId: string): Promise<ClassLessonSlotListResponse> {
+  return apiFetch<ClassLessonSlotListResponse>(
+    `/api/v1/chapter-plans/${chapterPlanId}/lesson-slots/regenerate`,
+    { method: "POST" }
+  );
+}
+
+export function breakdownYear(classId: string, cstId: string): Promise<BreakdownYearResponse> {
+  return apiFetch<BreakdownYearResponse>(
+    `/api/v1/classes/${classId}/subjects/${cstId}/breakdown-year`,
+    { method: "POST" }
+  );
+}

@@ -20,7 +20,7 @@ This is the core intelligence of the product. Instead of a naive cycling pattern
 
 No new tables. `class_lesson_slots` and `assessment_slots` already exist and are the output of this step.
 
-Migration: `server/src/dars/migrations/20260513000006_lesson_breakdown.sql`
+Migration: `server/src/dars/migrations/20260513000007_lesson_breakdown.sql`
 
 ```sql
 -- Add lp_type to assessment_slots to distinguish formative sub-types if needed

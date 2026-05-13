@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +27,7 @@ from dars.school.schemas import (
     AssessmentSlotListResponse,
     AssessmentSlotRead,
     AssessmentSlotUpdate,
+    BreakdownYearResponse,
     ChapterPlanBulkUpsertRequest,
     ChapterPlanListResponse,
     ChapterPlanRead,
@@ -53,6 +54,8 @@ from dars.school.schemas import (
 )
 from dars.curriculum.schemas import PrefillChapterPlan, PrefillResponse
 from dars.school.service import (
+    ai_breakdown_all,
+    ai_breakdown_chapter,
     auto_schedule_formative_assessments,
     compute_chapter_date_ranges,
     compute_teaching_days_for_year,
@@ -590,8 +593,30 @@ async def generate_lesson_slots(
     plan = await db.get(ChapterPlan, plan_id)
     if plan is None or plan.client_id != current_client.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter plan not found")
-    slots = await generate_lesson_sequence(plan_id, db)
+    result = await ai_breakdown_chapter(plan_id, db)
+    slots = result["lesson_slots"]
     logger.info("generate_lesson_slots: plan_id=%s slots=%d", plan_id, len(slots))
+    return ClassLessonSlotListResponse(
+        items=[ClassLessonSlotRead.model_validate(s) for s in slots]
+    )
+
+
+@router.post(
+    "/api/v1/chapter-plans/{plan_id}/lesson-slots/regenerate",
+    response_model=ClassLessonSlotListResponse,
+)
+async def regenerate_lesson_slots(
+    plan_id: uuid.UUID,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> ClassLessonSlotListResponse:
+    logger.info("regenerate_lesson_slots: plan_id=%s", plan_id)
+    plan = await db.get(ChapterPlan, plan_id)
+    if plan is None or plan.client_id != current_client.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter plan not found")
+    result = await ai_breakdown_chapter(plan_id, db)
+    slots = result["lesson_slots"]
+    logger.info("regenerate_lesson_slots: plan_id=%s slots=%d", plan_id, len(slots))
     return ClassLessonSlotListResponse(
         items=[ClassLessonSlotRead.model_validate(s) for s in slots]
     )
@@ -672,6 +697,34 @@ async def update_lesson_slot(
 # ---------------------------------------------------------------------------
 # Assessment Slots
 # ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/api/v1/classes/{class_id}/subjects/{cst_id}/breakdown-year",
+    response_model=BreakdownYearResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def breakdown_year(
+    class_id: uuid.UUID,
+    cst_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> BreakdownYearResponse:
+    logger.info("breakdown_year: cst_id=%s", cst_id)
+    obj = await db.get(ClassSubjectTeacher, cst_id)
+    if obj is None or obj.client_id != current_client.id or obj.class_id != class_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject assignment not found")
+
+    # Count chapter plans before handing off to background task
+    plans_result = await db.execute(
+        select(ChapterPlan).where(ChapterPlan.class_subject_teacher_id == cst_id)
+    )
+    chapter_count = len(list(plans_result.scalars().all()))
+
+    background_tasks.add_task(ai_breakdown_all, cst_id, db)
+    logger.info("breakdown_year: queued cst_id=%s chapters=%d", cst_id, chapter_count)
+    return BreakdownYearResponse(status="queued", chapters=chapter_count)
 
 
 @router.post(
