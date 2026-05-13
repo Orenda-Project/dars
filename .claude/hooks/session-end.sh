@@ -28,10 +28,11 @@ if [ -n "$UNSTAGED" ]; then
   WARNINGS="$WARNINGS\n- Unstaged changes exist — commit or stash before closing"
 fi
 
+echo "=== SESSION END ==="
 if [ -n "$WARNINGS" ]; then
-  echo "=== SESSION END ==="
   echo -e "$WARNINGS"
-  echo "==================="
 fi
+echo "- Run /retrospect to log harness improvement suggestions for this session"
+echo "==================="
 
 exit 0

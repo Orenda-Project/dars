@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, time
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -13,6 +13,17 @@ class AcademicYearCreate(BaseModel):
     name: str
     start_date: date
     end_date: date
+
+    @model_validator(mode="after")
+    def end_after_start(self) -> "AcademicYearCreate":
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
+
+
+class TeachingDaysResponse(BaseModel):
+    academic_year_id: uuid.UUID
+    teaching_days: int
 
 
 class AcademicYearRead(BaseModel):

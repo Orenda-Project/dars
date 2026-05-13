@@ -28,27 +28,18 @@ make test         # Run test suite (SQLite, no Supabase needed)
 ## Database
 
 ```bash
-make db-push      # Apply pending migrations to Supabase
-make db-pull      # Pull schema changes from Supabase dashboard
-make db-status    # Check migration status
-make db-new       # Create new migration file (prompts for name)
-make db-link      # Link to a Supabase project (needs SUPABASE_PROJECT_REF)
+make db-migrate   # Apply pending migrations to the configured DATABASE_URL
+make db-new       # Create a new empty migration file (prompts for name)
 ```
 
-Migrations: plain SQL files in `supabase/migrations/` named `YYYYMMDDHHMMSS_description.sql`.
+Migrations are plain SQL files in `server/src/dars/migrations/` named `YYYYMMDDHHMMSS_description.sql`.
+
+The migration runner (`server/src/dars/migrations.py`) tracks applied migrations in a `schema_migrations` table and runs any pending ones on app startup as well. Works against any PostgreSQL URL — Railway (prod/staging), local Docker, or any other Postgres instance.
+
+Set `DATABASE_URL` in `server/.env` to point at whichever environment you want to migrate.
 
 ## Webapp
 
 ```bash
 make webapp       # Run Next.js dev server (webapp/)
 ```
-
-## Supabase environments
-
-| Env | Status | Use |
-|-----|--------|-----|
-| `dars-dev` | Active | Remote Supabase, used for development |
-| `dars-prod` | Not created | Will be separate project for production |
-| `dars-local` | Not set up | Will use `supabase start` (Docker) |
-
-Switch: `supabase link --project-ref <ref>` then `make db-push`. Each env gets its own `DATABASE_URL`.

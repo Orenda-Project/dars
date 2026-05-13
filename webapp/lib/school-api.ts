@@ -389,3 +389,12 @@ export function updateAssessmentSlot(
 export function getToday(): Promise<TodaySlotEntry[]> {
   return apiFetch<TodaySlotEntry[]>("/api/v1/today");
 }
+
+export interface TeachingDaysResponse {
+  academic_year_id: string;
+  teaching_days: number;
+}
+
+export function getTeachingDays(yearId: string): Promise<TeachingDaysResponse> {
+  return apiFetch<TeachingDaysResponse>(`/api/v1/academic-years/${yearId}/teaching-days`);
+}

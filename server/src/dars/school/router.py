@@ -45,6 +45,7 @@ from dars.school.schemas import (
     SchoolClassListResponse,
     SchoolClassRead,
     SchoolClassWithSubjects,
+    TeachingDaysResponse,
     TimetableResponse,
     TimetableSetRequest,
     TimetableSlotRead,
@@ -53,6 +54,7 @@ from dars.school.schemas import (
 from dars.school.service import (
     auto_schedule_formative_assessments,
     compute_chapter_date_ranges,
+    compute_teaching_days_for_year,
     generate_lesson_sequence,
 )
 from dars.teachers.models import Teacher
@@ -108,6 +110,24 @@ async def list_academic_years(
         items=[AcademicYearRead.model_validate(y) for y in items],
         total=len(items),
     )
+
+
+@router.get(
+    "/api/v1/academic-years/{year_id}/teaching-days",
+    response_model=TeachingDaysResponse,
+)
+async def get_teaching_days(
+    year_id: uuid.UUID,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> TeachingDaysResponse:
+    logger.info("get_teaching_days: client_id=%s year_id=%s", current_client.id, year_id)
+    year = await db.get(AcademicYear, year_id)
+    if year is None or year.client_id != current_client.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Academic year not found")
+    count = await compute_teaching_days_for_year(year_id, db)
+    logger.info("get_teaching_days: year_id=%s count=%d", year_id, count)
+    return TeachingDaysResponse(academic_year_id=year_id, teaching_days=count)
 
 
 # ---------------------------------------------------------------------------
