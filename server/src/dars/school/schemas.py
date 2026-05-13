@@ -340,3 +340,22 @@ class MyClassEntry(BaseModel):
 
 class MyClassListResponse(BaseModel):
     items: list[MyClassEntry]
+
+
+# ---------------------------------------------------------------------------
+# Teacher App — class creation (Step 8)
+# ---------------------------------------------------------------------------
+
+
+class TeacherClassCreate(BaseModel):
+    grade: int
+    section: str
+    subject: str
+    academic_year_id: uuid.UUID
+
+
+class TeacherClassCreated(BaseModel):
+    class_id: uuid.UUID
+    cst_id: uuid.UUID
+    chapter_count: int
+    status: str

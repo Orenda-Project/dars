@@ -6,9 +6,6 @@ import {
   createAcademicYear,
   addHoliday,
   getClasses,
-  createClass,
-  assignSubject,
-  setTimetable,
   getChapterPlans,
   getPrefillChapterPlans,
   generateLessonSlots,
@@ -484,27 +481,6 @@ function SloTab() {
   );
 }
 
-// ── Setup Wizard ──────────────────────────────────────────────────────────────
-
-interface WizardClassInput {
-  grade: number;
-  section: string;
-}
-
-interface WizardSubjectInput {
-  classIdx: number;
-  subject: string;
-  teacherName: string;
-}
-
-interface WizardTimetableInput {
-  classIdx: number;
-  subjectIdx: number; // index in subjects array for that class
-  days: number[]; // 0=Mon..5=Sat
-}
-
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 // ── Calendar Preview ──────────────────────────────────────────────────────────
 
 function CalendarPreview({
@@ -621,49 +597,6 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
   const [holidayName, setHolidayName] = useState("");
   const [holidayDate, setHolidayDate] = useState("");
 
-  // Step 3
-  const [classes, setClasses] = useState<WizardClassInput[]>([{ grade: 5, section: "A" }]);
-
-  // Step 4 — subjects per class
-  const [subjects, setSubjects] = useState<WizardSubjectInput[]>([
-    { classIdx: 0, subject: "", teacherName: "" },
-  ]);
-
-  // Step 5 — timetable per class-subject
-  const [timetables, setTimetables] = useState<WizardTimetableInput[]>([]);
-
-  // Initialise timetable state when entering step 5
-  useEffect(() => {
-    if (step === 5) {
-      const tt: WizardTimetableInput[] = [];
-      for (let ci = 0; ci < classes.length; ci++) {
-        const classSubjects = subjects.filter((s) => s.classIdx === ci);
-        for (let si = 0; si < classSubjects.length; si++) {
-          const existing = timetables.find(
-            (t) => t.classIdx === ci && t.subjectIdx === si
-          );
-          if (!existing) {
-            tt.push({ classIdx: ci, subjectIdx: si, days: [] });
-          } else {
-            tt.push(existing);
-          }
-        }
-      }
-      setTimetables(tt);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
-  function toggleDay(ci: number, si: number, day: number) {
-    setTimetables((prev) =>
-      prev.map((t) => {
-        if (t.classIdx !== ci || t.subjectIdx !== si) return t;
-        const days = t.days.includes(day) ? t.days.filter((d) => d !== day) : [...t.days, day];
-        return { ...t, days };
-      })
-    );
-  }
-
   async function handleFinish() {
     setError(null);
     setSaving(true);
@@ -680,37 +613,6 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
         await addHoliday(year.id, { name: h.name, date: h.date });
       }
 
-      // 3+4+5. Classes, subjects, timetables
-      const createdClasses: { classId: string; cstIds: string[] }[] = [];
-
-      for (let ci = 0; ci < classes.length; ci++) {
-        const cls = classes[ci];
-        const sc = await createClass({
-          academic_year_id: year.id,
-          grade: cls.grade,
-          section: cls.section,
-          name: `Grade ${cls.grade}-${cls.section}`,
-        });
-
-        const classSubjects = subjects.filter((s) => s.classIdx === ci);
-        const cstIds: string[] = [];
-
-        for (let si = 0; si < classSubjects.length; si++) {
-          const sub = classSubjects[si];
-          const cst = await assignSubject(sc.id, { subject: sub.subject });
-          cstIds.push(cst.id);
-
-          const tt = timetables.find((t) => t.classIdx === ci && t.subjectIdx === si);
-          if (tt && tt.days.length > 0) {
-            await setTimetable(sc.id, cst.id, {
-              slots: tt.days.map((d) => ({ day_of_week: d })),
-            });
-          }
-        }
-
-        createdClasses.push({ classId: sc.id, cstIds });
-      }
-
       onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : "An error occurred");
@@ -719,8 +621,8 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
     }
   }
 
-  const totalSteps = 5;
-  const stepLabels = ["Academic Year", "Holidays", "Classes", "Subjects", "Timetable"];
+  const totalSteps = 3;
+  const stepLabels = ["Academic Year", "Holidays", "Chapter Plan"];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -904,217 +806,35 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
             </div>
           )}
 
-          {/* Step 3: Classes */}
+          {/* Step 3: Chapter Plan info */}
           {step === 3 && (
             <div className="space-y-4">
               <p className="text-xs text-dars-muted font-semibold uppercase tracking-wide">
-                Classes
+                Chapter Plan
               </p>
-              <div className="space-y-2">
-                {classes.map((cls, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <div className="flex-1 grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-dars-muted mb-0.5">Grade</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={12}
-                          value={cls.grade}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setClasses((prev) =>
-                              prev.map((c, i) => (i === idx ? { ...c, grade: val } : c))
-                            );
-                          }}
-                          className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-dars-muted mb-0.5">Section</label>
-                        <input
-                          type="text"
-                          placeholder="A"
-                          value={cls.section}
-                          onChange={(e) =>
-                            setClasses((prev) =>
-                              prev.map((c, i) =>
-                                i === idx ? { ...c, section: e.target.value } : c
-                              )
-                            )
-                          }
-                          className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                        />
-                      </div>
-                    </div>
-                    {classes.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClasses((prev) => prev.filter((_, i) => i !== idx));
-                          setSubjects((prev) =>
-                            prev
-                              .filter((s) => s.classIdx !== idx)
-                              .map((s) => ({
-                                ...s,
-                                classIdx: s.classIdx > idx ? s.classIdx - 1 : s.classIdx,
-                              }))
-                          );
-                        }}
-                        className="mt-4 text-dars-muted hover:text-red-600 cursor-pointer bg-transparent border-none text-sm"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                <p className="text-sm font-semibold text-emerald-800 mb-1">
+                  You are all set!
+                </p>
+                <p className="text-xs text-emerald-700">
+                  Your academic year and holidays are configured. Chapter plans and lesson breakdowns
+                  are generated automatically when teachers create classes in the Teacher App.
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setClasses((prev) => [...prev, { grade: 5, section: String.fromCharCode(65 + prev.length) }])
-                }
-                className="text-xs text-dars-terra font-semibold cursor-pointer bg-transparent border-none hover:underline"
-              >
-                + Add another class
-              </button>
-            </div>
-          )}
-
-          {/* Step 4: Subjects */}
-          {step === 4 && (
-            <div className="space-y-4">
-              <p className="text-xs text-dars-muted font-semibold uppercase tracking-wide">
-                Subjects (at least one per class)
-              </p>
-              {classes.map((cls, ci) => {
-                const classSubjects = subjects.filter((s) => s.classIdx === ci);
-                return (
-                  <div key={ci} className="mb-3">
-                    <p className="text-sm font-semibold text-dars-ink mb-2">
-                      Grade {cls.grade}-{cls.section}
-                    </p>
-                    <div className="space-y-2 pl-3 border-l-2 border-dars-rule-light">
-                      {classSubjects.map((sub, si) => {
-                        const globalIdx = subjects.indexOf(sub);
-                        return (
-                          <div key={si} className="flex gap-2 items-end">
-                            <div className="flex-1">
-                              <label className="block text-xs text-dars-muted mb-0.5">
-                                Subject name
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. English"
-                                value={sub.subject}
-                                onChange={(e) =>
-                                  setSubjects((prev) =>
-                                    prev.map((s, i) =>
-                                      i === globalIdx ? { ...s, subject: e.target.value } : s
-                                    )
-                                  )
-                                }
-                                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                              />
-                            </div>
-                            <div className="flex-1">
-                              <label className="block text-xs text-dars-muted mb-0.5">
-                                Teacher (optional)
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="Teacher name"
-                                value={sub.teacherName}
-                                onChange={(e) =>
-                                  setSubjects((prev) =>
-                                    prev.map((s, i) =>
-                                      i === globalIdx ? { ...s, teacherName: e.target.value } : s
-                                    )
-                                  )
-                                }
-                                className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-                              />
-                            </div>
-                            {classSubjects.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setSubjects((prev) => prev.filter((_, i) => i !== globalIdx))
-                                }
-                                className="mb-0.5 text-dars-muted hover:text-red-600 cursor-pointer bg-transparent border-none text-sm"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSubjects((prev) => [
-                            ...prev,
-                            { classIdx: ci, subject: "", teacherName: "" },
-                          ])
-                        }
-                        className="text-xs text-dars-terra font-semibold cursor-pointer bg-transparent border-none hover:underline"
-                      >
-                        + Add subject
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Step 5: Timetable */}
-          {step === 5 && (
-            <div className="space-y-4">
-              <p className="text-xs text-dars-muted font-semibold uppercase tracking-wide">
-                Timetable (at least one day per subject)
-              </p>
-              {classes.map((cls, ci) => {
-                const classSubjects = subjects.filter((s) => s.classIdx === ci);
-                return (
-                  <div key={ci} className="mb-3">
-                    <p className="text-sm font-semibold text-dars-ink mb-2">
-                      Grade {cls.grade}-{cls.section}
-                    </p>
-                    <div className="space-y-3 pl-3 border-l-2 border-dars-rule-light">
-                      {classSubjects.map((sub, si) => {
-                        const tt = timetables.find(
-                          (t) => t.classIdx === ci && t.subjectIdx === si
-                        );
-                        return (
-                          <div key={si}>
-                            <p className="text-xs text-dars-muted mb-1.5">{sub.subject}</p>
-                            <div className="flex gap-1.5 flex-wrap">
-                              {DAY_LABELS.map((label, day) => {
-                                const active = tt?.days.includes(day) ?? false;
-                                return (
-                                  <button
-                                    key={day}
-                                    type="button"
-                                    onClick={() => toggleDay(ci, si, day)}
-                                    className={`px-2.5 py-1 text-xs font-medium rounded-md border cursor-pointer transition-colors ${
-                                      active
-                                        ? "bg-dars-terra text-white border-dars-terra"
-                                        : "bg-white text-dars-muted border-dars-rule-dark hover:border-dars-terra"
-                                    }`}
-                                  >
-                                    {label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+              <div className="space-y-2">
+                <div className="flex items-start gap-3 text-xs text-dars-muted">
+                  <span className="mt-0.5 h-4 w-4 rounded-full bg-dars-terra text-white flex items-center justify-center shrink-0 text-[10px] font-bold">1</span>
+                  <span>Teachers open the Teacher App and click <strong className="text-dars-ink">Create Class</strong></span>
+                </div>
+                <div className="flex items-start gap-3 text-xs text-dars-muted">
+                  <span className="mt-0.5 h-4 w-4 rounded-full bg-dars-terra text-white flex items-center justify-center shrink-0 text-[10px] font-bold">2</span>
+                  <span>The system auto-resolves the book from your curriculum and upserts chapter plans</span>
+                </div>
+                <div className="flex items-start gap-3 text-xs text-dars-muted">
+                  <span className="mt-0.5 h-4 w-4 rounded-full bg-dars-terra text-white flex items-center justify-center shrink-0 text-[10px] font-bold">3</span>
+                  <span>AI-generated lesson breakdowns are ready within seconds</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1139,27 +859,13 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
                 Skip
               </button>
             )}
-            {step < 5 ? (
+            {step < totalSteps ? (
               <button
                 type="button"
                 onClick={() => {
                   setError(null);
                   if (step === 1 && (!yearName || !yearStart || !yearEnd)) {
                     setError("Please fill in all academic year fields.");
-                    return;
-                  }
-                  if (step === 3 && classes.some((c) => !c.section)) {
-                    setError("Please fill in a section for each class.");
-                    return;
-                  }
-                  if (
-                    step === 4 &&
-                    classes.some((_, ci) => {
-                      const subs = subjects.filter((s) => s.classIdx === ci);
-                      return subs.length === 0 || subs.some((s) => !s.subject);
-                    })
-                  ) {
-                    setError("Each class needs at least one subject with a name.");
                     return;
                   }
                   setStep((s) => s + 1);
@@ -1171,7 +877,7 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
             ) : (
               <button
                 type="button"
-                onClick={handleFinish}
+                onClick={() => void handleFinish()}
                 disabled={saving}
                 className="px-5 py-2 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-60 flex items-center gap-2"
               >
