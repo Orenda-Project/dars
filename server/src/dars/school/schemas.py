@@ -300,3 +300,23 @@ class TodaySlotEntry(BaseModel):
 class BreakdownYearResponse(BaseModel):
     status: str
     chapters: int
+
+
+# ---------------------------------------------------------------------------
+# LP & Exam generation responses
+# ---------------------------------------------------------------------------
+
+
+class GenerateLPResponse(BaseModel):
+    lesson_plan_id: uuid.UUID
+    status: str
+
+
+class GenerateAllLPsResponse(BaseModel):
+    queued: int
+    skipped: int
+
+
+class GenerateExamResponse(BaseModel):
+    exam_id: uuid.UUID
+    status: str

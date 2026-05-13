@@ -158,10 +158,42 @@ export interface AssessmentSlotRead {
   assessment_type: string; // "FA" | "SA"
   scheduled_date: string;
   title: string | null;
-  exam_generation_id: string | null;
+  exam_id: string | null;
   status: string; // "scheduled" | "completed" | "skipped"
   created_at: string;
   updated_at: string;
+}
+
+export interface GeneratedLPResponse {
+  id: string;
+  client_id: string;
+  external_id: string | null;
+  status: string; // "PENDING" | "READY" | "ERROR"
+  grade: string;
+  subject: string;
+  curriculum: string;
+  topic: string | null;
+  lp_type: string | null;
+  content: string | null;
+  content_bilingual: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GenerateExamResponse {
+  exam_id: string;
+  status: string;
+}
+
+export interface GenerateLPResponse {
+  lesson_plan_id: string;
+  status: string;
+}
+
+export interface GenerateAllLPsResponse {
+  queued: number;
+  skipped: number;
 }
 
 export interface AssessmentSlotListResponse {
@@ -464,6 +496,35 @@ export function regenerateLessonSlots(chapterPlanId: string): Promise<ClassLesso
 export function breakdownYear(classId: string, cstId: string): Promise<BreakdownYearResponse> {
   return apiFetch<BreakdownYearResponse>(
     `/api/v1/classes/${classId}/subjects/${cstId}/breakdown-year`,
+    { method: "POST" }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LP & Exam Generation from slots
+// ---------------------------------------------------------------------------
+
+export function generateLPForSlot(slotId: string): Promise<GenerateLPResponse> {
+  return apiFetch<GenerateLPResponse>(
+    `/api/v1/class-lesson-slots/${slotId}/generate-lp`,
+    { method: "POST" }
+  );
+}
+
+export function generateAllLPs(chapterPlanId: string): Promise<GenerateAllLPsResponse> {
+  return apiFetch<GenerateAllLPsResponse>(
+    `/api/v1/chapter-plans/${chapterPlanId}/generate-all-lps`,
+    { method: "POST" }
+  );
+}
+
+export function getLessonPlan(lpId: string): Promise<GeneratedLPResponse> {
+  return apiFetch<GeneratedLPResponse>(`/api/v1/lesson-plans/${lpId}`);
+}
+
+export function generateExamForSlot(slotId: string): Promise<GenerateExamResponse> {
+  return apiFetch<GenerateExamResponse>(
+    `/api/v1/assessment-slots/${slotId}/generate-exam`,
     { method: "POST" }
   );
 }

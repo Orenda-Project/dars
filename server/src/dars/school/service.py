@@ -12,6 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dars.config import settings
 from dars.curriculum.models import BookChapter, CurriculumChapterSchedule, Topic
 from dars.clients.models import Client
+from dars.generated_exams.models import GeneratedExam
+from dars.generated_exams.schemas import GeneratedExamCreate
+from dars.generated_exams.service import create_generated_exam
+from dars.generated_lps.models import GeneratedLP
+from dars.generated_lps.schemas import GeneratedLPCreate
+from dars.generated_lps.service import create_generated_lp
 from dars.school.models import (
     AcademicYear,
     AssessmentSlot,
@@ -616,6 +622,219 @@ async def ai_breakdown_all(
         "total_lesson_slots": total_lesson_slots,
         "total_assessment_slots": total_assessment_slots,
     }
+
+
+# ---------------------------------------------------------------------------
+# LP & Exam generation from slots
+# ---------------------------------------------------------------------------
+
+
+async def generate_lp_for_slot(
+    db: AsyncSession,
+    slot_id: uuid.UUID,
+    client_id: uuid.UUID,
+    curriculum: str,
+) -> GeneratedLP:
+    """
+    Create a GeneratedLP from a ClassLessonSlot and link it back to the slot.
+    Returns the GeneratedLP (status=PENDING). Background task runs separately.
+    Raises 404 if slot not found or doesn't belong to client.
+    Raises 409 if slot already has a lesson_plan_id.
+    """
+    logger.info("generate_lp_for_slot: slot_id=%s client_id=%s", slot_id, client_id)
+
+    slot_result = await db.execute(
+        select(ClassLessonSlot).where(
+            ClassLessonSlot.id == slot_id,
+            ClassLessonSlot.client_id == client_id,
+        )
+    )
+    slot = slot_result.scalar_one_or_none()
+    if slot is None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Lesson slot not found")
+
+    if slot.lesson_plan_id is not None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="Lesson slot already has a lesson plan",
+        )
+
+    # Load chapter plan → CST → SchoolClass for grade and subject
+    plan_result = await db.execute(select(ChapterPlan).where(ChapterPlan.id == slot.chapter_plan_id))
+    plan = plan_result.scalar_one_or_none()
+    if plan is None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Chapter plan not found")
+
+    cst_result = await db.execute(
+        select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == slot.class_subject_teacher_id)
+    )
+    cst = cst_result.scalar_one_or_none()
+    if cst is None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Class subject teacher not found")
+
+    class_result = await db.execute(select(SchoolClass).where(SchoolClass.id == cst.class_id))
+    school_class = class_result.scalar_one_or_none()
+    grade = school_class.grade if school_class else 5
+
+    lp_data = GeneratedLPCreate(
+        grade=grade,
+        subject=cst.subject,
+        topic=slot.title,
+        lp_type=slot.lp_type,
+        external_id=str(slot_id),
+    )
+    lp = await create_generated_lp(db, client_id, lp_data, curriculum)
+
+    slot.lesson_plan_id = lp.id
+    await db.commit()
+    await db.refresh(slot)
+
+    logger.info(
+        "generate_lp_for_slot: slot_id=%s lp_id=%s status=%s", slot_id, lp.id, lp.status
+    )
+    return lp
+
+
+async def generate_all_lps_for_chapter(
+    db: AsyncSession,
+    chapter_plan_id: uuid.UUID,
+    client_id: uuid.UUID,
+    curriculum: str,
+) -> tuple[list[tuple[uuid.UUID, GeneratedLPCreate]], int]:
+    """
+    Queue LP generation for all 'planned' slots in a chapter_plan that don't have a lesson_plan_id yet.
+    Returns (list_of_(lp_id, request_data), skipped_count).
+    Skipped = slots that already have a lesson_plan_id.
+    """
+    logger.info(
+        "generate_all_lps_for_chapter: chapter_plan_id=%s client_id=%s", chapter_plan_id, client_id
+    )
+
+    plan_result = await db.execute(
+        select(ChapterPlan).where(
+            ChapterPlan.id == chapter_plan_id,
+            ChapterPlan.client_id == client_id,
+        )
+    )
+    plan = plan_result.scalar_one_or_none()
+    if plan is None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Chapter plan not found")
+
+    cst_result = await db.execute(
+        select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == plan.class_subject_teacher_id)
+    )
+    cst = cst_result.scalar_one_or_none()
+    subject = cst.subject if cst else "General"
+
+    grade = 5
+    if cst is not None:
+        class_result2 = await db.execute(select(SchoolClass).where(SchoolClass.id == cst.class_id))
+        school_class2 = class_result2.scalar_one_or_none()
+        if school_class2:
+            grade = school_class2.grade
+
+    slots_result = await db.execute(
+        select(ClassLessonSlot).where(
+            ClassLessonSlot.chapter_plan_id == chapter_plan_id,
+            ClassLessonSlot.client_id == client_id,
+        ).order_by(ClassLessonSlot.day_number)
+    )
+    all_slots = list(slots_result.scalars().all())
+
+    queued_pairs: list[tuple[uuid.UUID, GeneratedLPCreate]] = []
+    skipped = 0
+
+    for slot in all_slots:
+        if slot.lesson_plan_id is not None:
+            skipped += 1
+            continue
+
+        lp_data = GeneratedLPCreate(
+            grade=grade,
+            subject=subject,
+            topic=slot.title,
+            lp_type=slot.lp_type,
+            external_id=str(slot.id),
+        )
+        lp = await create_generated_lp(db, client_id, lp_data, curriculum)
+        slot.lesson_plan_id = lp.id
+        await db.flush()
+        queued_pairs.append((lp.id, lp_data))
+
+    await db.commit()
+    logger.info(
+        "generate_all_lps_for_chapter: chapter_plan_id=%s queued=%d skipped=%d",
+        chapter_plan_id, len(queued_pairs), skipped,
+    )
+    return queued_pairs, skipped
+
+
+async def generate_exam_for_slot(
+    db: AsyncSession,
+    slot_id: uuid.UUID,
+    client_id: uuid.UUID,
+    curriculum: str,
+) -> GeneratedExam:
+    """
+    Create a GeneratedExam from an AssessmentSlot and link it back to the slot.
+    Returns the GeneratedExam (status=PENDING). Background task runs separately.
+    Raises 404 if slot not found or doesn't belong to client.
+    Raises 409 if slot already has an exam_id.
+    """
+    logger.info("generate_exam_for_slot: slot_id=%s client_id=%s", slot_id, client_id)
+
+    slot_result = await db.execute(
+        select(AssessmentSlot).where(
+            AssessmentSlot.id == slot_id,
+            AssessmentSlot.client_id == client_id,
+        )
+    )
+    slot = slot_result.scalar_one_or_none()
+    if slot is None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Assessment slot not found")
+
+    if slot.exam_id is not None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="Assessment slot already has an exam",
+        )
+
+    cst_result = await db.execute(
+        select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == slot.class_subject_teacher_id)
+    )
+    cst = cst_result.scalar_one_or_none()
+    if cst is None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Class subject teacher not found")
+
+    class_result = await db.execute(select(SchoolClass).where(SchoolClass.id == cst.class_id))
+    school_class = class_result.scalar_one_or_none()
+    grade = school_class.grade if school_class else 5
+
+    exam_data = GeneratedExamCreate(
+        grade=grade,
+        subject=cst.subject,
+        page_ranges="1-50",
+        generation_type=slot.assessment_type if slot.assessment_type in ("exam", "formative", "summative") else "exam",
+        external_id=str(slot_id),
+    )
+    exam = await create_generated_exam(db, client_id, exam_data, curriculum)
+
+    slot.exam_id = exam.id
+    await db.commit()
+    await db.refresh(slot)
+
+    logger.info(
+        "generate_exam_for_slot: slot_id=%s exam_id=%s status=%s", slot_id, exam.id, exam.status
+    )
+    return exam
 
 
 async def generate_lesson_sequence(

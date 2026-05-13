@@ -39,6 +39,9 @@ from dars.school.schemas import (
     CSTCreate,
     CSTRead,
     CSTUpdate,
+    GenerateAllLPsResponse,
+    GenerateExamResponse,
+    GenerateLPResponse,
     HolidayCreate,
     HolidayListResponse,
     HolidayRead,
@@ -53,12 +56,17 @@ from dars.school.schemas import (
     TodaySlotEntry,
 )
 from dars.curriculum.schemas import PrefillChapterPlan, PrefillResponse
+from dars.generated_exams.service import generate_exam_task
+from dars.generated_lps.service import generate_lp_task
 from dars.school.service import (
     ai_breakdown_all,
     ai_breakdown_chapter,
     auto_schedule_formative_assessments,
     compute_chapter_date_ranges,
     compute_teaching_days_for_year,
+    generate_all_lps_for_chapter,
+    generate_exam_for_slot,
+    generate_lp_for_slot,
     generate_lesson_sequence,
     get_prefill_chapter_plans,
 )
@@ -845,6 +853,124 @@ async def delete_assessment_slot(
     await db.delete(slot)
     await db.commit()
     logger.info("delete_assessment_slot: done slot_id=%s", slot_id)
+
+
+# ---------------------------------------------------------------------------
+# LP & Exam generation from slots
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/api/v1/class-lesson-slots/{slot_id}/generate-lp",
+    response_model=GenerateLPResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def generate_lp_for_lesson_slot(
+    slot_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> GenerateLPResponse:
+    logger.info(
+        "generate_lp_for_lesson_slot: slot_id=%s client_id=%s", slot_id, current_client.id
+    )
+    if not current_client.curriculum:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Client curriculum is not set",
+        )
+    lp = await generate_lp_for_slot(
+        db, slot_id, current_client.id, current_client.curriculum
+    )
+    # Build request object for background task (re-use lp fields)
+    from dars.generated_lps.schemas import GeneratedLPCreate as _LPCreate
+    lp_req = _LPCreate(
+        grade=int(lp.grade),
+        subject=lp.subject,
+        topic=lp.topic,
+        lp_type=lp.lp_type,
+        external_id=lp.external_id,
+    )
+    background_tasks.add_task(
+        generate_lp_task, lp.id, current_client.id, current_client.curriculum, lp_req
+    )
+    logger.info(
+        "generate_lp_for_lesson_slot: queued lp_id=%s slot_id=%s", lp.id, slot_id
+    )
+    return GenerateLPResponse(lesson_plan_id=lp.id, status=lp.status)
+
+
+@router.post(
+    "/api/v1/chapter-plans/{plan_id}/generate-all-lps",
+    response_model=GenerateAllLPsResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def generate_all_lps_for_chapter_plan(
+    plan_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> GenerateAllLPsResponse:
+    logger.info(
+        "generate_all_lps_for_chapter_plan: plan_id=%s client_id=%s", plan_id, current_client.id
+    )
+    if not current_client.curriculum:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Client curriculum is not set",
+        )
+    queued_pairs, skipped = await generate_all_lps_for_chapter(
+        db, plan_id, current_client.id, current_client.curriculum
+    )
+    from dars.generated_lps.schemas import GeneratedLPCreate as _LPCreate
+    for lp_id, lp_req in queued_pairs:
+        background_tasks.add_task(
+            generate_lp_task, lp_id, current_client.id, current_client.curriculum, lp_req
+        )
+    logger.info(
+        "generate_all_lps_for_chapter_plan: plan_id=%s queued=%d skipped=%d",
+        plan_id, len(queued_pairs), skipped,
+    )
+    return GenerateAllLPsResponse(queued=len(queued_pairs), skipped=skipped)
+
+
+@router.post(
+    "/api/v1/assessment-slots/{slot_id}/generate-exam",
+    response_model=GenerateExamResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def generate_exam_for_assessment_slot(
+    slot_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> GenerateExamResponse:
+    logger.info(
+        "generate_exam_for_assessment_slot: slot_id=%s client_id=%s", slot_id, current_client.id
+    )
+    if not current_client.curriculum:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Client curriculum is not set",
+        )
+    exam = await generate_exam_for_slot(
+        db, slot_id, current_client.id, current_client.curriculum
+    )
+    from dars.generated_exams.schemas import GeneratedExamCreate as _ExamCreate
+    exam_req = _ExamCreate(
+        grade=exam.grade,
+        subject=exam.subject,
+        page_ranges=exam.page_ranges,
+        generation_type=exam.generation_type,
+        external_id=exam.external_id,
+    )
+    background_tasks.add_task(
+        generate_exam_task, exam.id, current_client.id, current_client.curriculum, exam_req
+    )
+    logger.info(
+        "generate_exam_for_assessment_slot: queued exam_id=%s slot_id=%s", exam.id, slot_id
+    )
+    return GenerateExamResponse(exam_id=exam.id, status=exam.status)
 
 
 # ---------------------------------------------------------------------------
