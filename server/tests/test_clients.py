@@ -1,5 +1,4 @@
 import hashlib
-import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -44,7 +43,7 @@ async def http_client(db_session):
 @pytest.fixture(scope="function")
 def mock_client_obj():
     return Client(
-        id=uuid.uuid4(),
+        id=1,
         name="Test Team",
         api_key_hash="abc123",
         is_active=True,
@@ -160,7 +159,7 @@ async def test_patch_client_clears_webhook_url(http_client, db_session):
 
 async def test_patch_client_not_found(http_client):
     response = await http_client.patch(
-        f"/admin/clients/{uuid.uuid4()}",
+        "/admin/clients/99999",
         json={"webhook_url": "https://example.com/webhook"},
         headers={"X-Admin-Secret": "dev-secret"},
     )

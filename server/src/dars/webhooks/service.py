@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -17,8 +16,8 @@ RETRY_DELAYS = [0, 30, 300]
 
 async def deliver_webhook(
     db: AsyncSession,
-    client_id: uuid.UUID,
-    lesson_plan_id: uuid.UUID,
+    client_id: int,
+    lesson_plan_id: int,
     webhook_url: str,
     event: str,
     payload: dict,

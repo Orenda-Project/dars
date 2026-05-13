@@ -1,5 +1,3 @@
-import uuid
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -120,7 +118,7 @@ async def test_signup_ncp_default_teacher_created(http_client, db_session):
         json={"email": "ncp@example.com", "password": "secret123", "name": "NCP School", "curriculum": "NCP"},
     )
     assert response.status_code == 201
-    client_id = uuid.UUID(response.json()["client_id"])
+    client_id = int(response.json()["client_id"])
 
     # Check default_teacher_id is set
     result = await db_session.execute(select(Client).where(Client.id == client_id))

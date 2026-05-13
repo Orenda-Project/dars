@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -59,7 +58,7 @@ async def create_client_endpoint(
     dependencies=[Depends(require_admin_secret)],
 )
 async def update_client_endpoint(
-    client_id: uuid.UUID,
+    client_id: int,
     body: ClientUpdateRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ClientPublicResponse:

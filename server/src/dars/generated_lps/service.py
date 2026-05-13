@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 import httpx
 from sqlalchemy import func, select
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 async def create_generated_lp(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    client_id: int,
     data: GeneratedLPCreate,
     curriculum: str,
 ) -> GeneratedLP:
@@ -48,8 +47,8 @@ async def create_generated_lp(
 
 async def get_generated_lp(
     db: AsyncSession,
-    lp_id: uuid.UUID,
-    client_id: uuid.UUID,
+    lp_id: int,
+    client_id: int,
 ) -> GeneratedLP | None:
     """Fetch a single generated LP, always filtering by client_id."""
     result = await db.execute(
@@ -63,7 +62,7 @@ async def get_generated_lp(
 
 async def list_generated_lps(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    client_id: int,
     external_id: str | None = None,
     skip: int = 0,
     limit: int = 50,
@@ -91,7 +90,7 @@ async def list_generated_lps(
 
 async def update_lp_status(
     db: AsyncSession,
-    lp_id: uuid.UUID,
+    lp_id: int,
     status: str,
     content: str | None = None,
     content_bilingual: str | None = None,
@@ -119,8 +118,8 @@ async def update_lp_status(
 
 
 async def generate_lp_task(
-    lp_id: uuid.UUID,
-    client_id: uuid.UUID,
+    lp_id: int,
+    client_id: int,
     curriculum: str,
     request: GeneratedLPCreate,
 ) -> None:
@@ -132,52 +131,55 @@ async def generate_lp_task(
     engine = create_async_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
-    async with factory() as db:
-        lp = await db.get(GeneratedLP, lp_id)
-        if lp is None:
-            logger.error("generate_lp_task: GeneratedLP %s not found", lp_id)
-            await engine.dispose()
-            return
+    try:
+        async with factory() as db:
+            lp = await db.get(GeneratedLP, lp_id)
+            if lp is None:
+                logger.error("generate_lp_task: GeneratedLP %s not found", lp_id)
+                return
 
-        payload = {
-            "curriculum": curriculum,
-            "grade": canonical_grade(request.grade),
-            "subject": canonical_subject(request.subject),
-            "page_number": request.page_number or "",
-            "class_strength": request.class_strength or 30,
-            "generate_bilingual": request.generate_bilingual,
-        }
-        if request.topic:
-            payload["topic"] = request.topic
+            payload = {
+                "curriculum": curriculum,
+                "grade": canonical_grade(request.grade),
+                "subject": canonical_subject(request.subject),
+                "page_number": request.page_number or "",
+                "class_strength": request.class_strength or 30,
+                "generate_bilingual": request.generate_bilingual,
+            }
+            if request.topic:
+                payload["topic"] = request.topic
 
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as http:
-                response = await http.post(
-                    f"{settings.lp_assistant_url}/api/generate-lp",
-                    json=payload,
-                    headers={"api-key": settings.lp_assistant_api_key},
-                )
-            if response.is_error:
-                logger.error(
-                    "LP assistant error for lp=%s: HTTP %s — %s",
-                    lp_id, response.status_code, response.text,
-                )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as http:
+                    response = await http.post(
+                        f"{settings.lp_assistant_url}/api/generate-lp",
+                        json=payload,
+                        headers={"api-key": settings.lp_assistant_api_key},
+                    )
+                if response.is_error:
+                    logger.error(
+                        "LP assistant error for lp=%s: HTTP %s — %s",
+                        lp_id, response.status_code, response.text,
+                    )
+                response.raise_for_status()
+                data = response.json()
 
-            lp.content = data.get("lesson_plan", "")
-            lp.content_bilingual = data.get("lesson_plan_bilingual")
-            lp.tags = data.get("tags") or {}
-            lp.metadata_ = data.get("metadata") or {}
-            lp.status = "READY"
+                lp.content = data.get("lesson_plan", "")
+                lp.content_bilingual = data.get("lesson_plan_bilingual")
+                lp.tags = data.get("tags") or {}
+                lp.metadata_ = data.get("metadata") or {}
+                lp.status = "READY"
 
-        except Exception as exc:
-            logger.error("LP generation failed for lp=%s: %s", lp_id, exc, exc_info=True)
-            lp.status = "ERROR"
-            lp.error_message = str(exc)
+            except Exception as exc:
+                logger.error("LP generation failed for lp=%s: %s", lp_id, exc, exc_info=True)
+                lp.status = "ERROR"
+                lp.error_message = str(exc)
 
-        await db.commit()
-        await db.refresh(lp)
-        logger.info("GeneratedLP %s marked %s", lp_id, lp.status)
+            await db.commit()
+            await db.refresh(lp)
+            logger.info("GeneratedLP %s marked %s", lp_id, lp.status)
 
-    await engine.dispose()
+    except Exception as exc:
+        logger.error("generate_lp_task: DB error for lp_id=%s: %s", lp_id, exc, exc_info=True)
+    finally:
+        await engine.dispose()

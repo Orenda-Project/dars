@@ -1,5 +1,3 @@
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,7 +52,7 @@ async def list_teachers_endpoint(
 
 @router.get("/{teacher_id}", response_model=TeacherResponse)
 async def get_teacher_endpoint(
-    teacher_id: uuid.UUID,
+    teacher_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> TeacherResponse:
@@ -66,7 +64,7 @@ async def get_teacher_endpoint(
 
 @router.patch("/{teacher_id}", response_model=TeacherResponse)
 async def update_teacher_endpoint(
-    teacher_id: uuid.UUID,
+    teacher_id: int,
     body: TeacherUpdateRequest,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),

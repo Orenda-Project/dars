@@ -7,13 +7,14 @@ Pattern follows test_auth.py / test_clients.py:
   - api_key: obtained via /auth/signup
 """
 
-import uuid
 from datetime import date, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import dars.curriculum.models  # noqa — register with Base
+from dars.curriculum.models import Book, BookChapter
 from dars.database import Base, get_db
 from dars.main import app
 
@@ -109,6 +110,20 @@ async def _assign_subject(http_client, key: str, class_id: str, subject="Math") 
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+async def _make_chapter_id(db_session: AsyncSession) -> int:
+    """Create a Book + BookChapter and return the chapter's integer id."""
+    book = Book(core_id=1, curriculum="NCP", grade=5, subject="Math", title="Test Book")
+    db_session.add(book)
+    await db_session.flush()
+    await db_session.refresh(book)
+    chapter = BookChapter(book_id=book.id, title="Ch 1", chapter_number=1)
+    db_session.add(chapter)
+    await db_session.flush()
+    await db_session.refresh(chapter)
+    await db_session.commit()
+    return chapter.id
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +250,7 @@ async def test_set_timetable_and_compute_teaching_days(http_client, api_key, db_
 
     # Verify via service
     from dars.school.service import compute_teaching_days
-    teaching = await compute_teaching_days(uuid.UUID(cst["id"]), db_session)
+    teaching = await compute_teaching_days(int(cst["id"]), db_session)
     # Mon 05-04, Wed 05-06, Fri 05-08 → 3 days
     assert len(teaching) == 3
     assert teaching[0] == date(2026, 5, 4)
@@ -265,7 +280,7 @@ async def test_compute_teaching_days_excludes_holidays(http_client, api_key, db_
     )
 
     from dars.school.service import compute_teaching_days
-    teaching = await compute_teaching_days(uuid.UUID(cst["id"]), db_session)
+    teaching = await compute_teaching_days(int(cst["id"]), db_session)
     # Should be Mon 05-04 and Fri 05-08 (Wed excluded)
     assert len(teaching) == 2
     assert date(2026, 5, 6) not in teaching
@@ -283,10 +298,10 @@ async def test_bulk_upsert_chapter_plans(http_client, api_key, db_session):
     cls = await _make_class(http_client, api_key, year["id"], grade=7, section="C")
     cst = await _assign_subject(http_client, api_key, cls["id"], subject="Math")
 
-    # Need real chapter UUIDs - just use random ones (no FK in SQLite)
-    ch1 = str(uuid.uuid4())
-    ch2 = str(uuid.uuid4())
-    ch3 = str(uuid.uuid4())
+    # Create real BookChapter records (chapter_id is an int FK)
+    ch1 = await _make_chapter_id(db_session)
+    ch2 = await _make_chapter_id(db_session)
+    ch3 = await _make_chapter_id(db_session)
 
     resp = await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/chapter-plans",
@@ -330,7 +345,7 @@ async def test_generate_lesson_sequence(http_client, api_key, db_session):
     cls = await _make_class(http_client, api_key, year["id"], grade=8, section="D")
     cst = await _assign_subject(http_client, api_key, cls["id"], subject="Math")
 
-    ch1 = str(uuid.uuid4())
+    ch1 = await _make_chapter_id(db_session)
     plan_resp = await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/chapter-plans",
         json={"plans": [{"chapter_id": ch1, "position": 1, "teaching_days": 6}]},
@@ -355,14 +370,14 @@ async def test_generate_lesson_sequence(http_client, api_key, db_session):
     assert day_nums == list(range(1, 7))
 
 
-async def test_lesson_sequence_idempotent_regeneration(http_client, api_key):
+async def test_lesson_sequence_idempotent_regeneration(http_client, api_key, db_session):
     year = await _make_academic_year(
         http_client, api_key, name="Y4b", start="2026-05-04", end="2026-07-31"
     )
     cls = await _make_class(http_client, api_key, year["id"], grade=9, section="E")
     cst = await _assign_subject(http_client, api_key, cls["id"], subject="English")
 
-    ch1 = str(uuid.uuid4())
+    ch1 = await _make_chapter_id(db_session)
     plan_resp = await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/chapter-plans",
         json={"plans": [{"chapter_id": ch1, "position": 1, "teaching_days": 4}]},
@@ -391,14 +406,14 @@ async def test_lesson_sequence_idempotent_regeneration(http_client, api_key):
 # ---------------------------------------------------------------------------
 
 
-async def test_mark_slot_taught(http_client, api_key):
+async def test_mark_slot_taught(http_client, api_key, db_session):
     year = await _make_academic_year(
         http_client, api_key, name="Y5", start="2026-05-04", end="2026-07-31"
     )
     cls = await _make_class(http_client, api_key, year["id"], grade=10, section="F")
     cst = await _assign_subject(http_client, api_key, cls["id"], subject="Science")
 
-    ch1 = str(uuid.uuid4())
+    ch1 = await _make_chapter_id(db_session)
     plan_resp = await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/chapter-plans",
         json={"plans": [{"chapter_id": ch1, "position": 1, "teaching_days": 3}]},
@@ -444,8 +459,8 @@ async def test_auto_schedule_formative_assessments(http_client, api_key, db_sess
         headers=headers(api_key),
     )
 
-    ch1 = str(uuid.uuid4())
-    ch2 = str(uuid.uuid4())
+    ch1 = await _make_chapter_id(db_session)
+    ch2 = await _make_chapter_id(db_session)
     plan_resp = await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/chapter-plans",
         json={"plans": [
@@ -481,7 +496,7 @@ async def test_auto_schedule_fa_idempotent(http_client, api_key, db_session):
         json={"slots": [{"day_of_week": 0}, {"day_of_week": 2}, {"day_of_week": 4}]},
         headers=headers(api_key),
     )
-    ch1 = str(uuid.uuid4())
+    ch1 = await _make_chapter_id(db_session)
     await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/chapter-plans",
         json={"plans": [{"chapter_id": ch1, "position": 1, "teaching_days": 2}]},

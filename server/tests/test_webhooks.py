@@ -1,4 +1,3 @@
-import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,9 +25,9 @@ async def db_session():
 
 
 async def test_deliver_webhook_success(db_session):
-    client_id = uuid.uuid4()
-    lp_id = uuid.uuid4()
-    payload = {"event": "lesson_plan.ready", "lesson_plan": {"id": str(lp_id)}}
+    client_id = 1
+    lp_id = 1
+    payload = {"event": "lesson_plan.ready", "lesson_plan": {"id": lp_id}}
 
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -54,9 +53,9 @@ async def test_deliver_webhook_success(db_session):
 
 
 async def test_deliver_webhook_failure_marks_failed_after_max_retries(db_session):
-    client_id = uuid.uuid4()
-    lp_id = uuid.uuid4()
-    payload = {"event": "lesson_plan.error", "lesson_plan": {"id": str(lp_id)}}
+    client_id = 1
+    lp_id = 1
+    payload = {"event": "lesson_plan.error", "lesson_plan": {"id": lp_id}}
 
     with patch("dars.webhooks.service.httpx.AsyncClient") as mock_client_cls:
         mock_http = AsyncMock()

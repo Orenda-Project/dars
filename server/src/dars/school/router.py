@@ -1,5 +1,4 @@
 import logging
-import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -135,7 +134,7 @@ async def list_academic_years(
     response_model=TeachingDaysResponse,
 )
 async def get_teaching_days(
-    year_id: uuid.UUID,
+    year_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> TeachingDaysResponse:
@@ -159,7 +158,7 @@ async def get_teaching_days(
     status_code=status.HTTP_201_CREATED,
 )
 async def add_holiday(
-    year_id: uuid.UUID,
+    year_id: int,
     body: HolidayCreate,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -183,7 +182,7 @@ async def add_holiday(
 
 @router.get("/api/v1/academic-years/{year_id}/holidays", response_model=HolidayListResponse)
 async def list_holidays(
-    year_id: uuid.UUID,
+    year_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> HolidayListResponse:
@@ -210,8 +209,8 @@ async def list_holidays(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_holiday(
-    year_id: uuid.UUID,
-    holiday_id: uuid.UUID,
+    year_id: int,
+    holiday_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -267,7 +266,7 @@ async def create_class(
 
 @router.get("/api/v1/classes", response_model=SchoolClassListResponse)
 async def list_classes(
-    academic_year_id: uuid.UUID | None = Query(default=None),
+    academic_year_id: int | None = Query(default=None),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> SchoolClassListResponse:
@@ -286,7 +285,7 @@ async def list_classes(
 
 @router.get("/api/v1/classes/{class_id}", response_model=SchoolClassWithSubjects)
 async def get_class(
-    class_id: uuid.UUID,
+    class_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> SchoolClassWithSubjects:
@@ -313,7 +312,7 @@ async def get_class(
     status_code=status.HTTP_201_CREATED,
 )
 async def assign_subject(
-    class_id: uuid.UUID,
+    class_id: int,
     body: CSTCreate,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -343,8 +342,8 @@ async def assign_subject(
     response_model=CSTRead,
 )
 async def update_subject(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     body: CSTUpdate,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -373,8 +372,8 @@ async def update_subject(
     response_model=TimetableResponse,
 )
 async def set_timetable(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     body: TimetableSetRequest,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -411,8 +410,8 @@ async def set_timetable(
     response_model=TimetableResponse,
 )
 async def get_timetable(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> TimetableResponse:
@@ -438,8 +437,8 @@ async def get_timetable(
     response_model=ChapterPlanListResponse,
 )
 async def bulk_upsert_chapter_plans(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     body: ChapterPlanBulkUpsertRequest,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -509,8 +508,8 @@ async def bulk_upsert_chapter_plans(
     response_model=ChapterPlanListResponse,
 )
 async def list_chapter_plans(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> ChapterPlanListResponse:
@@ -553,8 +552,8 @@ async def list_chapter_plans(
     response_model=PrefillResponse,
 )
 async def prefill_chapter_plans(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> PrefillResponse:
@@ -569,7 +568,7 @@ async def prefill_chapter_plans(
 
 @router.patch("/api/v1/chapter-plans/{plan_id}", response_model=ChapterPlanRead)
 async def update_chapter_plan(
-    plan_id: uuid.UUID,
+    plan_id: int,
     body: ChapterPlanUpdate,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -598,7 +597,7 @@ async def update_chapter_plan(
     response_model=ClassLessonSlotListResponse,
 )
 async def generate_lesson_slots(
-    plan_id: uuid.UUID,
+    plan_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> ClassLessonSlotListResponse:
@@ -619,7 +618,7 @@ async def generate_lesson_slots(
     response_model=ClassLessonSlotListResponse,
 )
 async def regenerate_lesson_slots(
-    plan_id: uuid.UUID,
+    plan_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> ClassLessonSlotListResponse:
@@ -640,7 +639,7 @@ async def regenerate_lesson_slots(
     response_model=ClassLessonSlotListResponse,
 )
 async def list_lesson_slots(
-    plan_id: uuid.UUID,
+    plan_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> ClassLessonSlotListResponse:
@@ -665,7 +664,7 @@ async def list_lesson_slots(
     response_model=ClassLessonSlotRead,
 )
 async def mark_slot_taught(
-    slot_id: uuid.UUID,
+    slot_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> ClassLessonSlotRead:
@@ -686,7 +685,7 @@ async def mark_slot_taught(
     response_model=ClassLessonSlotRead,
 )
 async def update_lesson_slot(
-    slot_id: uuid.UUID,
+    slot_id: int,
     body: ClassLessonSlotUpdate,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -718,8 +717,8 @@ async def update_lesson_slot(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def breakdown_year(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -745,8 +744,8 @@ async def breakdown_year(
     response_model=AssessmentSlotListResponse,
 )
 async def auto_schedule_assessments(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> AssessmentSlotListResponse:
@@ -767,8 +766,8 @@ async def auto_schedule_assessments(
     status_code=status.HTTP_201_CREATED,
 )
 async def add_assessment_slot(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     body: AssessmentSlotCreate,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -800,8 +799,8 @@ async def add_assessment_slot(
     response_model=AssessmentSlotListResponse,
 )
 async def list_assessment_slots(
-    class_id: uuid.UUID,
-    cst_id: uuid.UUID,
+    class_id: int,
+    cst_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> AssessmentSlotListResponse:
@@ -824,7 +823,7 @@ async def list_assessment_slots(
 
 @router.patch("/api/v1/assessment-slots/{slot_id}", response_model=AssessmentSlotRead)
 async def update_assessment_slot(
-    slot_id: uuid.UUID,
+    slot_id: int,
     body: AssessmentSlotUpdate,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -847,7 +846,7 @@ async def update_assessment_slot(
 
 @router.delete("/api/v1/assessment-slots/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_assessment_slot(
-    slot_id: uuid.UUID,
+    slot_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -871,7 +870,7 @@ async def delete_assessment_slot(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def generate_lp_for_lesson_slot(
-    slot_id: uuid.UUID,
+    slot_id: int,
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -911,7 +910,7 @@ async def generate_lp_for_lesson_slot(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def generate_all_lps_for_chapter_plan(
-    plan_id: uuid.UUID,
+    plan_id: int,
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -945,7 +944,7 @@ async def generate_all_lps_for_chapter_plan(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def generate_exam_for_assessment_slot(
-    slot_id: uuid.UUID,
+    slot_id: int,
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -1296,7 +1295,7 @@ async def create_teacher_class(
     )
 
     # 9. Upsert chapter plans for this CST
-    chapter_plan_ids: list[uuid.UUID] = []
+    chapter_plan_ids: list[int] = []
     for item in prefill_items:
         position = item["suggested_position"] if item["suggested_position"] is not None else 0
         teaching_days = item["suggested_teaching_days"] if item["suggested_teaching_days"] is not None else 5
@@ -1355,7 +1354,7 @@ async def create_teacher_class(
 
 @router.get("/api/v1/chapter-plans", response_model=ChapterPlanListResponse)
 async def list_chapter_plans_flat(
-    cst_id: uuid.UUID = Query(...),
+    cst_id: int = Query(...),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> ChapterPlanListResponse:
@@ -1403,7 +1402,7 @@ async def list_chapter_plans_flat(
 
 @router.get("/api/v1/class-lesson-slots", response_model=ClassLessonSlotListResponse)
 async def list_lesson_slots_flat(
-    chapter_plan_id: uuid.UUID = Query(...),
+    chapter_plan_id: int = Query(...),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> ClassLessonSlotListResponse:
@@ -1436,7 +1435,7 @@ async def list_lesson_slots_flat(
 
 @router.get("/api/v1/assessment-slots", response_model=AssessmentSlotListResponse)
 async def list_assessment_slots_flat(
-    cst_id: uuid.UUID = Query(...),
+    cst_id: int = Query(...),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> AssessmentSlotListResponse:

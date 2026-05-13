@@ -1,4 +1,3 @@
-import uuid
 from datetime import date, datetime, time
 
 from pydantic import BaseModel, model_validator
@@ -22,13 +21,13 @@ class AcademicYearCreate(BaseModel):
 
 
 class TeachingDaysResponse(BaseModel):
-    academic_year_id: uuid.UUID
+    academic_year_id: int
     teaching_days: int
 
 
 class AcademicYearRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
+    id: int
+    client_id: int
     name: str
     start_date: date
     end_date: date
@@ -53,9 +52,9 @@ class HolidayCreate(BaseModel):
 
 
 class HolidayRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
-    academic_year_id: uuid.UUID
+    id: int
+    client_id: int
+    academic_year_id: int
     date: date
     name: str
 
@@ -73,7 +72,7 @@ class HolidayListResponse(BaseModel):
 
 
 class SchoolClassCreate(BaseModel):
-    academic_year_id: uuid.UUID
+    academic_year_id: int
     grade: int
     section: str
     name: str
@@ -82,9 +81,9 @@ class SchoolClassCreate(BaseModel):
 
 
 class SchoolClassRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
-    academic_year_id: uuid.UUID
+    id: int
+    client_id: int
+    academic_year_id: int
     grade: int
     section: str
     name: str
@@ -107,22 +106,22 @@ class SchoolClassListResponse(BaseModel):
 
 class CSTCreate(BaseModel):
     subject: str
-    teacher_id: uuid.UUID | None = None
-    book_id: uuid.UUID | None = None
+    teacher_id: int | None = None
+    book_id: int | None = None
 
 
 class CSTUpdate(BaseModel):
-    teacher_id: uuid.UUID | None = None
-    book_id: uuid.UUID | None = None
+    teacher_id: int | None = None
+    book_id: int | None = None
 
 
 class CSTRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
-    class_id: uuid.UUID
+    id: int
+    client_id: int
+    class_id: int
     subject: str
-    teacher_id: uuid.UUID | None
-    book_id: uuid.UUID | None
+    teacher_id: int | None
+    book_id: int | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -144,9 +143,9 @@ class TimetableSlotCreate(BaseModel):
 
 
 class TimetableSlotRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
-    class_subject_teacher_id: uuid.UUID
+    id: int
+    client_id: int
+    class_subject_teacher_id: int
     day_of_week: int
     start_time: time | None
     end_time: time | None
@@ -169,7 +168,7 @@ class TimetableResponse(BaseModel):
 
 
 class ChapterPlanItem(BaseModel):
-    chapter_id: uuid.UUID
+    chapter_id: int
     position: int
     teaching_days: int
 
@@ -179,10 +178,10 @@ class ChapterPlanBulkUpsertRequest(BaseModel):
 
 
 class ChapterPlanRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
-    class_subject_teacher_id: uuid.UUID
-    chapter_id: uuid.UUID
+    id: int
+    client_id: int
+    class_subject_teacher_id: int
+    chapter_id: int
     position: int
     teaching_days: int
     created_at: datetime
@@ -213,14 +212,14 @@ class ChapterPlanListResponse(BaseModel):
 
 
 class ClassLessonSlotRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
-    class_subject_teacher_id: uuid.UUID
-    chapter_plan_id: uuid.UUID
+    id: int
+    client_id: int
+    class_subject_teacher_id: int
+    chapter_plan_id: int
     day_number: int
     lp_type: str
     title: str
-    lesson_plan_id: uuid.UUID | None
+    lesson_plan_id: int | None
     status: str
     taught_date: date | None
     created_at: datetime
@@ -235,7 +234,7 @@ class ClassLessonSlotListResponse(BaseModel):
 class ClassLessonSlotUpdate(BaseModel):
     lp_type: str | None = None
     title: str | None = None
-    lesson_plan_id: uuid.UUID | None = None
+    lesson_plan_id: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -244,21 +243,21 @@ class ClassLessonSlotUpdate(BaseModel):
 
 
 class AssessmentSlotCreate(BaseModel):
-    chapter_plan_id: uuid.UUID | None = None
+    chapter_plan_id: int | None = None
     assessment_type: str
     scheduled_date: date
     title: str | None = None
 
 
 class AssessmentSlotRead(BaseModel):
-    id: uuid.UUID
-    client_id: uuid.UUID
-    class_subject_teacher_id: uuid.UUID
-    chapter_plan_id: uuid.UUID | None
+    id: int
+    client_id: int
+    class_subject_teacher_id: int
+    chapter_plan_id: int | None
     assessment_type: str
     scheduled_date: date
     title: str | None
-    exam_id: uuid.UUID | None = None
+    exam_id: int | None = None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -282,11 +281,11 @@ class AssessmentSlotUpdate(BaseModel):
 
 
 class TodaySlotEntry(BaseModel):
-    class_id: uuid.UUID
+    class_id: int
     class_name: str
     subject: str
-    cst_id: uuid.UUID
-    teacher_id: uuid.UUID | None
+    cst_id: int
+    teacher_id: int | None
     teacher_name: str | None
     next_planned_slot: ClassLessonSlotRead | None
     previous_taught_slot: ClassLessonSlotRead | None
@@ -308,7 +307,7 @@ class BreakdownYearResponse(BaseModel):
 
 
 class GenerateLPResponse(BaseModel):
-    lesson_plan_id: uuid.UUID
+    lesson_plan_id: int
     status: str
 
 
@@ -318,7 +317,7 @@ class GenerateAllLPsResponse(BaseModel):
 
 
 class GenerateExamResponse(BaseModel):
-    exam_id: uuid.UUID
+    exam_id: int
     status: str
 
 
@@ -328,7 +327,7 @@ class GenerateExamResponse(BaseModel):
 
 
 class MyClassEntry(BaseModel):
-    cst_id: uuid.UUID
+    cst_id: int
     class_name: str
     subject: str
     grade: int
@@ -351,11 +350,11 @@ class TeacherClassCreate(BaseModel):
     grade: int
     section: str
     subject: str
-    academic_year_id: uuid.UUID
+    academic_year_id: int
 
 
 class TeacherClassCreated(BaseModel):
-    class_id: uuid.UUID
-    cst_id: uuid.UUID
+    class_id: int
+    cst_id: int
     chapter_count: int
     status: str

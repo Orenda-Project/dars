@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,7 +91,7 @@ async def list_lps_endpoint(
     response_model=GeneratedLPResponse,
 )
 async def get_lp_endpoint(
-    lp_id: uuid.UUID,
+    lp_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> GeneratedLPResponse:

@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,7 +91,7 @@ async def list_exams_endpoint(
     response_model=GeneratedExamResponse,
 )
 async def get_exam_endpoint(
-    exam_id: uuid.UUID,
+    exam_id: int,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> GeneratedExamResponse:

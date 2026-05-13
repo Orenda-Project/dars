@@ -1,5 +1,3 @@
-import uuid
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -57,7 +55,7 @@ async def _make_book(db: AsyncSession, **kwargs) -> Book:
     return book
 
 
-async def _make_chapter(db: AsyncSession, book_id: uuid.UUID, **kwargs) -> BookChapter:
+async def _make_chapter(db: AsyncSession, book_id: int, **kwargs) -> BookChapter:
     defaults = {
         "core_id": 1,
         "book_id": book_id,
@@ -173,7 +171,7 @@ async def test_list_chapters_requires_auth(authed_client, db_session):
 
 async def test_list_chapters_book_not_found(authed_client):
     http, api_key, _ = authed_client
-    fake_id = str(uuid.uuid4())
+    fake_id = 99999
     response = await http.get(f"/api/v1/books/{fake_id}/chapters", headers={"X-API-Key": api_key})
     assert response.status_code == 404
 
@@ -234,7 +232,7 @@ async def test_list_chapters_response_fields(authed_client, db_session):
     item = response.json()["items"][0]
     assert "id" in item
     assert item["core_id"] == 10
-    assert item["book_id"] == str(book.id)
+    assert item["book_id"] == book.id
     assert item["title"] == "Intro"
     assert item["chapter_number"] == 1
     assert item["start_page"] == 1

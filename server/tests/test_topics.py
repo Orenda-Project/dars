@@ -4,7 +4,6 @@ Tests for:
   GET /api/v1/topics/{topic_id}/slots
   POST /admin/chapters/{chapter_id}/breakdown  (mocked AI)
 """
-import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -72,7 +71,7 @@ async def _make_book(db: AsyncSession, **kwargs) -> Book:
     return book
 
 
-async def _make_chapter(db: AsyncSession, book_id: uuid.UUID, **kwargs) -> BookChapter:
+async def _make_chapter(db: AsyncSession, book_id: int, **kwargs) -> BookChapter:
     defaults = {
         "core_id": 1,
         "book_id": book_id,
@@ -87,7 +86,7 @@ async def _make_chapter(db: AsyncSession, book_id: uuid.UUID, **kwargs) -> BookC
     return chapter
 
 
-async def _make_topic(db: AsyncSession, chapter_id: uuid.UUID, **kwargs) -> Topic:
+async def _make_topic(db: AsyncSession, chapter_id: int, **kwargs) -> Topic:
     defaults = {
         "chapter_id": chapter_id,
         "topic_number": 1,
@@ -103,7 +102,7 @@ async def _make_topic(db: AsyncSession, chapter_id: uuid.UUID, **kwargs) -> Topi
     return topic
 
 
-async def _make_slot(db: AsyncSession, topic_id: uuid.UUID, **kwargs) -> LessonSlot:
+async def _make_slot(db: AsyncSession, topic_id: int, **kwargs) -> LessonSlot:
     defaults = {
         "topic_id": topic_id,
         "day_number": 1,
@@ -134,7 +133,7 @@ async def test_list_topics_requires_auth(authed_client, db_session):
 async def test_list_topics_chapter_not_found(authed_client, db_session):
     http, api_key, _ = authed_client
     book = await _make_book(db_session, core_id=1)
-    fake_id = str(uuid.uuid4())
+    fake_id = 99999
     response = await http.get(
         f"/api/v1/books/{book.id}/chapters/{fake_id}/topics",
         headers={"X-API-Key": api_key},
@@ -207,8 +206,8 @@ async def test_list_topics_response_fields(authed_client, db_session):
     )
     assert response.status_code == 200
     item = response.json()["items"][0]
-    assert item["id"] == str(topic.id)
-    assert item["chapter_id"] == str(chapter.id)
+    assert item["id"] == topic.id
+    assert item["chapter_id"] == chapter.id
     assert item["topic_number"] == 1
     assert item["title"] == "Basic Numbers"
     assert item["start_page"] == 7
@@ -234,7 +233,7 @@ async def test_list_slots_requires_auth(authed_client, db_session):
 
 async def test_list_slots_topic_not_found(authed_client):
     http, api_key, _ = authed_client
-    fake_id = str(uuid.uuid4())
+    fake_id = 99999
     response = await http.get(f"/api/v1/topics/{fake_id}/slots", headers={"X-API-Key": api_key})
     assert response.status_code == 404
 
@@ -282,8 +281,8 @@ async def test_list_slots_response_fields(authed_client, db_session):
     response = await http.get(f"/api/v1/topics/{topic.id}/slots", headers={"X-API-Key": api_key})
     assert response.status_code == 200
     item = response.json()["items"][0]
-    assert item["id"] == str(slot.id)
-    assert item["topic_id"] == str(topic.id)
+    assert item["id"] == slot.id
+    assert item["topic_id"] == topic.id
     assert item["day_number"] == 1
     assert item["scheduled_date"] == "2026-03-12"
     assert item["topic_subtopic"] == "Basic Numbers — Introduction"
@@ -313,7 +312,7 @@ async def test_breakdown_not_found(authed_client, db_session):
     client_obj.is_admin = True
     await db_session.commit()
 
-    fake_id = str(uuid.uuid4())
+    fake_id = 99999
     from dars.clients.service import _hash_key
     admin_key = "dars_admin_test_key_for_not_found"
     client_obj.api_key_hash = _hash_key(admin_key)

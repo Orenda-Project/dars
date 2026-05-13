@@ -1,5 +1,3 @@
-import uuid
-
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +7,7 @@ from dars.teachers.schemas import TeacherRegisterRequest, TeacherUpdateRequest
 
 async def register_teacher(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    client_id: int,
     request: TeacherRegisterRequest,
 ) -> Teacher:
     existing = await db.execute(
@@ -36,7 +34,7 @@ async def register_teacher(
 
 async def register_teacher_and_commit(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    client_id: int,
     request: TeacherRegisterRequest,
 ) -> Teacher:
     teacher = await register_teacher(db, client_id, request)
@@ -46,7 +44,7 @@ async def register_teacher_and_commit(
 
 
 async def get_teacher(
-    db: AsyncSession, client_id: uuid.UUID, teacher_id: uuid.UUID
+    db: AsyncSession, client_id: int, teacher_id: int
 ) -> Teacher | None:
     result = await db.execute(
         select(Teacher).where(
@@ -59,7 +57,7 @@ async def get_teacher(
 
 async def list_teachers(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    client_id: int,
     limit: int = 20,
     offset: int = 0,
     search: str | None = None,
@@ -89,8 +87,8 @@ async def list_teachers(
 
 async def update_teacher(
     db: AsyncSession,
-    client_id: uuid.UUID,
-    teacher_id: uuid.UUID,
+    client_id: int,
+    teacher_id: int,
     request: TeacherUpdateRequest,
 ) -> Teacher | None:
     teacher = await get_teacher(db, client_id=client_id, teacher_id=teacher_id)
