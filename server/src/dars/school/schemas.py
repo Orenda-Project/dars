@@ -320,3 +320,23 @@ class GenerateAllLPsResponse(BaseModel):
 class GenerateExamResponse(BaseModel):
     exam_id: uuid.UUID
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Teacher App — My Classes
+# ---------------------------------------------------------------------------
+
+
+class MyClassEntry(BaseModel):
+    cst_id: uuid.UUID
+    class_name: str
+    subject: str
+    grade: int
+    book_title: str | None
+    chapter_count: int
+    taught_count: int
+    next_slot: ClassLessonSlotRead | None
+
+
+class MyClassListResponse(BaseModel):
+    items: list[MyClassEntry]

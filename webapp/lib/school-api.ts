@@ -528,3 +528,64 @@ export function generateExamForSlot(slotId: string): Promise<GenerateExamRespons
     { method: "POST" }
   );
 }
+
+// ---------------------------------------------------------------------------
+// Generated Exam (poll)
+// ---------------------------------------------------------------------------
+
+export interface GeneratedExamResponse {
+  id: string;
+  client_id: string;
+  external_id: string | null;
+  status: string; // "PENDING" | "READY" | "ERROR"
+  grade: string | number;
+  subject: string;
+  curriculum: string;
+  result: unknown | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getExam(examId: string): Promise<GeneratedExamResponse> {
+  return apiFetch<GeneratedExamResponse>(`/api/v1/exams/${examId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Teacher App — My Classes
+// ---------------------------------------------------------------------------
+
+export interface MyClassEntry {
+  cst_id: string;
+  class_name: string;
+  subject: string;
+  grade: number;
+  book_title: string | null;
+  chapter_count: number;
+  taught_count: number;
+  next_slot: ClassLessonSlotRead | null;
+}
+
+export interface MyClassListResponse {
+  items: MyClassEntry[];
+}
+
+export function getMyClasses(): Promise<MyClassListResponse> {
+  return apiFetch<MyClassListResponse>("/api/v1/me/classes");
+}
+
+// ---------------------------------------------------------------------------
+// Flat list endpoints (Teacher App)
+// ---------------------------------------------------------------------------
+
+export function getChapterPlansByCst(cstId: string): Promise<ChapterPlanListResponse> {
+  return apiFetch<ChapterPlanListResponse>(`/api/v1/chapter-plans?cst_id=${cstId}`);
+}
+
+export function getLessonSlotsByChapter(chapterPlanId: string): Promise<ClassLessonSlotListResponse> {
+  return apiFetch<ClassLessonSlotListResponse>(`/api/v1/class-lesson-slots?chapter_plan_id=${chapterPlanId}`);
+}
+
+export function getAssessmentSlotsByCst(cstId: string): Promise<AssessmentSlotListResponse> {
+  return apiFetch<AssessmentSlotListResponse>(`/api/v1/assessment-slots?cst_id=${cstId}`);
+}

@@ -45,6 +45,8 @@ from dars.school.schemas import (
     HolidayCreate,
     HolidayListResponse,
     HolidayRead,
+    MyClassEntry,
+    MyClassListResponse,
     SchoolClassCreate,
     SchoolClassListResponse,
     SchoolClassRead,
@@ -55,6 +57,7 @@ from dars.school.schemas import (
     TimetableSlotRead,
     TodaySlotEntry,
 )
+from dars.curriculum.models import Book
 from dars.curriculum.schemas import PrefillChapterPlan, PrefillResponse
 from dars.generated_exams.service import generate_exam_task
 from dars.generated_lps.service import generate_lp_task
@@ -1071,3 +1074,220 @@ async def get_today_schedule(
 
     logger.info("get_today_schedule: entries=%d", len(entries))
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Teacher App — My Classes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/v1/me/classes", response_model=MyClassListResponse)
+async def get_my_classes(
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> MyClassListResponse:
+    """
+    Return all ClassSubjectTeacher rows assigned to the client's default_teacher_id.
+    If default_teacher_id is None, returns an empty list.
+    """
+    logger.info(
+        "get_my_classes: client_id=%s default_teacher_id=%s",
+        current_client.id,
+        current_client.default_teacher_id,
+    )
+
+    if current_client.default_teacher_id is None:
+        logger.info("get_my_classes: no default_teacher_id, returning empty list")
+        return MyClassListResponse(items=[])
+
+    # Fetch all CSTs for the default teacher
+    cst_result = await db.execute(
+        select(ClassSubjectTeacher).where(
+            ClassSubjectTeacher.client_id == current_client.id,
+            ClassSubjectTeacher.teacher_id == current_client.default_teacher_id,
+        )
+    )
+    csts = list(cst_result.scalars().all())
+    logger.info("get_my_classes: found %d CSTs", len(csts))
+
+    items: list[MyClassEntry] = []
+    for cst in csts:
+        # Load the school class
+        sc = await db.get(SchoolClass, cst.class_id)
+        if sc is None:
+            continue
+
+        # Load book title if book_id set
+        book_title: str | None = None
+        if cst.book_id:
+            book = await db.get(Book, cst.book_id)
+            if book:
+                book_title = book.title
+
+        # Count chapter plans for this CST
+        cp_result = await db.execute(
+            select(ChapterPlan).where(
+                ChapterPlan.class_subject_teacher_id == cst.id,
+                ChapterPlan.client_id == current_client.id,
+            )
+        )
+        chapter_plans = list(cp_result.scalars().all())
+        chapter_count = len(chapter_plans)
+
+        # Count taught slots
+        taught_result = await db.execute(
+            select(ClassLessonSlot).where(
+                ClassLessonSlot.class_subject_teacher_id == cst.id,
+                ClassLessonSlot.client_id == current_client.id,
+                ClassLessonSlot.status == "taught",
+            )
+        )
+        taught_count = len(list(taught_result.scalars().all()))
+
+        # Next planned slot (lowest day_number among planned)
+        next_slot_result = await db.execute(
+            select(ClassLessonSlot)
+            .where(
+                ClassLessonSlot.class_subject_teacher_id == cst.id,
+                ClassLessonSlot.client_id == current_client.id,
+                ClassLessonSlot.status == "planned",
+            )
+            .order_by(ClassLessonSlot.day_number)
+            .limit(1)
+        )
+        next_slot_obj = next_slot_result.scalar_one_or_none()
+
+        items.append(
+            MyClassEntry(
+                cst_id=cst.id,
+                class_name=sc.name,
+                subject=cst.subject,
+                grade=sc.grade,
+                book_title=book_title,
+                chapter_count=chapter_count,
+                taught_count=taught_count,
+                next_slot=(
+                    ClassLessonSlotRead.model_validate(next_slot_obj)
+                    if next_slot_obj
+                    else None
+                ),
+            )
+        )
+
+    logger.info("get_my_classes: returning %d entries", len(items))
+    return MyClassListResponse(items=items)
+
+
+# ---------------------------------------------------------------------------
+# Flat chapter-plan list (by cst_id) — used by Teacher App
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/v1/chapter-plans", response_model=ChapterPlanListResponse)
+async def list_chapter_plans_flat(
+    cst_id: uuid.UUID = Query(...),
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> ChapterPlanListResponse:
+    """
+    List chapter plans for a given cst_id. Flat endpoint (no class_id path param).
+    Used by the Teacher App.
+    """
+    logger.info("list_chapter_plans_flat: cst_id=%s client_id=%s", cst_id, current_client.id)
+    cst = await db.get(ClassSubjectTeacher, cst_id)
+    if cst is None or cst.client_id != current_client.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CST not found")
+
+    plans_result = await db.execute(
+        select(ChapterPlan)
+        .where(ChapterPlan.class_subject_teacher_id == cst_id)
+        .order_by(ChapterPlan.position)
+    )
+    plans = list(plans_result.scalars().all())
+
+    date_ranges_list = await compute_chapter_date_ranges(cst_id, db)
+    dr_map = {dr["chapter_plan_id"]: dr for dr in date_ranges_list}
+
+    prefill_items = await get_prefill_chapter_plans(cst_id, db)
+    prefill_map = {str(p["chapter_id"]): p for p in prefill_items}
+
+    items: list[ChapterPlanWithDates] = []
+    for plan in plans:
+        dr = dr_map.get(plan.id, {})
+        r = ChapterPlanWithDates.model_validate(plan)
+        r.start_date = dr.get("start_date")
+        r.end_date = dr.get("end_date")
+        pf = prefill_map.get(str(plan.chapter_id), {})
+        r.suggested_teaching_days = pf.get("suggested_teaching_days")
+        r.suggested_position = pf.get("suggested_position")
+        items.append(r)
+
+    logger.info("list_chapter_plans_flat: cst_id=%s count=%d", cst_id, len(items))
+    return ChapterPlanListResponse(items=items)
+
+
+# ---------------------------------------------------------------------------
+# Flat lesson-slot list (by chapter_plan_id) — used by Teacher App
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/v1/class-lesson-slots", response_model=ClassLessonSlotListResponse)
+async def list_lesson_slots_flat(
+    chapter_plan_id: uuid.UUID = Query(...),
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> ClassLessonSlotListResponse:
+    """
+    List lesson slots for a chapter_plan_id. Flat endpoint — no path params.
+    Used by the Teacher App.
+    """
+    logger.info(
+        "list_lesson_slots_flat: chapter_plan_id=%s client_id=%s", chapter_plan_id, current_client.id
+    )
+    plan = await db.get(ChapterPlan, chapter_plan_id)
+    if plan is None or plan.client_id != current_client.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter plan not found")
+    result = await db.execute(
+        select(ClassLessonSlot)
+        .where(ClassLessonSlot.chapter_plan_id == chapter_plan_id)
+        .order_by(ClassLessonSlot.day_number)
+    )
+    slots = list(result.scalars().all())
+    logger.info("list_lesson_slots_flat: chapter_plan_id=%s count=%d", chapter_plan_id, len(slots))
+    return ClassLessonSlotListResponse(
+        items=[ClassLessonSlotRead.model_validate(s) for s in slots]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Flat assessment-slot list (by cst_id) — used by Teacher App
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/v1/assessment-slots", response_model=AssessmentSlotListResponse)
+async def list_assessment_slots_flat(
+    cst_id: uuid.UUID = Query(...),
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> AssessmentSlotListResponse:
+    """
+    List assessment slots for a cst_id. Flat endpoint — no path params.
+    Used by the Teacher App.
+    """
+    logger.info(
+        "list_assessment_slots_flat: cst_id=%s client_id=%s", cst_id, current_client.id
+    )
+    cst = await db.get(ClassSubjectTeacher, cst_id)
+    if cst is None or cst.client_id != current_client.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CST not found")
+    result = await db.execute(
+        select(AssessmentSlot).where(
+            AssessmentSlot.class_subject_teacher_id == cst_id,
+            AssessmentSlot.client_id == current_client.id,
+        )
+    )
+    items = list(result.scalars().all())
+    logger.info("list_assessment_slots_flat: cst_id=%s count=%d", cst_id, len(items))
+    return AssessmentSlotListResponse(
+        items=[AssessmentSlotRead.model_validate(s) for s in items]
+    )
