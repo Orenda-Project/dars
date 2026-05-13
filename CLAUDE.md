@@ -26,7 +26,7 @@
 | Folder | Contents |
 |--------|----------|
 | `server/` | FastAPI backend (Python 3.12, SQLAlchemy async, asyncpg) |
-| `supabase/migrations/` | DB migrations (Supabase CLI) — **all `.sql` migration files go here, not `server/`** |
+| `server/src/dars/migrations/` | DB migrations (plain SQL) — **all `.sql` migration files go here, nowhere else** |
 | `webapp/` | Next.js web app |
 | `docs/` | All project documentation |
 | `.beads/` | Work tracking (append-only JSONL) |
