@@ -1,11 +1,16 @@
+import json
 import logging
+import re
 import uuid
 from datetime import date, timedelta
+
+import anthropic
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dars.curriculum.models import BookChapter, CurriculumChapterSchedule
+from dars.config import settings
+from dars.curriculum.models import BookChapter, CurriculumChapterSchedule, Topic
 from dars.clients.models import Client
 from dars.school.models import (
     AcademicYear,
@@ -338,6 +343,279 @@ async def get_prefill_chapter_plans(
 
     logger.info("get_prefill_chapter_plans: cst_id=%s returning=%d chapters", cst_id, len(result))
     return result
+
+
+# ---------------------------------------------------------------------------
+# AI lesson breakdown helpers
+# ---------------------------------------------------------------------------
+
+# LP types by subject for Claude prompt
+_LP_TYPES_BY_SUBJECT = {
+    "english": "Reading, Vocabulary, Comprehension (Word Meanings), Comprehension (Q&A), Grammar, Creative Writing, Revision",
+    "maths": "Concept Introduction, Concrete Practice, Pictorial & Abstract, Word Problems, Revision",
+    "mathematics": "Concept Introduction, Concrete Practice, Pictorial & Abstract, Word Problems, Revision",
+    "urdu": "Qiraat, Lughat, Grammar, Tehrir, Islah, Dohrai",
+}
+_DEFAULT_LP_TYPES = "Introduction, Practice, Review, Revision"
+
+_BREAKDOWN_SYSTEM_PROMPT = """You are an expert Pakistani school curriculum planner. Given a chapter's details,
+design an optimal lesson sequence using the available LP types for the subject.
+
+LP types by subject:
+- English: Reading, Vocabulary, Comprehension (Word Meanings), Comprehension (Q&A),
+           Grammar, Creative Writing, Revision
+- Maths / Mathematics: Concept Introduction, Concrete Practice, Pictorial & Abstract,
+         Word Problems, Revision
+- Urdu: Qiraat, Lughat, Grammar, Tehrir, Islah, Dohrai
+- Default: Introduction, Practice, Review, Revision
+
+Rules:
+1. The LAST slot of a chapter is ALWAYS "Revision" (type: lesson)
+2. Insert one Formative Assessment (type: assessment, assessment_type: "formative") after every 3-4 teaching lesson days
+3. Never place a Formative Assessment on the first or last day
+4. Distribute LP types to cover chapter topics evenly
+5. Return ONLY valid JSON — no markdown, no explanation
+
+Return JSON array only:
+[
+  {"day": 1, "type": "lesson", "lp_type": "Reading", "title": "Title of lesson"},
+  {"day": 3, "type": "assessment", "assessment_type": "formative", "title": "Chapter FA 1"},
+  ...
+]"""
+
+
+def _extract_json_array_from_response(response: str) -> list:
+    """Extract JSON array from LLM response using two fallback strategies."""
+    if not response or not isinstance(response, str):
+        return []
+
+    # Strategy 1: ```json ... ``` code block
+    code_block = re.search(r"```(?:json)?\s*\n([\s\S]*?)\n?\s*```", response)
+    if code_block:
+        try:
+            result = json.loads(code_block.group(1).strip())
+            if isinstance(result, list):
+                return result
+        except json.JSONDecodeError as exc:
+            logger.debug("code-block JSON parse failed — %s", exc)
+
+    # Strategy 2: greedy bracket match — find outermost [ ... ]
+    greedy = re.search(r"\[[\s\S]*\]", response)
+    if greedy:
+        try:
+            result = json.loads(greedy.group())
+            if isinstance(result, list):
+                return result
+        except json.JSONDecodeError as exc:
+            logger.debug("greedy JSON parse failed — %s", exc)
+
+    return []
+
+
+async def ai_breakdown_chapter(
+    chapter_plan_id: uuid.UUID,
+    db: AsyncSession,
+) -> dict:
+    """
+    Use Claude to generate a pedagogically sound lesson sequence for a chapter plan.
+    Creates ClassLessonSlot rows (lessons) and AssessmentSlot rows (formative only).
+    Falls back to generate_lesson_sequence() if Claude fails.
+
+    Returns {"lesson_slots": [...], "assessment_slots": [...]}.
+    """
+    logger.info("ai_breakdown_chapter: chapter_plan_id=%s", chapter_plan_id)
+
+    # 1. Load ChapterPlan
+    plan_result = await db.execute(select(ChapterPlan).where(ChapterPlan.id == chapter_plan_id))
+    plan = plan_result.scalar_one_or_none()
+    if plan is None:
+        logger.error("ai_breakdown_chapter: chapter_plan_id=%s not found", chapter_plan_id)
+        return {"lesson_slots": [], "assessment_slots": []}
+
+    # 2. Load ClassSubjectTeacher
+    cst_result = await db.execute(
+        select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == plan.class_subject_teacher_id)
+    )
+    cst = cst_result.scalar_one_or_none()
+    if cst is None:
+        logger.error("ai_breakdown_chapter: CST not found for chapter_plan_id=%s", chapter_plan_id)
+        return {"lesson_slots": [], "assessment_slots": []}
+
+    # 3. Load BookChapter
+    chapter_result = await db.execute(
+        select(BookChapter).where(BookChapter.id == plan.chapter_id)
+    )
+    book_chapter = chapter_result.scalar_one_or_none()
+    chapter_title = book_chapter.title if book_chapter else "Unknown Chapter"
+    chapter_number = book_chapter.chapter_number if book_chapter else 1
+
+    # 4. Load SchoolClass
+    class_result = await db.execute(
+        select(SchoolClass).where(SchoolClass.id == cst.class_id)
+    )
+    school_class = class_result.scalar_one_or_none()
+    grade = school_class.grade if school_class else "?"
+
+    # 5. Load Topics
+    topics_result = await db.execute(
+        select(Topic)
+        .where(Topic.chapter_id == plan.chapter_id)
+        .order_by(Topic.topic_number)
+    )
+    topics = list(topics_result.scalars().all())
+    topic_list = ", ".join(t.title for t in topics) if topics else "General chapter content"
+
+    subject = cst.subject
+    teaching_days = plan.teaching_days
+    lp_types_hint = _LP_TYPES_BY_SUBJECT.get(subject.lower(), _DEFAULT_LP_TYPES)
+
+    user_prompt = (
+        f"Chapter: {chapter_title} (Chapter {chapter_number})\n"
+        f"Subject: {subject}, Grade: {grade}\n"
+        f"Teaching days: {teaching_days}\n"
+        f"Topics: {topic_list}\n"
+        f"Available LP types: {lp_types_hint}"
+    )
+
+    try:
+        if not settings.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY is not configured")
+
+        logger.info(
+            "ai_breakdown_chapter: calling Claude — chapter=%r subject=%r days=%d",
+            chapter_title, subject, teaching_days,
+        )
+
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        message = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4000,
+            system=_BREAKDOWN_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+
+        raw = message.content[0].text
+        logger.info(
+            "ai_breakdown_chapter: Claude response received — chars=%d chapter=%r",
+            len(raw), chapter_title,
+        )
+
+        items = _extract_json_array_from_response(raw)
+        if not items:
+            raise ValueError(f"Empty or unparseable Claude response for chapter {chapter_plan_id}")
+
+        # 9. Delete existing ClassLessonSlot rows
+        await db.execute(
+            delete(ClassLessonSlot).where(ClassLessonSlot.chapter_plan_id == chapter_plan_id)
+        )
+
+        # 10. Delete existing formative AssessmentSlot rows (preserve summative)
+        await db.execute(
+            delete(AssessmentSlot).where(
+                AssessmentSlot.chapter_plan_id == chapter_plan_id,
+                AssessmentSlot.assessment_type.in_(["FA", "formative"]),
+            )
+        )
+
+        # 11+12. Insert new slots
+        lesson_slots: list[ClassLessonSlot] = []
+        assessment_slots: list[AssessmentSlot] = []
+        fa_counter = 1
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("type", "lesson")
+
+            if item_type == "lesson":
+                day_num = item.get("day", len(lesson_slots) + 1)
+                lp_type = item.get("lp_type", "Introduction")
+                title = item.get("title", f"Day {day_num}: {lp_type}")
+                slot = ClassLessonSlot(
+                    client_id=cst.client_id,
+                    class_subject_teacher_id=cst.id,
+                    chapter_plan_id=chapter_plan_id,
+                    day_number=day_num,
+                    lp_type=lp_type,
+                    title=title,
+                    status="planned",
+                )
+                db.add(slot)
+                lesson_slots.append(slot)
+
+            elif item_type == "assessment":
+                assessment_type = item.get("assessment_type", "formative")
+                title = item.get("title", f"Formative Assessment {fa_counter}")
+                fa_counter += 1
+                aslot = AssessmentSlot(
+                    client_id=cst.client_id,
+                    class_subject_teacher_id=cst.id,
+                    chapter_plan_id=chapter_plan_id,
+                    assessment_type=assessment_type,
+                    scheduled_date=date.today(),
+                    title=title,
+                    status="scheduled",
+                )
+                db.add(aslot)
+                assessment_slots.append(aslot)
+
+        await db.flush()
+        for s in lesson_slots:
+            await db.refresh(s)
+        for s in assessment_slots:
+            await db.refresh(s)
+
+        await db.commit()
+        logger.info(
+            "ai_breakdown_chapter: done chapter_plan_id=%s lesson_slots=%d assessment_slots=%d",
+            chapter_plan_id, len(lesson_slots), len(assessment_slots),
+        )
+        return {"lesson_slots": lesson_slots, "assessment_slots": assessment_slots}
+
+    except Exception:
+        logger.error(
+            "ai_breakdown_chapter: Claude failed for chapter_plan_id=%s — falling back to generate_lesson_sequence",
+            chapter_plan_id,
+            exc_info=True,
+        )
+        fallback_slots = await generate_lesson_sequence(chapter_plan_id, db)
+        return {"lesson_slots": fallback_slots, "assessment_slots": []}
+
+
+async def ai_breakdown_all(
+    cst_id: uuid.UUID,
+    db: AsyncSession,
+) -> dict:
+    """
+    Run AI lesson breakdown for all chapter plans of a CST, ordered by position.
+    Returns summary counts.
+    """
+    logger.info("ai_breakdown_all: cst_id=%s", cst_id)
+
+    plans_result = await db.execute(
+        select(ChapterPlan)
+        .where(ChapterPlan.class_subject_teacher_id == cst_id)
+        .order_by(ChapterPlan.position)
+    )
+    plans = list(plans_result.scalars().all())
+
+    total_lesson_slots = 0
+    total_assessment_slots = 0
+
+    for plan in plans:
+        result = await ai_breakdown_chapter(plan.id, db)
+        total_lesson_slots += len(result["lesson_slots"])
+        total_assessment_slots += len(result["assessment_slots"])
+
+    logger.info(
+        "ai_breakdown_all: cst_id=%s chapters=%d lesson_slots=%d assessment_slots=%d",
+        cst_id, len(plans), total_lesson_slots, total_assessment_slots,
+    )
+    return {
+        "chapters_planned": len(plans),
+        "total_lesson_slots": total_lesson_slots,
+        "total_assessment_slots": total_assessment_slots,
+    }
 
 
 async def generate_lesson_sequence(

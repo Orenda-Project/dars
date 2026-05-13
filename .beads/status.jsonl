@@ -13,3 +13,6 @@
 {"id":"feat-step3-academic-calendar","title":"Step 3 — Academic Calendar","category":"feature","status":"in_progress","opened_at":"2026-05-13T00:00:00Z"}
 {"id":"feat-step3-academic-calendar","status":"closed","closed_at":"2026-05-13T09:16:14Z","resolution":"Deployed to Railway staging. Teaching days endpoint live, date constraint applied via DO block migration."}
 {"id":"feat-step4-chapter-mapping","title":"Step 4 — Chapter Mapping & Year Plan","category":"feature","status":"in_progress","opened_at":"2026-05-13T00:00:00Z"}
+{"id":"feat-step4-chapter-mapping","status":"closed","closed_at":"2026-05-13T09:33:08Z","resolution":"Deployed to Railway staging. curriculum_chapter_schedule table live, prefill endpoint deployed."}
+{"id":"feat-step5-lesson-breakdown","title":"Step 5 — AI Lesson Breakdown","category":"feature","status":"in_progress","opened_at":"2026-05-13T00:00:00Z"}
+{"id":"feat-step5-lesson-breakdown","status":"closed","closed_at":"2026-05-13T00:00:00Z","resolution":"Step 5 AI lesson breakdown implemented: ai_breakdown_chapter + ai_breakdown_all, indexes migration, router endpoints (generate updated to AI, regenerate, breakdown-year), frontend generate/regenerate/inline-edit/timeline/year-breakdown, 6 tests passing. Full suite 131/131."}

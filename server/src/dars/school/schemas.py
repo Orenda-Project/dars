@@ -290,3 +290,13 @@ class TodaySlotEntry(BaseModel):
     teacher_name: str | None
     next_planned_slot: ClassLessonSlotRead | None
     previous_taught_slot: ClassLessonSlotRead | None
+
+
+# ---------------------------------------------------------------------------
+# AI Lesson Breakdown
+# ---------------------------------------------------------------------------
+
+
+class BreakdownYearResponse(BaseModel):
+    status: str
+    chapters: int
