@@ -27,6 +27,42 @@ _LP_CYCLES: dict[str, list[str]] = {
 _DEFAULT_CYCLE = ["Introduction", "Practice", "Review", "Revision-cycle"]
 
 
+async def compute_teaching_days_for_year(
+    academic_year_id: uuid.UUID,
+    db: AsyncSession,
+) -> int:
+    """
+    Count teaching days in an academic year: all Mon–Fri dates excluding holidays.
+    Used for the summary count shown in the dashboard (no timetable needed).
+    """
+    logger.info("compute_teaching_days_for_year: academic_year_id=%s", academic_year_id)
+
+    year_result = await db.execute(select(AcademicYear).where(AcademicYear.id == academic_year_id))
+    academic_year = year_result.scalar_one_or_none()
+    if academic_year is None:
+        logger.error("compute_teaching_days_for_year: academic_year_id=%s not found", academic_year_id)
+        return 0
+
+    hol_result = await db.execute(
+        select(Holiday).where(Holiday.academic_year_id == academic_year_id)
+    )
+    holiday_dates = {h.date for h in hol_result.scalars().all()}
+
+    start = academic_year.start_date
+    end = academic_year.end_date
+    count = 0
+    current = start
+    while current <= end:
+        if current.weekday() < 5 and current not in holiday_dates:
+            count += 1
+        current += timedelta(days=1)
+
+    logger.info(
+        "compute_teaching_days_for_year: academic_year_id=%s count=%d", academic_year_id, count
+    )
+    return count
+
+
 async def compute_teaching_days(
     cst_id: uuid.UUID,
     db: AsyncSession,

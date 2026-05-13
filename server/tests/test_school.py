@@ -609,3 +609,99 @@ async def test_invalid_api_key_returns_401(http_client):
         headers={"X-API-Key": "dars_fake_invalid_key"},
     )
     assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# 10. Step 3 — Academic Calendar: teaching days + date validation
+# ---------------------------------------------------------------------------
+
+
+async def test_teaching_days_count_no_holidays(http_client, api_key):
+    # Sep 1 2025 (Mon) to Sep 12 2025 (Fri) = 10 weekdays
+    resp = await http_client.post(
+        "/api/v1/academic-years",
+        json={"name": "Short Year", "start_date": "2025-09-01", "end_date": "2025-09-12"},
+        headers=headers(api_key),
+    )
+    assert resp.status_code == 201
+    year_id = resp.json()["id"]
+
+    resp = await http_client.get(
+        f"/api/v1/academic-years/{year_id}/teaching-days",
+        headers=headers(api_key),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["academic_year_id"] == year_id
+    assert data["teaching_days"] == 10
+
+
+async def test_teaching_days_excludes_holidays(http_client, api_key):
+    # Sep 1–12 2025 = 10 weekdays; add 2 holidays on Mon and Tue → 8 teaching days
+    resp = await http_client.post(
+        "/api/v1/academic-years",
+        json={"name": "Holiday Year", "start_date": "2025-09-01", "end_date": "2025-09-12"},
+        headers=headers(api_key),
+    )
+    assert resp.status_code == 201
+    year_id = resp.json()["id"]
+
+    await http_client.post(
+        f"/api/v1/academic-years/{year_id}/holidays",
+        json={"date": "2025-09-01", "name": "H1"},
+        headers=headers(api_key),
+    )
+    await http_client.post(
+        f"/api/v1/academic-years/{year_id}/holidays",
+        json={"date": "2025-09-02", "name": "H2"},
+        headers=headers(api_key),
+    )
+
+    resp = await http_client.get(
+        f"/api/v1/academic-years/{year_id}/teaching-days",
+        headers=headers(api_key),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["teaching_days"] == 8
+
+
+async def test_teaching_days_excludes_weekends(http_client, api_key):
+    # Sep 13–14 2025 = Sat + Sun → 0 teaching days
+    resp = await http_client.post(
+        "/api/v1/academic-years",
+        json={"name": "Weekend Year", "start_date": "2025-09-13", "end_date": "2025-09-14"},
+        headers=headers(api_key),
+    )
+    assert resp.status_code == 201
+    year_id = resp.json()["id"]
+
+    resp = await http_client.get(
+        f"/api/v1/academic-years/{year_id}/teaching-days",
+        headers=headers(api_key),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["teaching_days"] == 0
+
+
+async def test_create_academic_year_invalid_dates_rejected(http_client, api_key):
+    resp = await http_client.post(
+        "/api/v1/academic-years",
+        json={"name": "Bad Year", "start_date": "2025-09-12", "end_date": "2025-09-01"},
+        headers=headers(api_key),
+    )
+    assert resp.status_code == 422
+
+
+async def test_teaching_days_wrong_client_returns_404(http_client, api_key, api_key2):
+    resp = await http_client.post(
+        "/api/v1/academic-years",
+        json={"name": "Client1 Year", "start_date": "2025-09-01", "end_date": "2025-09-12"},
+        headers=headers(api_key),
+    )
+    year_id = resp.json()["id"]
+
+    resp = await http_client.get(
+        f"/api/v1/academic-years/{year_id}/teaching-days",
+        headers=headers(api_key2),
+    )
+    assert resp.status_code == 404

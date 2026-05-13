@@ -10,6 +10,21 @@ Ordered roughly by priority. Open a bead when you start something.
 
 ---
 
+## Constraints & decisions
+
+Architectural decisions that constrain future features. **Check this before planning anything new.**
+
+| Decision | Rationale | Constraint |
+|----------|-----------|------------|
+| All DB queries filter by `client_id` | Multi-tenancy — clients must never see each other's data | Every new data table needs `client_id FK → clients`. Never query without it. |
+| Curricula are NCP or SNC (not ICT/Punjab) | Governing bodies decide books and SLOs | New books/SLOs must reference `curriculums.code` not free-text strings |
+| LP and exam generation are unified single modules (`generated_lesson_plans`, `generated_exams`) | Previous split into `lesson_plans`/`custom_lesson_plans` caused isolation bugs and duplication | Never create a parallel "custom_*" variant of an existing generation module |
+| Migrations are plain SQL in `server/src/dars/migrations/`, run by the app on startup | Works against any PostgreSQL (Railway, local) | Never use Supabase CLI or any external migration tool |
+| Webapp has two distinct parts: client dashboard (`/dashboard`) and teacher sample app (`/teacher-app`) | Clients are developers; they need to see what to build, not just how to configure | Never mix admin config UI with teacher-facing UI in the same route |
+| Default teacher auto-created on client signup | Teacher app needs a teacher to show; client shouldn't have to set one up manually | `client.default_teacher_id` is always set after signup |
+
+---
+
 ## Phase 1 goal: curriculum-driven LP generation
 
 The end state: a client picks a curriculum (book + grade + subject + SLO provider), the system breaks each topic into a plan of lesson plans, and generates them. Teachers get a full term's worth of LPs, each grounded in the textbook topic and the correct sub-SLOs.

@@ -479,6 +479,107 @@ interface WizardTimetableInput {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// ── Calendar Preview ──────────────────────────────────────────────────────────
+
+function CalendarPreview({
+  start,
+  end,
+  holidays,
+}: {
+  start: string;
+  end: string;
+  holidays: { name: string; date: string }[];
+}) {
+  const [viewYear, setViewYear] = useState(() => {
+    const d = start ? new Date(start + "T00:00:00") : new Date();
+    return d.getFullYear();
+  });
+  const [viewMonth, setViewMonth] = useState(() => {
+    const d = start ? new Date(start + "T00:00:00") : new Date();
+    return d.getMonth();
+  });
+
+  const holidaySet = new Set(holidays.map((h) => h.date));
+  const startDate = start ? new Date(start + "T00:00:00") : null;
+  const endDate = end ? new Date(end + "T00:00:00") : null;
+
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay = new Date(viewYear, viewMonth + 1, 0);
+  const startDow = firstDay.getDay(); // 0=Sun
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  }
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(d);
+
+  function dayClass(day: number | null) {
+    if (!day) return "";
+    const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const d = new Date(iso + "T00:00:00");
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    const isHoliday = holidaySet.has(iso);
+    const inRange = (!startDate || d >= startDate) && (!endDate || d <= endDate);
+    if (!inRange) return "text-dars-rule-dark";
+    if (isHoliday) return "bg-rose-100 text-rose-700 rounded font-semibold";
+    if (isWeekend) return "bg-dars-parchment-deep text-dars-muted rounded";
+    return "bg-emerald-50 text-emerald-800 rounded";
+  }
+
+  if (!start || !end) return null;
+
+  return (
+    <div className="mt-4 border border-dars-rule-light rounded-xl p-3 bg-white">
+      <div className="flex items-center justify-between mb-2">
+        <button type="button" onClick={prevMonth} className="text-xs text-dars-muted hover:text-dars-ink cursor-pointer bg-transparent border-none px-1">‹</button>
+        <span className="text-xs font-semibold text-dars-ink">{monthNames[viewMonth]} {viewYear}</span>
+        <button type="button" onClick={nextMonth} className="text-xs text-dars-muted hover:text-dars-ink cursor-pointer bg-transparent border-none px-1">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+          <div key={i} className="text-[9px] font-semibold text-dars-muted pb-0.5">{d}</div>
+        ))}
+        {cells.map((day, i) => (
+          <div key={i} className={`text-[10px] py-0.5 ${dayClass(day)}`}>
+            {day ?? ""}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-3 mt-2 text-[9px] text-dars-muted">
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded bg-emerald-100 border border-emerald-200" /> Teaching</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded bg-rose-100 border border-rose-200" /> Holiday</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded bg-dars-parchment-deep border border-dars-rule-light" /> Weekend</span>
+      </div>
+    </div>
+  );
+}
+
+function computeTeachingDaysLocal(start: string, end: string, holidays: { date: string }[]): number {
+  if (!start || !end) return 0;
+  const holidaySet = new Set(holidays.map((h) => h.date));
+  let count = 0;
+  const cur = new Date(start + "T00:00:00");
+  const endD = new Date(end + "T00:00:00");
+  while (cur <= endD) {
+    const dow = cur.getDay();
+    const iso = cur.toISOString().slice(0, 10);
+    if (dow !== 0 && dow !== 6 && !holidaySet.has(iso)) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+// ── Setup Wizard ──────────────────────────────────────────────────────────────
+
 function SetupWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -690,15 +791,31 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
                   />
                 </div>
               </div>
+              {yearStart && yearEnd && yearEnd > yearStart && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  <span className="text-emerald-700 font-bold text-sm">
+                    {computeTeachingDaysLocal(yearStart, yearEnd, [])}
+                  </span>
+                  <span className="text-xs text-emerald-700">teaching days (Mon–Fri, before holidays)</span>
+                </div>
+              )}
+              {yearStart && yearEnd && yearEnd <= yearStart && (
+                <p className="text-xs text-red-600">End date must be after start date.</p>
+              )}
             </div>
           )}
 
           {/* Step 2: Holidays */}
           {step === 2 && (
             <div className="space-y-4">
-              <p className="text-xs text-dars-muted font-semibold uppercase tracking-wide">
-                Holidays (optional)
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-dars-muted font-semibold uppercase tracking-wide">
+                  Holidays (optional)
+                </p>
+                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5">
+                  {computeTeachingDaysLocal(yearStart, yearEnd, holidays)} teaching days
+                </span>
+              </div>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -727,30 +844,37 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
                   Add
                 </button>
               </div>
-              {holidays.length === 0 ? (
-                <p className="text-xs text-dars-muted italic">No holidays added yet.</p>
-              ) : (
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {holidays.map((h, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between bg-dars-parchment border border-dars-rule-light rounded px-3 py-1.5 text-sm"
-                    >
-                      <span className="text-dars-ink">{h.name}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-dars-muted">{formatDateShort(h.date)}</span>
-                        <button
-                          type="button"
-                          onClick={() => setHolidays((prev) => prev.filter((_, i) => i !== idx))}
-                          className="text-dars-muted hover:text-red-600 cursor-pointer bg-transparent border-none text-xs"
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  {holidays.length === 0 ? (
+                    <p className="text-xs text-dars-muted italic">No holidays added yet.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-36 overflow-y-auto">
+                      {holidays.map((h, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between bg-dars-parchment border border-dars-rule-light rounded px-3 py-1.5 text-sm"
                         >
-                          ✕
-                        </button>
-                      </div>
+                          <span className="text-dars-ink">{h.name}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-dars-muted">{formatDateShort(h.date)}</span>
+                            <button
+                              type="button"
+                              onClick={() => setHolidays((prev) => prev.filter((_, i) => i !== idx))}
+                              className="text-dars-muted hover:text-red-600 cursor-pointer bg-transparent border-none text-xs"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
+                <div className="w-52 shrink-0">
+                  <CalendarPreview start={yearStart} end={yearEnd} holidays={holidays} />
+                </div>
+              </div>
             </div>
           )}
 

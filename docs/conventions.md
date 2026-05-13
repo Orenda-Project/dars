@@ -13,8 +13,8 @@ owner: hataf
 - Admin endpoints (client management) require `X-Admin-Secret` header
 - All DB queries must filter by `client_id` — never query without it on data tables
 - UUIDs everywhere for IDs
-- Migrations go in `supabase/migrations/` as plain SQL files named `YYYYMMDDHHMMSS_description.sql`
-- Tests use an in-memory SQLite via `aiosqlite` — no real Supabase connection needed for tests
+- Migrations go in `server/src/dars/migrations/` as plain SQL files named `YYYYMMDDHHMMSS_description.sql`
+- Tests use an in-memory SQLite via `aiosqlite` — no real DB connection needed for tests
 - **API key format:** `dars_<urlsafe-base64>` — the prefix is `dars_`, not `drs_live_` or any other variant
 - **Webapp copy voice:** leads with teacher value first; FDS/API teams get a dedicated heavy section but are not the headline audience
 
@@ -31,12 +31,12 @@ owner: hataf
 
 ## Database migrations
 
-**Never apply migrations via the Supabase MCP or any direct DB tool.**
 Always:
-1. Create a migration file in `supabase/migrations/`
-2. Apply via `make db-push`
+1. Create a migration file: `make db-new` (prompts for name, creates the file)
+2. Write the SQL in `server/src/dars/migrations/YYYYMMDDHHMMSS_name.sql`
+3. Apply via `make db-migrate` (or just start the server — migrations run on startup)
 
-This ensures migration history stays in sync with the codebase.
+Works against any PostgreSQL URL (Railway prod, Railway staging, local). Set `DATABASE_URL` in `server/.env` to target the right environment.
 
 ## Keeping docs current
 
