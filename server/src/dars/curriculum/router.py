@@ -35,8 +35,7 @@ from dars.curriculum.schemas import (
     TopicListResponse,
     TopicResponse,
 )
-from dars.lesson_plans.models import LessonPlan
-from dars.lesson_plans.schemas import LessonPlanResponse
+from dars.generated_lps.models import GeneratedLP
 from dars.curriculum.service import list_book_chapters, list_books
 from dars.database import get_db
 from dars.deps import get_admin_client, get_current_client, require_admin_secret
@@ -52,6 +51,8 @@ def _format_page_range(start: int | None, end: int | None) -> str | None:
     if end is None or end == start:
         return str(start)
     return f"{start}-{end}"
+
+
 admin_router = APIRouter(prefix="/admin", tags=["admin-curriculum"])
 
 
@@ -107,12 +108,10 @@ async def get_book_stats(
                 COUNT(DISTINCT bc.id)                                          AS total_chapters,
                 COUNT(DISTINCT CASE WHEN t.id IS NOT NULL THEN bc.id END)      AS chapters_broken_down,
                 COUNT(DISTINCT ls.id)                                          AS total_slots,
-                COUNT(DISTINCT ls.lesson_plan_id)                              AS lps_generated,
-                COUNT(DISTINCT a.id)                                           AS quizzes_generated
+                COUNT(DISTINCT ls.lesson_plan_id)                              AS lps_generated
             FROM book_chapters bc
             LEFT JOIN topics t        ON t.chapter_id = bc.id
             LEFT JOIN lesson_slots ls ON ls.topic_id = t.id
-            LEFT JOIN assessments a   ON a.lesson_plan_id = ls.lesson_plan_id
             WHERE bc.book_id = :book_id
         """),
         {"book_id": str(book_id)},
@@ -131,7 +130,7 @@ async def get_book_curriculum(
 ) -> BookCurriculumResponse:
     """
     Full curriculum tree for the client's curriculum, filtered by grade and subject.
-    Returns chapters → topics → lessons (with lesson_plan_id and assessment_id).
+    Returns chapters → topics → lessons (with lesson_plan_id).
     Client's curriculum is read from their profile — they don't need to send it.
     """
     if not current_client.curriculum:
@@ -166,12 +165,10 @@ async def get_book_curriculum(
                 ls.id           AS slot_id,
                 ls.day_number,
                 ls.topic_subtopic,
-                ls.lesson_plan_id,
-                a.id            AS assessment_id
+                ls.lesson_plan_id
             FROM book_chapters bc
             LEFT JOIN topics t        ON t.chapter_id = bc.id
             LEFT JOIN lesson_slots ls ON ls.topic_id = t.id
-            LEFT JOIN assessments a   ON a.lesson_plan_id = ls.lesson_plan_id
             WHERE bc.book_id = :book_id
             ORDER BY bc.chapter_number, t.topic_number, ls.day_number
         """),
@@ -216,7 +213,7 @@ async def get_book_curriculum(
             day_number=r["day_number"],
             title=r["topic_subtopic"],
             lesson_plan_id=uuid.UUID(str(r["lesson_plan_id"])) if r["lesson_plan_id"] else None,
-            assessment_id=uuid.UUID(str(r["assessment_id"])) if r["assessment_id"] else None,
+            assessment_id=None,
         ))
 
     logger.info("get_book_curriculum: book_id=%s chapters=%d", book.id, len(chapters))
@@ -234,7 +231,6 @@ async def list_chapter_topics(
     db: AsyncSession = Depends(get_db),
 ) -> TopicListResponse:
     logger.info("list_chapter_topics: chapter_id=%s", chapter_id)
-    # Verify chapter belongs to book
     chapter = await db.get(BookChapter, chapter_id)
     if chapter is None or chapter.book_id != book_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
@@ -260,7 +256,7 @@ async def list_chapter_topics(
 
 @router.post(
     "/api/v1/slots/{slot_id}/generate-lp",
-    response_model=LessonPlanResponse,
+    response_model=dict,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def generate_slot_lp(
@@ -268,7 +264,7 @@ async def generate_slot_lp(
     background_tasks: BackgroundTasks,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
-) -> LessonPlanResponse:
+) -> dict:
     """Generate (or regenerate) a lesson plan for a slot using its topic_text."""
     logger.info("generate_slot_lp: slot_id=%s", slot_id)
     row = await db.execute(
@@ -293,7 +289,8 @@ async def generate_slot_lp(
     if not data["topic_text"]:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Slot has no topic_text — run chapter breakdown first")
 
-    lp = LessonPlan(
+    lp = GeneratedLP(
+        client_id=current_client.id,
         curriculum=data["curriculum"],
         grade=str(data["grade"]),
         subject=data["subject"],
@@ -334,7 +331,7 @@ async def generate_slot_lp(
         }
 
         async with factory() as session:
-            record = await session.get(LessonPlan, lp_id)
+            record = await session.get(GeneratedLP, lp_id)
             if record is None:
                 logger.error("_generate slot LP: lp_id=%s not found in DB", lp_id)
                 await engine.dispose()
@@ -356,13 +353,14 @@ async def generate_slot_lp(
             except Exception as exc:
                 logger.error("_generate slot LP: failed lp_id=%s", lp_id, exc_info=True)
                 record.status = "ERROR"
+                record.error_message = str(exc)
             logger.info("_generate slot LP: done lp_id=%s status=%s", lp_id, record.status)
             await session.commit()
         await engine.dispose()
 
     logger.info("generate_slot_lp: queued background LP generation lp_id=%s", lp_id)
     background_tasks.add_task(_generate)
-    return LessonPlanResponse.model_validate(lp)
+    return {"id": str(lp.id), "status": lp.status}
 
 
 @router.get("/api/v1/topics/{topic_id}/slots", response_model=LessonSlotListResponse)
@@ -382,18 +380,6 @@ async def list_topic_slots(
     )
     slots = list(slot_rows.scalars().all())
 
-    # Fetch assessment IDs for any slots that have a lesson_plan_id
-    lp_ids = [s.lesson_plan_id for s in slots if s.lesson_plan_id is not None]
-    assessment_map: dict = {}
-    if lp_ids:
-        from dars.assessments.models import Assessment as AssessmentModel
-        from sqlalchemy import select as sa_select
-        arows = await db.execute(
-            sa_select(AssessmentModel.id, AssessmentModel.lesson_plan_id)
-            .where(AssessmentModel.lesson_plan_id.in_(lp_ids))
-        )
-        assessment_map = {row.lesson_plan_id: row.id for row in arows}
-
     items = []
     for s in slots:
         data = {
@@ -403,7 +389,7 @@ async def list_topic_slots(
             "scheduled_date": s.scheduled_date,
             "topic_subtopic": s.topic_subtopic,
             "lesson_plan_id": s.lesson_plan_id,
-            "assessment_id": assessment_map.get(s.lesson_plan_id) if s.lesson_plan_id else None,
+            "assessment_id": None,
             "created_at": s.created_at,
         }
         items.append(LessonSlotResponse(**data))
@@ -529,10 +515,9 @@ async def delete_lesson_plan(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     logger.info("delete_lesson_plan: lp_id=%s", lp_id)
-    lp = await db.get(LessonPlan, lp_id)
+    lp = await db.get(GeneratedLP, lp_id)
     if lp is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
-    # Unlink from any slots pointing to this LP
     await db.execute(
         text("UPDATE lesson_slots SET lesson_plan_id = NULL WHERE lesson_plan_id = :lp_id"),
         {"lp_id": str(lp_id)},
@@ -676,6 +661,140 @@ async def import_single_book_endpoint(
     return ImportSingleBookResponse(**result)
 
 
+@admin_router.post("/books/{book_id}/build-remaining")
+async def build_remaining_endpoint(
+    book_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    chapter_id: uuid.UUID | None = None,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Background task: run breakdown → LPs, skipping anything already done.
+    If chapter_id is provided, only that chapter is processed; otherwise all chapters
+    in the book are processed.
+    """
+    book = await db.get(Book, book_id)
+    if book is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+
+    if chapter_id is not None:
+        chapter = await db.get(BookChapter, chapter_id)
+        if chapter is None or chapter.book_id != book_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+        chapter_ids = [chapter_id]
+    else:
+        chapters = await list_book_chapters(db, book_id=book_id)
+        chapter_ids = [c.id for c in chapters]
+
+    logger.info("build_remaining_endpoint: book_id=%s chapters=%d", book_id, len(chapter_ids))
+
+    async def _build_all() -> None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from dars.mapping import canonical_grade, canonical_subject
+
+        engine = create_async_engine(settings.database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        for cid in chapter_ids:
+            logger.info("build_remaining: processing chapter_id=%s", cid)
+            async with factory() as session:
+                try:
+                    # Step 1: breakdown if no topics
+                    topic_count_row = await session.execute(
+                        text("SELECT COUNT(*) FROM topics WHERE chapter_id = :cid"),
+                        {"cid": str(cid)},
+                    )
+                    topic_count = topic_count_row.scalar()
+                    if topic_count == 0:
+                        logger.info("build_remaining: running breakdown for chapter_id=%s", cid)
+                        await breakdown_chapter(session, cid)
+                    else:
+                        logger.info("build_remaining: breakdown already done chapter_id=%s topics=%d", cid, topic_count)
+
+                    # Step 2: generate LPs for slots without one
+                    slot_rows = await session.execute(
+                        text("""
+                            SELECT ls.id AS slot_id, ls.lesson_plan_id,
+                                   t.topic_text, ls.topic_subtopic AS topic,
+                                   t.start_page, t.end_page,
+                                   b.grade, b.subject, b.curriculum
+                            FROM lesson_slots ls
+                            JOIN topics t ON t.id = ls.topic_id
+                            JOIN book_chapters bc ON bc.id = t.chapter_id
+                            JOIN books b ON b.id = bc.book_id
+                            WHERE t.chapter_id = :cid AND ls.lesson_plan_id IS NULL
+                              AND t.topic_text IS NOT NULL AND t.topic_text != ''
+                        """),
+                        {"cid": str(cid)},
+                    )
+                    slots_needing_lp = slot_rows.mappings().all()
+                    logger.info("build_remaining: chapter_id=%s slots needing LP=%d", cid, len(slots_needing_lp))
+
+                    for slot in slots_needing_lp:
+                        # Use a placeholder client_id — build_remaining is admin-only
+                        # We borrow book curriculum for client_id=null scenario
+                        lp = GeneratedLP(
+                            client_id=book_id,  # placeholder; admin bulk job
+                            curriculum=slot["curriculum"],
+                            grade=str(slot["grade"]),
+                            subject=slot["subject"],
+                            topic=slot["topic"],
+                            page_number=_format_page_range(slot["start_page"], slot["end_page"]),
+                            status="PENDING",
+                        )
+                        session.add(lp)
+                        await session.flush()
+                        await session.execute(
+                            text("UPDATE lesson_slots SET lesson_plan_id = :lp_id WHERE id = :slot_id"),
+                            {"lp_id": str(lp.id), "slot_id": str(slot["slot_id"])},
+                        )
+                        await session.commit()
+
+                        payload = {
+                            "grade": canonical_grade(slot["grade"]),
+                            "curriculum": slot["curriculum"],
+                            "subject": canonical_subject(slot["subject"]),
+                            "topic": slot["topic"],
+                            "page_content": slot["topic_text"] or "",
+                        }
+                        try:
+                            async with httpx.AsyncClient(timeout=120.0) as http:
+                                resp = await http.post(
+                                    f"{settings.lp_assistant_url}/api/generate-lp",
+                                    json=payload,
+                                    headers={"api-key": settings.lp_assistant_api_key},
+                                )
+                            resp.raise_for_status()
+                            result = resp.json()
+                            async with factory() as upd:
+                                record = await upd.get(GeneratedLP, lp.id)
+                                if record:
+                                    record.content = result.get("lesson_plan", "")
+                                    record.content_bilingual = result.get("lesson_plan_bilingual")
+                                    record.tags = result.get("tags") or {}
+                                    record.metadata_ = result.get("metadata") or {}
+                                    record.status = "READY"
+                                    await upd.commit()
+                        except Exception:
+                            logger.error("build_remaining: LP generation failed slot_id=%s", slot["slot_id"], exc_info=True)
+                            async with factory() as upd:
+                                record = await upd.get(GeneratedLP, lp.id)
+                                if record:
+                                    record.status = "ERROR"
+                                    await upd.commit()
+
+                except Exception:
+                    logger.error("build_remaining: chapter_id=%s failed", cid, exc_info=True)
+
+        await engine.dispose()
+        logger.info("build_remaining: book_id=%s done", book_id)
+
+    background_tasks.add_task(_build_all)
+    logger.info("build_remaining_endpoint: queued background task book_id=%s chapters=%d", book_id, len(chapter_ids))
+    return {"status": "started", "chapters": len(chapter_ids)}
+
+
 @admin_router.post("/chapters/{chapter_id}/generate-lps")
 async def bulk_generate_lps_endpoint(
     chapter_id: uuid.UUID,
@@ -686,6 +805,11 @@ async def bulk_generate_lps_endpoint(
 ) -> dict:
     """Queue LP generation for all slots in a chapter that have topic_text."""
     logger.info("bulk_generate_lps_endpoint: chapter_id=%s force=%s", chapter_id, force)
+
+    # Get admin client for client_id placeholder
+    admin_result = await db.execute(select(Client).where(Client.is_admin == True).limit(1))
+    admin_client = admin_result.scalar_one_or_none()
+
     rows = await db.execute(
         text("""
             SELECT ls.id AS slot_id, ls.lesson_plan_id, t.topic_text,
@@ -710,7 +834,8 @@ async def bulk_generate_lps_endpoint(
             skipped += 1
             continue
 
-        lp = LessonPlan(
+        lp = GeneratedLP(
+            client_id=admin_client.id if admin_client else chapter_id,
             curriculum=slot["curriculum"],
             grade=str(slot["grade"]),
             subject=slot["subject"],
@@ -741,7 +866,7 @@ async def bulk_generate_lps_endpoint(
                 "page_content": sd["topic_text"] or "",
             }
             async with factory() as session:
-                record = await session.get(LessonPlan, lid)
+                record = await session.get(GeneratedLP, lid)
                 if record is None:
                     logger.error("_generate bulk LP: lp_id=%s not found in DB", lid)
                     await engine.dispose()
@@ -763,6 +888,7 @@ async def bulk_generate_lps_endpoint(
                 except Exception as exc:
                     logger.error("_generate bulk LP: failed lp_id=%s", lid, exc_info=True)
                     record.status = "ERROR"
+                    record.error_message = str(exc)
                 logger.info("_generate bulk LP: done lp_id=%s status=%s", lid, record.status)
                 await session.commit()
             await engine.dispose()
@@ -773,162 +899,3 @@ async def bulk_generate_lps_endpoint(
     await db.commit()
     logger.info("bulk_generate_lps_endpoint: done chapter_id=%s queued=%d skipped=%d", chapter_id, queued, skipped)
     return {"queued": queued, "skipped": skipped}
-
-
-@admin_router.post("/books/{book_id}/build-remaining")
-async def build_remaining_endpoint(
-    book_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
-    chapter_id: uuid.UUID | None = None,
-    _admin: Client = Depends(get_admin_client),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """
-    Background task: run breakdown → LPs → quizzes, skipping anything already done.
-    If chapter_id is provided, only that chapter is processed; otherwise all chapters
-    in the book are processed.
-    """
-    book = await db.get(Book, book_id)
-    if book is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
-
-    if chapter_id is not None:
-        chapter = await db.get(BookChapter, chapter_id)
-        if chapter is None or chapter.book_id != book_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
-        chapter_ids = [chapter_id]
-    else:
-        chapters = await list_book_chapters(db, book_id=book_id)
-        chapter_ids = [c.id for c in chapters]
-
-    logger.info("build_remaining_endpoint: book_id=%s chapters=%d", book_id, len(chapter_ids))
-
-    async def _build_all() -> None:
-        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-        from dars.assessments.models import Assessment
-        from dars.assessments.service import generate_assessment
-        from dars.mapping import canonical_grade, canonical_subject
-
-        engine = create_async_engine(settings.database_url)
-        factory = async_sessionmaker(engine, expire_on_commit=False)
-
-        for chapter_id in chapter_ids:
-            logger.info("build_remaining: processing chapter_id=%s", chapter_id)
-            async with factory() as session:
-                try:
-                    # Step 1: breakdown if no topics
-                    topic_count_row = await session.execute(
-                        text("SELECT COUNT(*) FROM topics WHERE chapter_id = :cid"),
-                        {"cid": str(chapter_id)},
-                    )
-                    topic_count = topic_count_row.scalar()
-                    if topic_count == 0:
-                        logger.info("build_remaining: running breakdown for chapter_id=%s", chapter_id)
-                        await breakdown_chapter(session, chapter_id)
-                    else:
-                        logger.info("build_remaining: breakdown already done chapter_id=%s topics=%d", chapter_id, topic_count)
-
-                    # Step 2: generate LPs for slots without one
-                    slot_rows = await session.execute(
-                        text("""
-                            SELECT ls.id AS slot_id, ls.lesson_plan_id,
-                                   t.topic_text, ls.topic_subtopic AS topic,
-                                   t.start_page, t.end_page,
-                                   b.grade, b.subject, b.curriculum
-                            FROM lesson_slots ls
-                            JOIN topics t ON t.id = ls.topic_id
-                            JOIN book_chapters bc ON bc.id = t.chapter_id
-                            JOIN books b ON b.id = bc.book_id
-                            WHERE t.chapter_id = :cid AND ls.lesson_plan_id IS NULL
-                              AND t.topic_text IS NOT NULL AND t.topic_text != ''
-                        """),
-                        {"cid": str(chapter_id)},
-                    )
-                    slots_needing_lp = slot_rows.mappings().all()
-                    logger.info("build_remaining: chapter_id=%s slots needing LP=%d", chapter_id, len(slots_needing_lp))
-
-                    for slot in slots_needing_lp:
-                        lp = LessonPlan(
-                            curriculum=slot["curriculum"],
-                            grade=str(slot["grade"]),
-                            subject=slot["subject"],
-                            topic=slot["topic"],
-                            page_number=_format_page_range(slot["start_page"], slot["end_page"]),
-                            status="PENDING",
-                        )
-                        session.add(lp)
-                        await session.flush()
-                        await session.execute(
-                            text("UPDATE lesson_slots SET lesson_plan_id = :lp_id WHERE id = :slot_id"),
-                            {"lp_id": str(lp.id), "slot_id": str(slot["slot_id"])},
-                        )
-                        await session.commit()
-
-                        # Generate LP synchronously (wait for it before moving on)
-                        payload = {
-                            "grade": canonical_grade(slot["grade"]),
-                            "curriculum": slot["curriculum"],
-                            "subject": canonical_subject(slot["subject"]),
-                            "topic": slot["topic"],
-                            "page_content": slot["topic_text"] or "",
-                        }
-                        try:
-                            async with httpx.AsyncClient(timeout=120.0) as http:
-                                resp = await http.post(
-                                    f"{settings.lp_assistant_url}/api/generate-lp",
-                                    json=payload,
-                                    headers={"api-key": settings.lp_assistant_api_key},
-                                )
-                            resp.raise_for_status()
-                            result = resp.json()
-                            async with factory() as upd:
-                                record = await upd.get(LessonPlan, lp.id)
-                                if record:
-                                    record.content = result.get("lesson_plan", "")
-                                    record.content_bilingual = result.get("lesson_plan_bilingual")
-                                    record.tags = result.get("tags") or {}
-                                    record.metadata_ = result.get("metadata") or {}
-                                    record.status = "READY"
-                                    await upd.commit()
-                        except Exception:
-                            logger.error("build_remaining: LP generation failed slot_id=%s", slot["slot_id"], exc_info=True)
-                            async with factory() as upd:
-                                record = await upd.get(LessonPlan, lp.id)
-                                if record:
-                                    record.status = "ERROR"
-                                    await upd.commit()
-
-                    # Step 3: generate quizzes for LPs without assessments
-                    quiz_rows = await session.execute(
-                        text("""
-                            SELECT ls.lesson_plan_id
-                            FROM lesson_slots ls
-                            JOIN topics t ON t.id = ls.topic_id
-                            LEFT JOIN assessments a ON a.lesson_plan_id = ls.lesson_plan_id
-                            WHERE t.chapter_id = :cid
-                              AND ls.lesson_plan_id IS NOT NULL
-                              AND a.id IS NULL
-                        """),
-                        {"cid": str(chapter_id)},
-                    )
-                    lps_needing_quiz = [r[0] for r in quiz_rows]
-                    logger.info("build_remaining: chapter_id=%s LPs needing quiz=%d", chapter_id, len(lps_needing_quiz))
-
-                    for lp_id in lps_needing_quiz:
-                        async with factory() as qs:
-                            assessment = Assessment(lesson_plan_id=lp_id, status="PENDING")
-                            qs.add(assessment)
-                            await qs.flush()
-                            assessment_id = assessment.id
-                            await qs.commit()
-                        await generate_assessment(assessment_id, lp_id, settings.database_url)
-
-                except Exception:
-                    logger.error("build_remaining: chapter_id=%s failed", chapter_id, exc_info=True)
-
-        await engine.dispose()
-        logger.info("build_remaining: book_id=%s done", book_id)
-
-    background_tasks.add_task(_build_all)
-    logger.info("build_remaining_endpoint: queued background task book_id=%s chapters=%d", book_id, len(chapter_ids))
-    return {"status": "started", "chapters": len(chapter_ids)}

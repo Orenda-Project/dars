@@ -18,14 +18,17 @@ async def signup_endpoint(
 
     Returns the API key once — store it securely. It cannot be recovered;
     use POST /auth/login to rotate and retrieve a fresh key.
+
+    curriculum must be "NCP" or "SNC".
     """
-    client, raw_key = await signup(db, body.email, body.password, body.name)
+    client, raw_key = await signup(db, body.email, body.password, body.name, body.curriculum)
     return AuthResponse(
         api_key=raw_key,
         client_id=str(client.id),
         name=client.name,
         email=client.email,  # type: ignore[arg-type]
         is_admin=client.is_admin,
+        curriculum=client.curriculum,
     )
 
 
@@ -47,4 +50,5 @@ async def login_endpoint(
         name=client.name,
         email=client.email,  # type: ignore[arg-type]
         is_admin=client.is_admin,
+        curriculum=client.curriculum,
     )

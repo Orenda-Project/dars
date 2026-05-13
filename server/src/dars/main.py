@@ -11,30 +11,25 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-
-import dars.webhooks.models  # noqa: F401 — registers WebhookDelivery with SQLAlchemy Base
-import dars.lesson_plans.models  # noqa: F401 — registers LessonPlan with SQLAlchemy Base
-import dars.exam_generations.models  # noqa: F401 — registers ExamGeneration with SQLAlchemy Base
-import dars.curriculum.models  # noqa: F401 — registers Book and BookChapter with SQLAlchemy Base
-import dars.assessments.models  # noqa: F401 — registers Assessment with SQLAlchemy Base
-import dars.student_assessments.models  # noqa: F401 — registers StudentAssessment with SQLAlchemy Base
-import dars.custom_lesson_plans.models  # noqa: F401 — registers CustomLessonPlan with SQLAlchemy Base
-import dars.custom_exam_generations.models  # noqa: F401 — registers CustomExamGeneration with SQLAlchemy Base
-import dars.school.models  # noqa: F401 — registers school planning models with SQLAlchemy Base
+import dars.curriculum_data.models  # noqa
+import dars.webhooks.models  # noqa
+import dars.generated_lps.models  # noqa
+import dars.generated_exams.models  # noqa
+import dars.curriculum.models  # noqa
+import dars.school.models  # noqa
+import dars.teachers.models  # noqa
 from dars.auth.router import auth_router
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
 from dars.migrations import run_migrations
-from dars.lesson_plans.router import router as lesson_plans_router
-from dars.exam_generations.router import router as exam_generations_router
+from dars.generated_lps.router import router as generated_lps_router
+from dars.generated_exams.router import router as generated_exams_router
 from dars.curriculum.router import admin_router as curriculum_admin_router
 from dars.curriculum.router import router as curriculum_router
-from dars.assessments.router import router as assessments_router
-from dars.student_assessments.router import router as student_assessments_router
-from dars.custom_lesson_plans.router import router as custom_lesson_plans_router
-from dars.custom_exam_generations.router import router as custom_exam_generations_router
 from dars.analytics.router import router as analytics_router
 from dars.school.router import router as school_router
+from dars.teachers.router import router as teachers_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,16 +57,13 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(client_router)
-app.include_router(lesson_plans_router)
-app.include_router(exam_generations_router)
+app.include_router(generated_lps_router)
+app.include_router(generated_exams_router)
 app.include_router(curriculum_router)
 app.include_router(curriculum_admin_router)
-app.include_router(assessments_router)
-app.include_router(student_assessments_router)
-app.include_router(custom_lesson_plans_router)
-app.include_router(custom_exam_generations_router)
 app.include_router(analytics_router)
 app.include_router(school_router)
+app.include_router(teachers_router)
 
 
 @app.get("/health")

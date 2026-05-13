@@ -1,6 +1,0 @@
-ALTER TABLE topics
-    DROP COLUMN IF EXISTS page_number;
-
-ALTER TABLE topics
-    ADD COLUMN IF NOT EXISTS start_page INTEGER,
-    ADD COLUMN IF NOT EXISTS end_page   INTEGER;

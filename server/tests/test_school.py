@@ -51,7 +51,7 @@ async def api_key(http_client):
     """Create a client via signup and return the raw API key."""
     resp = await http_client.post(
         "/auth/signup",
-        json={"email": "school@test.com", "password": "pass123", "name": "School Test"},
+        json={"email": "school@test.com", "password": "pass123", "name": "School Test", "curriculum": "NCP"},
     )
     assert resp.status_code == 201, resp.text
     return resp.json()["api_key"]
@@ -62,7 +62,7 @@ async def api_key2(http_client):
     """A second client (different client_id) for isolation tests."""
     resp = await http_client.post(
         "/auth/signup",
-        json={"email": "other@test.com", "password": "pass456", "name": "Other Client"},
+        json={"email": "other@test.com", "password": "pass456", "name": "Other Client", "curriculum": "SNC"},
     )
     assert resp.status_code == 201, resp.text
     return resp.json()["api_key"]

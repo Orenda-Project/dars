@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 class BookResponse(BaseModel):
     id: uuid.UUID
-    core_id: int
+    core_id: int | None = None
     curriculum: str
     grade: int
     subject: str
@@ -29,7 +29,7 @@ class BookListResponse(BaseModel):
 
 class BookChapterResponse(BaseModel):
     id: uuid.UUID
-    core_id: int
+    core_id: int | None = None
     book_id: uuid.UUID
     title: str
     chapter_number: int

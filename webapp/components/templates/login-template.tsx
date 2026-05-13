@@ -24,6 +24,7 @@ export function LoginTemplate() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [curriculum, setCurriculum] = useState("NCP");
   const [newApiKey, setNewApiKey] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -64,7 +65,7 @@ export function LoginTemplate() {
       const res = await fetch(`${API_URL}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, curriculum }),
       });
       const text = await res.text();
       let data: Record<string, unknown> = {};
@@ -161,6 +162,15 @@ export function LoginTemplate() {
           <div>
             <label className={labelClass}>Password</label>
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} placeholder="••••••••" />
+          </div>
+
+          <div>
+            <label className={labelClass}>Curriculum</label>
+            <select required value={curriculum} onChange={(e) => setCurriculum(e.target.value)} className={inputClass}>
+              <option value="NCP">National Curriculum of Pakistan (NCP)</option>
+              <option value="SNC">Single National Curriculum (SNC)</option>
+            </select>
+            <p className="text-xs text-dars-muted mt-1">This cannot be changed after signup.</p>
           </div>
 
           <button type="submit" disabled={loading} className="w-full py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-50">

@@ -1,1 +1,0 @@
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS curriculum VARCHAR(50);

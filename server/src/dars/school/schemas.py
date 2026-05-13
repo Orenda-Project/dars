@@ -245,7 +245,7 @@ class AssessmentSlotRead(BaseModel):
     assessment_type: str
     scheduled_date: date
     title: str | None
-    exam_generation_id: uuid.UUID | None
+    exam_id: uuid.UUID | None = None
     status: str
     created_at: datetime
     updated_at: datetime

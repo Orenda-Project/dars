@@ -5,8 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dars.clients.models import Client
 from dars.database import get_db
-from dars.deps import get_current_client, get_current_teacher
-from dars.teachers.models import Teacher
+from dars.deps import get_current_client
 from dars.teachers.schemas import (
     TeacherListResponse,
     TeacherRegisterRequest,
@@ -57,7 +56,6 @@ async def list_teachers_endpoint(
 async def get_teacher_endpoint(
     teacher_id: uuid.UUID,
     current_client: Client = Depends(get_current_client),
-    _teacher_ctx: Teacher | None = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ) -> TeacherResponse:
     teacher = await get_teacher(db, client_id=current_client.id, teacher_id=teacher_id)
@@ -71,7 +69,6 @@ async def update_teacher_endpoint(
     teacher_id: uuid.UUID,
     body: TeacherUpdateRequest,
     current_client: Client = Depends(get_current_client),
-    _teacher_ctx: Teacher | None = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ) -> TeacherResponse:
     teacher = await update_teacher(

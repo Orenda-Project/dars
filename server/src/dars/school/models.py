@@ -176,7 +176,9 @@ class ClassLessonSlot(Base):
     lp_type: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     lesson_plan_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("lesson_plans.id", ondelete="SET NULL"), nullable=True
+        Uuid(as_uuid=True),
+        ForeignKey("generated_lesson_plans.id", ondelete="SET NULL"),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default="planned")
     taught_date: Mapped[datetime | None] = mapped_column(Date, nullable=True)
@@ -207,8 +209,10 @@ class AssessmentSlot(Base):
     assessment_type: Mapped[str] = mapped_column(Text, nullable=False)  # formative | summative
     scheduled_date: Mapped[datetime] = mapped_column(Date, nullable=False)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
-    exam_generation_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), nullable=True
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("generated_exams.id", ondelete="SET NULL"),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default="scheduled")
     created_at: Mapped[datetime] = mapped_column(

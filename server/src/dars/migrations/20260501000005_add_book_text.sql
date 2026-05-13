@@ -1,2 +1,0 @@
-ALTER TABLE books ADD COLUMN IF NOT EXISTS book_text JSONB;
-ALTER TABLE book_chapters ADD COLUMN IF NOT EXISTS chapter_text JSONB;
