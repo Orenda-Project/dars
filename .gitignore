@@ -42,3 +42,6 @@ bruno/environments/*.yml
 
 # Docs
 docs/personal/
+
+# Graphify
+graphify-out/
