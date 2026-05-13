@@ -24,9 +24,8 @@ function getApiKey(): string {
 }
 
 const CURRICULUM_SUBJECTS: Record<string, Record<string, number[]>> = {
-  ICT:    { Eng: [1,2,3,4,5], Maths: [1,2,3,4,5], Urdu: [1,2,3,4,5], Science: [4,5] },
-  Punjab: { Eng: [1,2,3,4,5], Maths: [1,2,3,4,5], Urdu: [1,2,3,4,5] },
-  Sindh:  { Eng: [1,2,3,4,5], Maths: [1,2,3,4,5], Urdu: [1,2,3,4,5], Science: [5], GK: [1,2] },
+  NCP:    { Eng: [1,2,3,4,5], Maths: [1,2,3,4,5], Urdu: [1,2,3,4,5], Science: [4,5] },
+  SNC:    { Eng: [1,2,3,4,5], Maths: [1,2,3,4,5], Urdu: [1,2,3,4,5], Science: [4,5] },
 };
 
 function NoCurriculumBanner() {
@@ -34,9 +33,9 @@ function NoCurriculumBanner() {
     <div className="mb-6 flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
       <span className="mt-0.5 text-amber-500 shrink-0">⚠</span>
       <span>
-        Your account has no curriculum configured. Lesson plan generation requires a curriculum.{" "}
+        Your account has no curriculum configured. Lesson plan generation requires a curriculum (NCP or SNC) — set at signup.{" "}
         <Link href="/dashboard/settings" className="font-semibold underline underline-offset-2 hover:text-amber-900">
-          Go to Settings to select ICT or Punjab.
+          View Settings.
         </Link>
       </span>
     </div>
@@ -66,7 +65,7 @@ function GenerateForm({ curriculum, onGenerated }: { curriculum: string; onGener
     if (topic.trim()) body.topic = topic.trim();
     if (classStrength.trim()) body.class_strength = Number(classStrength);
     try {
-      const res = await fetch(`${API_URL}/api/v1/custom-lesson-plans`, {
+      const res = await fetch(`${API_URL}/api/v1/lesson-plans`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-API-Key": getApiKey() },
         body: JSON.stringify(body),
@@ -136,7 +135,7 @@ function GenerationResult({ initial }: { initial: LessonPlan }) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/custom-lesson-plans/${initial.id}`, { headers: { "X-API-Key": getApiKey() } });
+      const res = await fetch(`${API_URL}/api/v1/lesson-plans/${initial.id}`, { headers: { "X-API-Key": getApiKey() } });
       if (!res.ok) return;
       const data: LessonPlan = await res.json();
       setLp(data);
@@ -182,7 +181,7 @@ export default function LessonPlansPage() {
     if (!key) { setLoadingProfile(false); return; }
     fetch(`${API_URL}/api/v1/me`, { headers: { "X-API-Key": key } })
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d) setCurriculum(d.curriculum ?? null); })
+      .then((d) => { if (d) setCurriculum(d.curriculum?.code ?? null); })
       .catch(() => {})
       .finally(() => setLoadingProfile(false));
   }, []);

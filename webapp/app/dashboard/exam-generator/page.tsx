@@ -26,7 +26,7 @@ function getApiKey(): string {
 // ─── Static option data (mirrors UG_EG config.py) ────────────────────────────
 
 const CURRICULUM_SUBJECTS: Record<string, Record<string, number[]>> = {
-  ICT: {
+  NCP: {
     Eng:      [1, 2, 3, 4, 5],
     Maths:    [1, 2, 3, 4, 5],
     Urdu:     [1, 2, 3, 4, 5],
@@ -35,7 +35,7 @@ const CURRICULUM_SUBJECTS: Record<string, Record<string, number[]>> = {
     GenK:     [1, 2, 3],
     SST:      [4, 5],
   },
-  Punjab: {
+  SNC: {
     Eng:   [1, 2, 3, 4, 5],
     Maths: [1, 2, 3, 4, 5],
     Urdu:  [1, 2, 3, 4, 5],
@@ -85,9 +85,9 @@ function NoCurriculumBanner() {
     <div className="mb-6 flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
       <span className="mt-0.5 text-amber-500 shrink-0">⚠</span>
       <span>
-        Your account has no curriculum configured. Exam generation requires a curriculum.{" "}
+        Your account has no curriculum configured. Exam generation requires a curriculum (NCP or SNC) — set at signup.{" "}
         <Link href="/dashboard/settings" className="font-semibold underline underline-offset-2 hover:text-amber-900">
-          Go to Settings to select ICT or Punjab.
+          View Settings.
         </Link>
       </span>
     </div>
@@ -212,7 +212,7 @@ function GenerateForm({ curriculum, onGenerated }: {
     }
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/custom-exam-generations`, {
+      const res = await fetch(`${API_URL}/api/v1/exams`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-API-Key": getApiKey() },
         body: JSON.stringify(body),
@@ -326,7 +326,7 @@ function GenerationResult({ initial }: { initial: ExamGeneration }) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/custom-exam-generations/${initial.id}`, { headers: { "X-API-Key": getApiKey() } });
+      const res = await fetch(`${API_URL}/api/v1/exams/${initial.id}`, { headers: { "X-API-Key": getApiKey() } });
       if (!res.ok) return;
       const data: ExamGeneration = await res.json();
       setEg(data);
@@ -379,7 +379,7 @@ export default function ExamGeneratorPage() {
     if (!key) { setLoadingProfile(false); return; }
     fetch(`${API_URL}/api/v1/me`, { headers: { "X-API-Key": key } })
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d) setCurriculum(d.curriculum ?? null); })
+      .then((d) => { if (d) setCurriculum(d.curriculum?.code ?? null); })
       .catch(() => {})
       .finally(() => setLoadingProfile(false));
   }, []);
