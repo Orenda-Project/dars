@@ -1,15 +1,16 @@
 -- Curriculums (NCP, SNC)
-CREATE TABLE curriculums (
+CREATE TABLE IF NOT EXISTS curriculums (
   code        TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   description TEXT
 );
 INSERT INTO curriculums VALUES
   ('NCP', 'National Curriculum of Pakistan', null),
-  ('SNC', 'Single National Curriculum', null);
+  ('SNC', 'Single National Curriculum', null)
+ON CONFLICT (code) DO NOTHING;
 
 -- Clients
-CREATE TABLE clients (
+CREATE TABLE IF NOT EXISTS clients (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            TEXT NOT NULL,
   api_key_hash    TEXT NOT NULL UNIQUE,
@@ -24,7 +25,7 @@ CREATE TABLE clients (
 );
 
 -- Teachers
-CREATE TABLE teachers (
+CREATE TABLE IF NOT EXISTS teachers (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
@@ -36,13 +37,19 @@ CREATE TABLE teachers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Add FK now that teachers exists
-ALTER TABLE clients
-  ADD CONSTRAINT clients_default_teacher_fkey
-  FOREIGN KEY (default_teacher_id) REFERENCES teachers(id) ON DELETE SET NULL;
+-- Add FK now that teachers exists (idempotent)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'clients_default_teacher_fkey'
+  ) THEN
+    ALTER TABLE clients
+      ADD CONSTRAINT clients_default_teacher_fkey
+      FOREIGN KEY (default_teacher_id) REFERENCES teachers(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- Webhook deliveries
-CREATE TABLE webhook_deliveries (
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id         UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   event             TEXT NOT NULL,
@@ -56,7 +63,7 @@ CREATE TABLE webhook_deliveries (
 );
 
 -- Generated lesson plans (unified, client-scoped)
-CREATE TABLE generated_lesson_plans (
+CREATE TABLE IF NOT EXISTS generated_lesson_plans (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id         UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   external_id       TEXT,
@@ -78,7 +85,7 @@ CREATE TABLE generated_lesson_plans (
 );
 
 -- Generated exams (unified, client-scoped)
-CREATE TABLE generated_exams (
+CREATE TABLE IF NOT EXISTS generated_exams (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id       UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   external_id     TEXT,
@@ -96,7 +103,7 @@ CREATE TABLE generated_exams (
 );
 
 -- Books (curriculum data bank)
-CREATE TABLE books (
+CREATE TABLE IF NOT EXISTS books (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   core_id         INT,
   curriculum      TEXT NOT NULL REFERENCES curriculums(code),
@@ -115,7 +122,7 @@ CREATE TABLE books (
 );
 
 -- Book chapters
-CREATE TABLE book_chapters (
+CREATE TABLE IF NOT EXISTS book_chapters (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   core_id        INT UNIQUE,
   book_id        UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -128,7 +135,7 @@ CREATE TABLE book_chapters (
 );
 
 -- Topics (within chapters)
-CREATE TABLE topics (
+CREATE TABLE IF NOT EXISTS topics (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   chapter_id   UUID NOT NULL REFERENCES book_chapters(id) ON DELETE CASCADE,
   topic_number INT NOT NULL,
@@ -141,7 +148,7 @@ CREATE TABLE topics (
 );
 
 -- Global lesson slots (curriculum data bank — one slot per teaching day per topic)
-CREATE TABLE lesson_slots (
+CREATE TABLE IF NOT EXISTS lesson_slots (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   topic_id        UUID NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
   day_number      INT NOT NULL,
@@ -152,7 +159,7 @@ CREATE TABLE lesson_slots (
 );
 
 -- Academic years (per client)
-CREATE TABLE academic_years (
+CREATE TABLE IF NOT EXISTS academic_years (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
@@ -163,7 +170,7 @@ CREATE TABLE academic_years (
 );
 
 -- Holidays (per academic year)
-CREATE TABLE holidays (
+CREATE TABLE IF NOT EXISTS holidays (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id        UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   academic_year_id UUID NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
@@ -172,7 +179,7 @@ CREATE TABLE holidays (
 );
 
 -- School classes (per academic year)
-CREATE TABLE school_classes (
+CREATE TABLE IF NOT EXISTS school_classes (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id        UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   academic_year_id UUID NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
@@ -185,7 +192,7 @@ CREATE TABLE school_classes (
 );
 
 -- Class-subject-teacher assignments
-CREATE TABLE class_subject_teachers (
+CREATE TABLE IF NOT EXISTS class_subject_teachers (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   class_id   UUID NOT NULL REFERENCES school_classes(id) ON DELETE CASCADE,
@@ -197,7 +204,7 @@ CREATE TABLE class_subject_teachers (
 );
 
 -- Weekly timetable per class-subject
-CREATE TABLE timetables (
+CREATE TABLE IF NOT EXISTS timetables (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id                UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   class_subject_teacher_id UUID NOT NULL REFERENCES class_subject_teachers(id) ON DELETE CASCADE,
@@ -208,7 +215,7 @@ CREATE TABLE timetables (
 );
 
 -- Chapter plans (how many days per chapter per class-subject)
-CREATE TABLE chapter_plans (
+CREATE TABLE IF NOT EXISTS chapter_plans (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id                UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   class_subject_teacher_id UUID NOT NULL REFERENCES class_subject_teachers(id) ON DELETE CASCADE,
@@ -221,7 +228,7 @@ CREATE TABLE chapter_plans (
 );
 
 -- Per-class lesson slots (output of AI breakdown)
-CREATE TABLE class_lesson_slots (
+CREATE TABLE IF NOT EXISTS class_lesson_slots (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id                UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   class_subject_teacher_id UUID NOT NULL REFERENCES class_subject_teachers(id) ON DELETE CASCADE,
@@ -236,7 +243,7 @@ CREATE TABLE class_lesson_slots (
 );
 
 -- Assessment slots (per class-subject)
-CREATE TABLE assessment_slots (
+CREATE TABLE IF NOT EXISTS assessment_slots (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id                UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   class_subject_teacher_id UUID NOT NULL REFERENCES class_subject_teachers(id) ON DELETE CASCADE,
@@ -251,8 +258,8 @@ CREATE TABLE assessment_slots (
 );
 
 -- Indexes
-CREATE INDEX idx_generated_lesson_plans_client ON generated_lesson_plans(client_id);
-CREATE INDEX idx_generated_exams_client ON generated_exams(client_id);
-CREATE INDEX idx_books_curriculum ON books(curriculum);
-CREATE INDEX idx_class_lesson_slots_chapter_plan ON class_lesson_slots(chapter_plan_id);
-CREATE INDEX idx_assessment_slots_chapter_plan ON assessment_slots(chapter_plan_id);
+CREATE INDEX IF NOT EXISTS idx_generated_lesson_plans_client ON generated_lesson_plans(client_id);
+CREATE INDEX IF NOT EXISTS idx_generated_exams_client ON generated_exams(client_id);
+CREATE INDEX IF NOT EXISTS idx_books_curriculum ON books(curriculum);
+CREATE INDEX IF NOT EXISTS idx_class_lesson_slots_chapter_plan ON class_lesson_slots(chapter_plan_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_slots_chapter_plan ON assessment_slots(chapter_plan_id);
