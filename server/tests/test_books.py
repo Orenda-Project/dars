@@ -105,15 +105,16 @@ async def test_list_books_returns_all(authed_client, db_session):
 
 
 async def test_list_books_filter_curriculum(authed_client, db_session):
+    # books are now auto-filtered by client.curriculum; passing curriculum= param is ignored
+    # client has no curriculum → sees all books (curriculum=None means no filter)
     http, api_key, _ = authed_client
     await _make_book(db_session, core_id=1, curriculum="ICT", grade=5, subject="Math", title="Math 5")
     await _make_book(db_session, core_id=2, curriculum="AKU", grade=5, subject="Math", title="Math 5 AKU")
 
-    response = await http.get("/api/v1/books?curriculum=ICT", headers={"X-API-Key": api_key})
+    response = await http.get("/api/v1/books", headers={"X-API-Key": api_key})
     assert response.status_code == 200
     data = response.json()
-    assert data["total"] == 1
-    assert data["items"][0]["curriculum"] == "ICT"
+    assert data["total"] == 2
 
 
 async def test_list_books_filter_grade(authed_client, db_session):
@@ -141,13 +142,15 @@ async def test_list_books_filter_subject(authed_client, db_session):
 
 
 async def test_list_books_filter_combined(authed_client, db_session):
+    # grade + subject filters still work; curriculum param is gone (auto from client)
+    # client has no curriculum → no curriculum filter applied
     http, api_key, _ = authed_client
     await _make_book(db_session, core_id=1, curriculum="ICT", grade=5, subject="Math", title="Match")
-    await _make_book(db_session, core_id=2, curriculum="ICT", grade=5, subject="Science", title="No match")
-    await _make_book(db_session, core_id=3, curriculum="AKU", grade=5, subject="Math", title="No match 2")
+    await _make_book(db_session, core_id=2, curriculum="ICT", grade=5, subject="Science", title="No match subject")
+    await _make_book(db_session, core_id=3, curriculum="AKU", grade=6, subject="Math", title="No match grade")
 
     response = await http.get(
-        "/api/v1/books?curriculum=ICT&grade=5&subject=Math",
+        "/api/v1/books?grade=5&subject=Math",
         headers={"X-API-Key": api_key},
     )
     assert response.status_code == 200

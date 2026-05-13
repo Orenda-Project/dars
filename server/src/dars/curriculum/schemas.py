@@ -198,3 +198,51 @@ class ImportSingleBookRequest(BaseModel):
 class ImportSingleBookResponse(BaseModel):
     status: str       # "imported" | "updated"
     chapters: int
+
+
+# ---------------------------------------------------------------------------
+# SLOs
+# ---------------------------------------------------------------------------
+
+
+class SLORead(BaseModel):
+    id: uuid.UUID
+    curriculum: str
+    grade: int
+    subject: str
+    code: str
+    description: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SLOListResponse(BaseModel):
+    items: list[SLORead]
+    total: int
+
+
+class SLOImportItem(BaseModel):
+    grade: int
+    subject: str
+    code: str
+    description: str
+
+
+class SLOImportRequest(BaseModel):
+    curriculum: str
+    slos: list[SLOImportItem]
+
+
+class SLOImportResponse(BaseModel):
+    imported: int
+    updated: int
+
+
+class TopicSLOMapRequest(BaseModel):
+    slo_codes: list[str]
+
+
+class TopicSLOsResponse(BaseModel):
+    topic_id: uuid.UUID
+    slos: list[SLORead]

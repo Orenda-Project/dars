@@ -1,9 +1,103 @@
 import uuid
+import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dars.curriculum.models import Book, BookChapter
+from dars.curriculum.models import Book, BookChapter, SLO, TopicSLO
+
+logger = logging.getLogger(__name__)
+
+
+async def list_slos(
+    db: AsyncSession,
+    curriculum: str,
+    grade: int | None = None,
+    subject: str | None = None,
+) -> tuple[list[SLO], int]:
+    query = select(SLO).where(SLO.curriculum == curriculum)
+    if grade is not None:
+        query = query.where(SLO.grade == grade)
+    if subject is not None:
+        query = query.where(SLO.subject == subject)
+
+    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = count_result.scalar_one()
+
+    items_result = await db.execute(query.order_by(SLO.grade, SLO.subject, SLO.code))
+    return list(items_result.scalars().all()), total
+
+
+async def get_topic_slos(db: AsyncSession, topic_id: uuid.UUID) -> list[SLO]:
+    result = await db.execute(
+        select(SLO)
+        .join(TopicSLO, TopicSLO.slo_id == SLO.id)
+        .where(TopicSLO.topic_id == topic_id)
+        .order_by(SLO.code)
+    )
+    return list(result.scalars().all())
+
+
+async def import_slos(
+    db: AsyncSession,
+    curriculum: str,
+    slos_data: list[dict],
+) -> dict[str, int]:
+    imported = updated = 0
+    for item in slos_data:
+        existing = await db.execute(
+            select(SLO).where(SLO.curriculum == curriculum, SLO.code == item["code"])
+        )
+        row = existing.scalar_one_or_none()
+        if row is None:
+            db.add(SLO(
+                curriculum=curriculum,
+                grade=item["grade"],
+                subject=item["subject"],
+                code=item["code"],
+                description=item["description"],
+            ))
+            imported += 1
+        else:
+            row.grade = item["grade"]
+            row.subject = item["subject"]
+            row.description = item["description"]
+            updated += 1
+    await db.commit()
+    logger.info("import_slos: curriculum=%s imported=%d updated=%d", curriculum, imported, updated)
+    return {"imported": imported, "updated": updated}
+
+
+async def map_topic_slos(
+    db: AsyncSession,
+    topic_id: uuid.UUID,
+    slo_codes: list[str],
+    curriculum: str,
+) -> int:
+    slo_result = await db.execute(
+        select(SLO).where(SLO.curriculum == curriculum, SLO.code.in_(slo_codes))
+    )
+    slos = list(slo_result.scalars().all())
+    found_codes = {s.code for s in slos}
+    missing = set(slo_codes) - found_codes
+    if missing:
+        raise ValueError(f"Unknown SLO codes for curriculum {curriculum}: {sorted(missing)}")
+
+    for slo in slos:
+        existing = await db.execute(
+            select(TopicSLO).where(TopicSLO.topic_id == topic_id, TopicSLO.slo_id == slo.id)
+        )
+        if existing.scalar_one_or_none() is None:
+            db.add(TopicSLO(topic_id=topic_id, slo_id=slo.id))
+    await db.commit()
+    logger.info("map_topic_slos: topic_id=%s mapped=%d", topic_id, len(slos))
+    return len(slos)
+
+
+async def clear_topic_slos(db: AsyncSession, topic_id: uuid.UUID) -> None:
+    await db.execute(sa_delete(TopicSLO).where(TopicSLO.topic_id == topic_id))
+    await db.commit()
+    logger.info("clear_topic_slos: topic_id=%s cleared", topic_id)
 
 
 async def list_books(
