@@ -16,17 +16,15 @@ interface LessonPlan {
   content?: string | null;
 }
 
+interface GradeOption { code: number; display_name: string; }
+interface SubjectOption { code: string; display_name: string; }
+
 function getApiKey(): string {
   if (typeof window === "undefined") return "";
   const raw = localStorage.getItem("dars_pef_session");
   if (!raw) return "";
   try { return JSON.parse(raw).api_key ?? ""; } catch { return ""; }
 }
-
-const CURRICULUM_SUBJECTS: Record<string, Record<string, number[]>> = {
-  NCP:    { Eng: [1,2,3,4,5], Maths: [1,2,3,4,5], Urdu: [1,2,3,4,5], Science: [4,5] },
-  SNC:    { Eng: [1,2,3,4,5], Maths: [1,2,3,4,5], Urdu: [1,2,3,4,5], Science: [4,5] },
-};
 
 function NoCurriculumBanner() {
   return (
@@ -42,7 +40,12 @@ function NoCurriculumBanner() {
   );
 }
 
-function GenerateForm({ curriculum, onGenerated }: { curriculum: string; onGenerated: (lp: LessonPlan) => void }) {
+function GenerateForm({ curriculum, grades, subjects, onGenerated }: {
+  curriculum: string;
+  grades: GradeOption[];
+  subjects: SubjectOption[];
+  onGenerated: (lp: LessonPlan) => void;
+}) {
   const [subject, setSubject] = useState("");
   const [grade, setGrade] = useState("");
   const [pageNumber, setPageNumber] = useState("");
@@ -50,9 +53,6 @@ function GenerateForm({ curriculum, onGenerated }: { curriculum: string; onGener
   const [classStrength, setClassStrength] = useState("");
   const [generateBilingual, setGenerateBilingual] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const subjects = Object.keys(CURRICULUM_SUBJECTS[curriculum] ?? {});
-  const grades = subject ? (CURRICULUM_SUBJECTS[curriculum]?.[subject] ?? []) : [];
 
   function handleSubjectChange(val: string) { setSubject(val); setGrade(""); }
 
@@ -89,14 +89,14 @@ function GenerateForm({ curriculum, onGenerated }: { curriculum: string; onGener
             <label className={lbl}>Subject *</label>
             <select required value={subject} onChange={(e) => handleSubjectChange(e.target.value)} className={sel}>
               <option value="">Select subject</option>
-              {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+              {subjects.map((s) => <option key={s.code} value={s.code}>{s.display_name}</option>)}
             </select>
           </div>
           <div>
             <label className={lbl}>Grade *</label>
-            <select required value={grade} onChange={(e) => setGrade(e.target.value)} className={sel} disabled={!subject}>
+            <select required value={grade} onChange={(e) => setGrade(e.target.value)} className={sel}>
               <option value="">Select grade</option>
-              {grades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+              {grades.map((g) => <option key={g.code} value={g.code}>{g.display_name}</option>)}
             </select>
           </div>
           <div>
@@ -174,6 +174,8 @@ export default function LessonPlansPage() {
   const [latestLp, setLatestLp] = useState<LessonPlan | null>(null);
   const [curriculum, setCurriculum] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [grades, setGrades] = useState<GradeOption[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
 
   useEffect(() => {
     const raw = localStorage.getItem("dars_pef_session");
@@ -184,6 +186,8 @@ export default function LessonPlansPage() {
       .then((d) => { if (d) setCurriculum(d.curriculum?.code ?? null); })
       .catch(() => {})
       .finally(() => setLoadingProfile(false));
+    fetch(`${API_URL}/api/v1/grades`).then((r) => r.json()).then(setGrades).catch(() => {});
+    fetch(`${API_URL}/api/v1/subjects`).then((r) => r.json()).then(setSubjects).catch(() => {});
   }, []);
 
   return (
@@ -194,7 +198,7 @@ export default function LessonPlansPage() {
       </div>
       {!loadingProfile && !curriculum && <NoCurriculumBanner />}
       {curriculum ? (
-        <GenerateForm curriculum={curriculum} onGenerated={setLatestLp} />
+        <GenerateForm curriculum={curriculum} grades={grades} subjects={subjects} onGenerated={setLatestLp} />
       ) : (
         !loadingProfile && (
           <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8 shadow-sm">

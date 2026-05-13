@@ -16,36 +16,15 @@ interface ExamGeneration {
   result?: unknown | null;
 }
 
+interface GradeOption { code: number; display_name: string; }
+interface SubjectOption { code: string; display_name: string; }
+
 function getApiKey(): string {
   if (typeof window === "undefined") return "";
   const raw = localStorage.getItem("dars_pef_session");
   if (!raw) return "";
   try { return JSON.parse(raw).api_key ?? ""; } catch { return ""; }
 }
-
-// ─── Static option data (mirrors UG_EG config.py) ────────────────────────────
-
-const CURRICULUM_SUBJECTS: Record<string, Record<string, number[]>> = {
-  NCP: {
-    Eng:      [1, 2, 3, 4, 5],
-    Maths:    [1, 2, 3, 4, 5],
-    Urdu:     [1, 2, 3, 4, 5],
-    Islamiat: [1, 2, 3, 4, 5],
-    GenSci:   [4, 5],
-    GenK:     [1, 2, 3],
-    SST:      [4, 5],
-  },
-  SNC: {
-    Eng:   [1, 2, 3, 4, 5],
-    Maths: [1, 2, 3, 4, 5],
-    Urdu:  [1, 2, 3, 4, 5],
-  },
-};
-
-const SUBJECT_DISPLAY: Record<string, string> = {
-  Eng: "English", Maths: "Mathematics", Urdu: "Urdu",
-  Islamiat: "Islamiat", GenSci: "Science", GenK: "General Knowledge", SST: "Social Studies",
-};
 
 const GENERATION_TYPES = [
   { value: "exam", label: "Exam" },
@@ -145,10 +124,12 @@ function CountInputs({ label, types, counts, onChange }: {
 
 // ─── Generate Form ────────────────────────────────────────────────────────────
 
-function GenerateForm({ curriculum, onGenerated }: {
-  curriculum: string; onGenerated: (eg: ExamGeneration) => void;
+function GenerateForm({ curriculum, grades, subjects, onGenerated }: {
+  curriculum: string;
+  grades: GradeOption[];
+  subjects: SubjectOption[];
+  onGenerated: (eg: ExamGeneration) => void;
 }) {
-  const subjects = Object.keys(CURRICULUM_SUBJECTS[curriculum] ?? {});
   const [subject, setSubject] = useState("");
   const [grade, setGrade] = useState("");
   const [pageRanges, setPageRanges] = useState("");
@@ -165,8 +146,6 @@ function GenerateForm({ curriculum, onGenerated }: {
   const [imageGenEnabled, setImageGenEnabled] = useState(false);
   const [enableReview, setEnableReview] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const grades = subject ? (CURRICULUM_SUBJECTS[curriculum]?.[subject] ?? []) : [];
   const objTypes = getObjectiveTypes(subject);
   const subjTypes = getSubjectiveTypes(subject);
   const hasUnseen = questionTypes.includes("unseen");
@@ -239,14 +218,14 @@ function GenerateForm({ curriculum, onGenerated }: {
             <label className={labelCls}>Subject *</label>
             <select required value={subject} onChange={(e) => handleSubjectChange(e.target.value)} className={selectCls}>
               <option value="">Select subject</option>
-              {subjects.map((s) => <option key={s} value={s}>{SUBJECT_DISPLAY[s] ?? s}</option>)}
+              {subjects.map((s) => <option key={s.code} value={s.code}>{s.display_name}</option>)}
             </select>
           </div>
           <div>
             <label className={labelCls}>Grade *</label>
-            <select required value={grade} onChange={(e) => setGrade(e.target.value)} className={selectCls} disabled={!subject}>
+            <select required value={grade} onChange={(e) => setGrade(e.target.value)} className={selectCls}>
               <option value="">Select grade</option>
-              {grades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+              {grades.map((g) => <option key={g.code} value={g.code}>{g.display_name}</option>)}
             </select>
           </div>
           <div>
@@ -372,6 +351,8 @@ export default function ExamGeneratorPage() {
   const [curriculum, setCurriculum] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [latestEg, setLatestEg] = useState<ExamGeneration | null>(null);
+  const [grades, setGrades] = useState<GradeOption[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
 
   useEffect(() => {
     const raw = localStorage.getItem("dars_pef_session");
@@ -382,6 +363,8 @@ export default function ExamGeneratorPage() {
       .then((d) => { if (d) setCurriculum(d.curriculum?.code ?? null); })
       .catch(() => {})
       .finally(() => setLoadingProfile(false));
+    fetch(`${API_URL}/api/v1/grades`).then((r) => r.json()).then(setGrades).catch(() => {});
+    fetch(`${API_URL}/api/v1/subjects`).then((r) => r.json()).then(setSubjects).catch(() => {});
   }, []);
 
   return (
@@ -394,7 +377,7 @@ export default function ExamGeneratorPage() {
       <section className="bg-white border border-dars-rule-light rounded-xl p-6 mb-8 shadow-sm">
         <h2 className="font-serif text-lg font-bold text-dars-ink mb-5 flex items-center gap-2 before:content-[''] before:block before:w-1 before:h-5 before:bg-dars-terra before:rounded-full">Generate Exam</h2>
         {curriculum ? (
-          <GenerateForm curriculum={curriculum} onGenerated={setLatestEg} />
+          <GenerateForm curriculum={curriculum} grades={grades} subjects={subjects} onGenerated={setLatestEg} />
         ) : (
           <p className="text-sm text-dars-muted">Set your curriculum in Settings to generate exams.</p>
         )}

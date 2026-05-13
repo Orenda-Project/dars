@@ -18,6 +18,7 @@ import dars.generated_exams.models  # noqa
 import dars.curriculum.models  # noqa
 import dars.school.models  # noqa
 import dars.teachers.models  # noqa
+import dars.lookup.models  # noqa
 from dars.auth.router import auth_router
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
@@ -29,6 +30,7 @@ from dars.curriculum.router import router as curriculum_router
 from dars.analytics.router import router as analytics_router
 from dars.school.router import router as school_router
 from dars.teachers.router import router as teachers_router
+from dars.lookup.router import router as lookup_router
 
 
 @asynccontextmanager
@@ -64,6 +66,7 @@ app.include_router(curriculum_admin_router)
 app.include_router(analytics_router)
 app.include_router(school_router)
 app.include_router(teachers_router)
+app.include_router(lookup_router)
 
 
 @app.get("/health")
