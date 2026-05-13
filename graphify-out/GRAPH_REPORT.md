@@ -1,12 +1,12 @@
 # Graph Report - dars  (2026-05-13)
 
 ## Corpus Check
-- 116 files · ~106,517 words
+- 116 files · ~107,576 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 937 nodes · 1925 edges · 69 communities detected
-- Extraction: 57% EXTRACTED · 43% INFERRED · 0% AMBIGUOUS · INFERRED: 833 edges (avg confidence: 0.57)
+- 952 nodes · 1973 edges · 69 communities detected
+- Extraction: 56% EXTRACTED · 44% INFERRED · 0% AMBIGUOUS · INFERRED: 862 edges (avg confidence: 0.57)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -119,36 +119,36 @@ Cohesion: 0.04
 Nodes (69): Academic Calendar, ADR-001: FastAPI over Django REST, ADR-002: Row-Level Multi-Tenancy, ADR-003: Supabase for Database, ADR-004: API Keys over JWT, ADR-005: Delegate AI Generation to LP Assistant, API Key Auth (SHA-256 hashed), Async LP Generation (202 Accepted + BackgroundTasks) (+61 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.05
-Nodes (49): Base, get_db(), DeclarativeBase, Grade, Subject, Assessment endpoint tests.  Anthropic API calls are mocked — no real network acc, Tests for:   POST /api/v1/custom-lesson-plans   GET  /api/v1/custom-lesson-plans, Return a mock httpx response that simulates LP assistant success. (+41 more)
+Cohesion: 0.06
+Nodes (55): BaseModel, create_client_endpoint(), get_analytics(), list_clients_endpoint(), rotate_my_key(), RotateKeyResponse, AcademicYearCreate, AcademicYearListResponse (+47 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.06
-Nodes (54): BaseModel, create_client_endpoint(), get_analytics(), list_clients_endpoint(), rotate_my_key(), RotateKeyResponse, AcademicYearCreate, AcademicYearListResponse (+46 more)
+Cohesion: 0.05
+Nodes (49): Base, get_db(), DeclarativeBase, Grade, Subject, Assessment endpoint tests.  Anthropic API calls are mocked — no real network acc, Tests for:   POST /api/v1/custom-lesson-plans   GET  /api/v1/custom-lesson-plans, Return a mock httpx response that simulates LP assistant success. (+41 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.06
 Nodes (45): client(), get_current_client(), CurriculumData, SLO, update_client_endpoint(), create_client(), _generate_api_key(), get_client_by_api_key() (+37 more)
 
 ### Community 6 - "Community 6"
+Cohesion: 0.1
+Nodes (43): Base, AcademicYear, AssessmentSlot, ChapterPlan, ClassLessonSlot, ClassSubjectTeacher, Holiday, SchoolClass (+35 more)
+
+### Community 7 - "Community 7"
 Cohesion: 0.04
 Nodes (49): ADR-001 Consequence: SQLAlchemy Replaces Django ORM, ADR-001: FastAPI over Django REST, ADR-001 Rationale: Async-Native for AI Service, ADR-001 Rationale: Auto-Generated OpenAPI, get_current_client Dependency (enforces client_id), ADR-002 Rationale: Simpler than Schema-per-Tenant, ADR-002: Row-Level Multi-Tenancy Decision, ADR-003 Rationale: No Local DB Container Needed (+41 more)
 
-### Community 7 - "Community 7"
-Cohesion: 0.09
-Nodes (37): Base, AcademicYear, AssessmentSlot, ChapterPlan, ClassLessonSlot, ClassSubjectTeacher, Holiday, SchoolClass (+29 more)
-
 ### Community 8 - "Community 8"
-Cohesion: 0.09
-Nodes (29): handleAutoSchedule(), handleFinish(), handleGenerate(), handleMarkTaught(), handleStatusChange(), openClass(), Ring(), ringColor() (+21 more)
+Cohesion: 0.08
+Nodes (29): handleAutoSchedule(), handleGenerate(), handleMarkTaught(), handleStatusChange(), openClass(), Ring(), ringColor(), addHoliday() (+21 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.06
 Nodes (29): import_books(), import_single_book(), list_known_books(), preview_book(), Import books and chapters from taleemabad-core into Dars., Fetch book metadata from core DB without writing anything to Dars.     Returns a, Import a single book (by arbitrary core_id + schema) including book_text (OCR)., Return the static book catalogue as dicts for the admin UI. (+21 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.19
-Nodes (26): api_key(), api_key2(), _assign_subject(), headers(), _make_academic_year(), _make_class(), Tests for the school/ teacher-planning module.  Pattern follows test_auth.py / t, Create a client via signup and return the raw API key. (+18 more)
+Cohesion: 0.16
+Nodes (31): api_key(), api_key2(), _assign_subject(), headers(), _make_academic_year(), _make_class(), Tests for the school/ teacher-planning module.  Pattern follows test_auth.py / t, Create a client via signup and return the raw API key. (+23 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.11
@@ -224,11 +224,11 @@ Nodes (4): MCP Server Strategic Value, @dars/node SDK Scaffold (unusable), @dars
 
 ### Community 51 - "Community 51"
 Cohesion: 1.0
-Nodes (2): EG Integration, UG_EG Exam Generation Service
+Nodes (2): Documentation Types & Line Limits, YAML Frontmatter Convention
 
 ### Community 52 - "Community 52"
 Cohesion: 1.0
-Nodes (2): Documentation Types & Line Limits, YAML Frontmatter Convention
+Nodes (2): EG Integration, UG_EG Exam Generation Service
 
 ### Community 54 - "Community 54"
 Cohesion: 1.0
@@ -387,9 +387,9 @@ Nodes (1): Digital Coach Service
   These have ≤1 connection - possible missing edges or undocumented components.
 - **Thin community `Community 26`** (5 nodes): `BaseSettings`, `cors_origins_list()`, `effective_core_db_url()`, `Settings`, `config.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 51`** (2 nodes): `EG Integration`, `UG_EG Exam Generation Service`
+- **Thin community `Community 51`** (2 nodes): `Documentation Types & Line Limits`, `YAML Frontmatter Convention`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (2 nodes): `Documentation Types & Line Limits`, `YAML Frontmatter Convention`
+- **Thin community `Community 52`** (2 nodes): `EG Integration`, `UG_EG Exam Generation Service`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 54`** (1 nodes): `Return CORE_DB_URL if set, otherwise build it from the 5-part env vars.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -471,12 +471,12 @@ Nodes (1): Digital Coach Service
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Base` connect `Community 3` to `Community 0`, `Community 1`, `Community 5`, `Community 7`, `Community 9`, `Community 10`, `Community 11`, `Community 21`?**
-  _High betweenness centrality (0.126) - this node is a cross-community bridge._
-- **Why does `Client` connect `Community 0` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 7`?**
+- **Why does `Base` connect `Community 4` to `Community 0`, `Community 1`, `Community 5`, `Community 6`, `Community 9`, `Community 10`, `Community 11`, `Community 21`?**
+  _High betweenness centrality (0.131) - this node is a cross-community bridge._
+- **Why does `Client` connect `Community 0` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`?**
   _High betweenness centrality (0.055) - this node is a cross-community bridge._
-- **Why does `GeneratedLP` connect `Community 0` to `Community 1`, `Community 3`, `Community 7`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+- **Why does `Tests for the school/ teacher-planning module.  Pattern follows test_auth.py / t` connect `Community 10` to `Community 4`?**
+  _High betweenness centrality (0.033) - this node is a cross-community bridge._
 - **Are the 56 inferred relationships involving `Base` (e.g. with `Client` and `WebhookDelivery`) actually correct?**
   _`Base` has 56 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 33 inferred relationships involving `CreateTopicRequest` (e.g. with `Client` and `Book`) actually correct?**

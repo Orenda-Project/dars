@@ -246,3 +246,50 @@ class TopicSLOMapRequest(BaseModel):
 class TopicSLOsResponse(BaseModel):
     topic_id: uuid.UUID
     slos: list[SLORead]
+
+
+# ---------------------------------------------------------------------------
+# Chapter Schedule (admin defaults)
+# ---------------------------------------------------------------------------
+
+
+class ChapterScheduleItem(BaseModel):
+    book_id: uuid.UUID
+    chapter_id: uuid.UUID
+    suggested_teaching_days: int
+    suggested_position: int
+    term: str | None = None
+
+
+class ChapterScheduleUpsertRequest(BaseModel):
+    items: list[ChapterScheduleItem]
+
+
+class ChapterScheduleRead(BaseModel):
+    id: uuid.UUID
+    curriculum: str
+    book_id: uuid.UUID
+    chapter_id: uuid.UUID
+    suggested_teaching_days: int
+    suggested_position: int
+    term: str | None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class ChapterScheduleListResponse(BaseModel):
+    items: list[ChapterScheduleRead]
+    total: int
+
+
+class PrefillChapterPlan(BaseModel):
+    chapter_id: uuid.UUID
+    title: str
+    chapter_number: int
+    suggested_teaching_days: int | None
+    suggested_position: int | None
+    term: str | None
+
+
+class PrefillResponse(BaseModel):
+    items: list[PrefillChapterPlan]

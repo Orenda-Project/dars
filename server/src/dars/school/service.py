@@ -5,6 +5,8 @@ from datetime import date, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dars.curriculum.models import BookChapter, CurriculumChapterSchedule
+from dars.clients.models import Client
 from dars.school.models import (
     AcademicYear,
     AssessmentSlot,
@@ -256,6 +258,86 @@ async def auto_schedule_formative_assessments(
         "auto_schedule_formative_assessments: cst_id=%s created/updated=%d", cst_id, len(slots)
     )
     return slots
+
+
+async def get_prefill_chapter_plans(
+    cst_id: uuid.UUID,
+    db: AsyncSession,
+) -> list[dict]:
+    """
+    Return all chapters for the CST's book, merged with curriculum default schedule
+    (suggested_teaching_days, suggested_position, term). If no book or no schedule,
+    returns chapters with None values.
+    """
+    logger.info("get_prefill_chapter_plans: cst_id=%s", cst_id)
+
+    cst_result = await db.execute(select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == cst_id))
+    cst = cst_result.scalar_one_or_none()
+    if cst is None:
+        logger.error("get_prefill_chapter_plans: cst_id=%s not found", cst_id)
+        return []
+
+    if cst.book_id is None:
+        logger.info("get_prefill_chapter_plans: cst_id=%s has no book_id, returning empty", cst_id)
+        return []
+
+    # Walk CST → SchoolClass → AcademicYear → Client to get curriculum
+    class_result = await db.execute(select(SchoolClass).where(SchoolClass.id == cst.class_id))
+    school_class = class_result.scalar_one_or_none()
+    if school_class is None:
+        logger.error("get_prefill_chapter_plans: school_class not found for cst_id=%s", cst_id)
+        return []
+
+    year_result = await db.execute(select(AcademicYear).where(AcademicYear.id == school_class.academic_year_id))
+    academic_year = year_result.scalar_one_or_none()
+    if academic_year is None:
+        logger.error("get_prefill_chapter_plans: academic_year not found for cst_id=%s", cst_id)
+        return []
+
+    client_result = await db.execute(select(Client).where(Client.id == academic_year.client_id))
+    client = client_result.scalar_one_or_none()
+    curriculum = client.curriculum if client else None
+
+    # Load chapters for the book
+    chapters_result = await db.execute(
+        select(BookChapter)
+        .where(BookChapter.book_id == cst.book_id)
+        .order_by(BookChapter.chapter_number)
+    )
+    chapters = list(chapters_result.scalars().all())
+
+    if not chapters:
+        logger.info("get_prefill_chapter_plans: cst_id=%s no chapters found for book_id=%s", cst_id, cst.book_id)
+        return []
+
+    # Load curriculum schedule rows for these chapter IDs
+    schedule_map: dict[uuid.UUID, CurriculumChapterSchedule] = {}
+    if curriculum:
+        chapter_ids = [c.id for c in chapters]
+        sched_result = await db.execute(
+            select(CurriculumChapterSchedule).where(
+                CurriculumChapterSchedule.curriculum == curriculum,
+                CurriculumChapterSchedule.chapter_id.in_(chapter_ids),
+            )
+        )
+        for row in sched_result.scalars().all():
+            schedule_map[row.chapter_id] = row
+
+    # Merge
+    result = []
+    for chapter in chapters:
+        sched = schedule_map.get(chapter.id)
+        result.append({
+            "chapter_id": chapter.id,
+            "title": chapter.title,
+            "chapter_number": chapter.chapter_number,
+            "suggested_teaching_days": sched.suggested_teaching_days if sched else None,
+            "suggested_position": sched.suggested_position if sched else None,
+            "term": sched.term if sched else None,
+        })
+
+    logger.info("get_prefill_chapter_plans: cst_id=%s returning=%d chapters", cst_id, len(result))
+    return result
 
 
 async def generate_lesson_sequence(

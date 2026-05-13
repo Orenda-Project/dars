@@ -21,6 +21,9 @@ from dars.curriculum.schemas import (
     BookResponse,
     BreakdownResponse,
     ChapterPreview,
+    ChapterScheduleListResponse,
+    ChapterScheduleRead,
+    ChapterScheduleUpsertRequest,
     CurriculumChapter,
     CurriculumLesson,
     CurriculumTopic,
@@ -48,8 +51,10 @@ from dars.curriculum.service import (
     import_slos,
     list_book_chapters,
     list_books,
+    list_chapter_schedule,
     list_slos,
     map_topic_slos,
+    upsert_chapter_schedule,
 )
 from dars.database import get_db
 from dars.deps import get_admin_client, get_current_client, require_admin_secret
@@ -654,6 +659,49 @@ async def clear_topic_slos_endpoint(
     if topic is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
     await clear_topic_slos(db, topic_id)
+
+
+@admin_router.post(
+    "/curriculum/{curriculum_code}/chapter-schedule",
+    response_model=ChapterScheduleListResponse,
+)
+async def upsert_chapter_schedule_endpoint(
+    curriculum_code: str,
+    body: ChapterScheduleUpsertRequest,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> ChapterScheduleListResponse:
+    logger.info(
+        "upsert_chapter_schedule_endpoint: curriculum=%s items=%d",
+        curriculum_code, len(body.items),
+    )
+    rows = await upsert_chapter_schedule(db, curriculum_code, body.items)
+    all_rows = await list_chapter_schedule(db, curriculum_code)
+    logger.info(
+        "upsert_chapter_schedule_endpoint: curriculum=%s total=%d", curriculum_code, len(all_rows)
+    )
+    return ChapterScheduleListResponse(
+        items=[ChapterScheduleRead.model_validate(r) for r in all_rows],
+        total=len(all_rows),
+    )
+
+
+@admin_router.get(
+    "/curriculum/{curriculum_code}/chapter-schedule",
+    response_model=ChapterScheduleListResponse,
+)
+async def list_chapter_schedule_endpoint(
+    curriculum_code: str,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> ChapterScheduleListResponse:
+    logger.info("list_chapter_schedule_endpoint: curriculum=%s", curriculum_code)
+    rows = await list_chapter_schedule(db, curriculum_code)
+    logger.info("list_chapter_schedule_endpoint: curriculum=%s count=%d", curriculum_code, len(rows))
+    return ChapterScheduleListResponse(
+        items=[ChapterScheduleRead.model_validate(r) for r in rows],
+        total=len(rows),
+    )
 
 
 @admin_router.get("/known-books", response_model=KnownBooksResponse)

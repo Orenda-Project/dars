@@ -4,7 +4,7 @@ import logging
 from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dars.curriculum.models import Book, BookChapter, SLO, TopicSLO
+from dars.curriculum.models import Book, BookChapter, CurriculumChapterSchedule, SLO, TopicSLO
 
 logger = logging.getLogger(__name__)
 
@@ -134,3 +134,59 @@ async def list_book_chapters(
         .order_by(BookChapter.chapter_number)
     )
     return list(result.scalars().all())
+
+
+async def upsert_chapter_schedule(
+    db: AsyncSession,
+    curriculum: str,
+    items: list,
+) -> list[CurriculumChapterSchedule]:
+    logger.info("upsert_chapter_schedule: curriculum=%s count=%d", curriculum, len(items))
+    upserted: list[CurriculumChapterSchedule] = []
+    for item in items:
+        existing_result = await db.execute(
+            select(CurriculumChapterSchedule).where(
+                CurriculumChapterSchedule.curriculum == curriculum,
+                CurriculumChapterSchedule.chapter_id == item.chapter_id,
+            )
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing:
+            existing.book_id = item.book_id
+            existing.suggested_teaching_days = item.suggested_teaching_days
+            existing.suggested_position = item.suggested_position
+            existing.term = item.term
+            await db.flush()
+            await db.refresh(existing)
+            upserted.append(existing)
+        else:
+            row = CurriculumChapterSchedule(
+                curriculum=curriculum,
+                book_id=item.book_id,
+                chapter_id=item.chapter_id,
+                suggested_teaching_days=item.suggested_teaching_days,
+                suggested_position=item.suggested_position,
+                term=item.term,
+            )
+            db.add(row)
+            await db.flush()
+            await db.refresh(row)
+            upserted.append(row)
+    await db.commit()
+    logger.info("upsert_chapter_schedule: curriculum=%s upserted=%d", curriculum, len(upserted))
+    return upserted
+
+
+async def list_chapter_schedule(
+    db: AsyncSession,
+    curriculum: str,
+) -> list[CurriculumChapterSchedule]:
+    logger.info("list_chapter_schedule: curriculum=%s", curriculum)
+    result = await db.execute(
+        select(CurriculumChapterSchedule)
+        .where(CurriculumChapterSchedule.curriculum == curriculum)
+        .order_by(CurriculumChapterSchedule.suggested_position)
+    )
+    items = list(result.scalars().all())
+    logger.info("list_chapter_schedule: curriculum=%s count=%d", curriculum, len(items))
+    return items

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -121,6 +121,20 @@ class Topic(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class CurriculumChapterSchedule(Base):
+    __tablename__ = "curriculum_chapter_schedule"
+    __table_args__ = (UniqueConstraint("curriculum", "chapter_id", name="uq_ccs_curriculum_chapter"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    curriculum: Mapped[str] = mapped_column(Text, ForeignKey("curriculums.code"), nullable=False)
+    book_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    chapter_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("book_chapters.id", ondelete="CASCADE"), nullable=False)
+    suggested_teaching_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    suggested_position: Mapped[int] = mapped_column(Integer, nullable=False)
+    term: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class LessonSlot(Base):

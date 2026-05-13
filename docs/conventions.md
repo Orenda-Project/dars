@@ -42,3 +42,15 @@ Works against any PostgreSQL URL (Railway prod, Railway staging, local). Set `DA
 
 - When new or corrected information about Taleemabad comes up, update [`docs/context/taleemabad.md`](context/taleemabad.md) immediately
 - When a roadmap phase completes, update [`docs/ROADMAP.md`](ROADMAP.md) and reflect before proceeding
+
+## Migration gotchas
+
+- **`ADD CONSTRAINT IF NOT EXISTS` is not valid PostgreSQL syntax** — only `CREATE INDEX IF NOT EXISTS` and similar DDL support that clause. For idempotent constraint creation, use a `DO $$` block checking `pg_constraint`:
+  ```sql
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'my_constraint') THEN
+      ALTER TABLE my_table ADD CONSTRAINT my_constraint CHECK (...);
+    END IF;
+  END $$;
+  ```
