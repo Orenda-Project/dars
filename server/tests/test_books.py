@@ -1,12 +1,18 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import dars.clients.models  # noqa — register with Base
-import dars.curriculum.models  # noqa — register with Base
+import dars.clients.models  # noqa
+import dars.curriculum.models  # noqa
+import dars.curriculum_data.models  # noqa
+import dars.generated_lps.models  # noqa
+import dars.lookup.models  # noqa
 from dars.clients.service import create_client
 from dars.curriculum.models import Book, BookChapter
+from dars.curriculum_data.models import CurriculumData
 from dars.database import Base, get_db
+from dars.lookup.models import Grade, Subject
 from dars.main import app
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
@@ -24,6 +30,13 @@ async def db_session():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        session.add(CurriculumData(code="ICT", name="ICT Curriculum"))
+        session.add(CurriculumData(code="AKU", name="AKU Curriculum"))
+        session.add(Grade(code=5, display_name="Grade 5"))
+        session.add(Grade(code=6, display_name="Grade 6"))
+        session.add(Subject(code="Math", display_name="Mathematics"))
+        session.add(Subject(code="Science", display_name="Science"))
+        await session.commit()
         yield session
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -39,16 +52,24 @@ async def authed_client(db_session):
     app.dependency_overrides.clear()
 
 
-async def _make_book(db: AsyncSession, **kwargs) -> Book:
-    defaults = {
-        "core_id": 1,
-        "curriculum": "ICT",
-        "grade": 5,
-        "subject": "Math",
-        "title": "Math Book Grade 5",
-    }
-    defaults.update(kwargs)
-    book = Book(**defaults)
+async def _lookup(db_session: AsyncSession, model, code_attr, code_val):
+    result = await db_session.execute(select(model).where(getattr(model, code_attr) == code_val))
+    return result.scalar_one()
+
+
+async def _make_book(db: AsyncSession, curriculum: str = "ICT", grade: int = 5,
+                     subject: str = "Math", title: str = "Math Book Grade 5",
+                     core_id: int | None = 1) -> Book:
+    curr = await _lookup(db, CurriculumData, "code", curriculum)
+    grade_obj = await _lookup(db, Grade, "code", grade)
+    subj = await _lookup(db, Subject, "code", subject)
+    book = Book(
+        core_id=core_id,
+        curriculum_id=curr.id,
+        grade_id=grade_obj.id,
+        subject_id=subj.id,
+        title=title,
+    )
     db.add(book)
     await db.commit()
     await db.refresh(book)
@@ -92,8 +113,8 @@ async def test_list_books_requires_auth(authed_client):
 
 async def test_list_books_returns_all(authed_client, db_session):
     http, api_key, _ = authed_client
-    await _make_book(db_session, core_id=1, curriculum="ICT", grade=5, subject="Math", title="Math 5")
-    await _make_book(db_session, core_id=2, curriculum="AKU", grade=6, subject="Science", title="Science 6")
+    await _make_book(db_session, curriculum="ICT", grade=5, subject="Math", title="Math 5", core_id=1)
+    await _make_book(db_session, curriculum="AKU", grade=6, subject="Science", title="Science 6", core_id=2)
 
     response = await http.get("/api/v1/books", headers={"X-API-Key": api_key})
     assert response.status_code == 200
@@ -103,11 +124,10 @@ async def test_list_books_returns_all(authed_client, db_session):
 
 
 async def test_list_books_filter_curriculum(authed_client, db_session):
-    # books are now auto-filtered by client.curriculum; passing curriculum= param is ignored
-    # client has no curriculum → sees all books (curriculum=None means no filter)
+    # client has no curriculum → sees all books
     http, api_key, _ = authed_client
-    await _make_book(db_session, core_id=1, curriculum="ICT", grade=5, subject="Math", title="Math 5")
-    await _make_book(db_session, core_id=2, curriculum="AKU", grade=5, subject="Math", title="Math 5 AKU")
+    await _make_book(db_session, curriculum="ICT", grade=5, subject="Math", title="Math 5 ICT", core_id=1)
+    await _make_book(db_session, curriculum="AKU", grade=5, subject="Math", title="Math 5 AKU", core_id=2)
 
     response = await http.get("/api/v1/books", headers={"X-API-Key": api_key})
     assert response.status_code == 200
@@ -117,35 +137,33 @@ async def test_list_books_filter_curriculum(authed_client, db_session):
 
 async def test_list_books_filter_grade(authed_client, db_session):
     http, api_key, _ = authed_client
-    await _make_book(db_session, core_id=1, curriculum="ICT", grade=5, subject="Math", title="Math 5")
-    await _make_book(db_session, core_id=2, curriculum="ICT", grade=6, subject="Math", title="Math 6")
+    await _make_book(db_session, curriculum="ICT", grade=5, subject="Math", title="Math 5", core_id=1)
+    await _make_book(db_session, curriculum="ICT", grade=6, subject="Math", title="Math 6", core_id=2)
 
     response = await http.get("/api/v1/books?grade=5", headers={"X-API-Key": api_key})
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
-    assert data["items"][0]["grade"] == 5
+    assert "grade_id" in data["items"][0]
 
 
 async def test_list_books_filter_subject(authed_client, db_session):
     http, api_key, _ = authed_client
-    await _make_book(db_session, core_id=1, curriculum="ICT", grade=5, subject="Math", title="Math 5")
-    await _make_book(db_session, core_id=2, curriculum="ICT", grade=5, subject="Science", title="Science 5")
+    await _make_book(db_session, curriculum="ICT", grade=5, subject="Math", title="Math 5", core_id=1)
+    await _make_book(db_session, curriculum="ICT", grade=5, subject="Science", title="Science 5", core_id=2)
 
     response = await http.get("/api/v1/books?subject=Math", headers={"X-API-Key": api_key})
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
-    assert data["items"][0]["subject"] == "Math"
+    assert "subject_id" in data["items"][0]
 
 
 async def test_list_books_filter_combined(authed_client, db_session):
-    # grade + subject filters still work; curriculum param is gone (auto from client)
-    # client has no curriculum → no curriculum filter applied
     http, api_key, _ = authed_client
-    await _make_book(db_session, core_id=1, curriculum="ICT", grade=5, subject="Math", title="Match")
-    await _make_book(db_session, core_id=2, curriculum="ICT", grade=5, subject="Science", title="No match subject")
-    await _make_book(db_session, core_id=3, curriculum="AKU", grade=6, subject="Math", title="No match grade")
+    await _make_book(db_session, curriculum="ICT", grade=5, subject="Math", title="Match", core_id=1)
+    await _make_book(db_session, curriculum="ICT", grade=5, subject="Science", title="No match subject", core_id=2)
+    await _make_book(db_session, curriculum="AKU", grade=6, subject="Math", title="No match grade", core_id=3)
 
     response = await http.get(
         "/api/v1/books?grade=5&subject=Math",

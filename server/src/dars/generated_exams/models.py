@@ -13,10 +13,9 @@ class GeneratedExam(Base):
     )
     external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
-    # curriculum, subject, grade are denormalized display fields — no FK constraint
-    curriculum: Mapped[str] = mapped_column(String(50), nullable=False)
-    grade: Mapped[int] = mapped_column(Integer, nullable=False)
-    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    curriculum_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("curriculums.id"), nullable=False)
+    grade_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("grades.id"), nullable=False)
+    subject_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("subjects.id"), nullable=False)
     page_ranges: Mapped[str] = mapped_column(Text, nullable=False)
     generation_type: Mapped[str] = mapped_column(String(50), nullable=False, default="exam")
     eg_job_id: Mapped[str | None] = mapped_column(Text, nullable=True)

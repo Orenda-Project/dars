@@ -6,9 +6,9 @@ from pydantic import BaseModel, ConfigDict
 class BookResponse(BaseModel):
     id: int
     core_id: int | None = None
-    curriculum: str
-    grade: int
-    subject: str
+    curriculum_id: int
+    grade_id: int
+    subject_id: int
     title: str
     publisher: str | None
     edition: str | None
@@ -137,7 +137,7 @@ class BreakdownResponse(BaseModel):
 
 class KnownBookEntry(BaseModel):
     core_id: int
-    curriculum: str
+    curriculum: str  # text code from static catalogue
     grade: int
     subject: str
     schema: str
@@ -188,10 +188,10 @@ class BookPreviewResponse(BaseModel):
 
 class ImportSingleBookRequest(BaseModel):
     core_id: int
-    schema: str       # "fde_staging" | "balochistan_staging"
-    curriculum: str   # "ICT" | "Punjab"
+    schema: str          # "fde_staging" | "balochistan_staging"
+    curriculum: str      # "ICT" | "Punjab" (code resolved to FK on import)
     grade: int
-    subject: str      # "Eng" | "Maths" | "Urdu"
+    subject: str         # "Eng" | "Maths" | "Urdu" (code resolved to FK on import)
 
 
 class ImportSingleBookResponse(BaseModel):
@@ -206,9 +206,9 @@ class ImportSingleBookResponse(BaseModel):
 
 class SLORead(BaseModel):
     id: int
-    curriculum: str
-    grade: int
-    subject: str
+    curriculum_id: int
+    grade_id: int
+    subject_id: int
     code: str
     description: str
     created_at: datetime
@@ -222,14 +222,14 @@ class SLOListResponse(BaseModel):
 
 
 class SLOImportItem(BaseModel):
-    grade: int
-    subject: str
+    grade: int       # grade code (e.g. 5), resolved to grade_id on import
+    subject: str     # subject code (e.g. "Eng"), resolved to subject_id on import
     code: str
     description: str
 
 
 class SLOImportRequest(BaseModel):
-    curriculum: str
+    curriculum: str  # curriculum code (e.g. "NCP"), resolved to curriculum_id on import
     slos: list[SLOImportItem]
 
 
@@ -266,7 +266,7 @@ class ChapterScheduleUpsertRequest(BaseModel):
 
 class ChapterScheduleRead(BaseModel):
     id: int
-    curriculum: str
+    curriculum_id: int
     book_id: int
     chapter_id: int
     suggested_teaching_days: int

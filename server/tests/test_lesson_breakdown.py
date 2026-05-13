@@ -83,8 +83,10 @@ async def db_session():
 
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        from dars.lookup.models import Grade as _Grade
         session.add(CurriculumData(code="NCP", name="National Curriculum of Pakistan"))
         session.add(Subject(code="Eng", display_name="English"))
+        session.add(_Grade(code=5, display_name="Grade 5"))
         await session.commit()
         yield session
 
@@ -95,11 +97,17 @@ async def db_session():
 
 async def _make_school_setup(session: AsyncSession) -> tuple[Client, ClassSubjectTeacher, ChapterPlan]:
     """Create a minimal school hierarchy and return (client, cst, chapter_plan)."""
+    from sqlalchemy import select as _sel
+    from dars.lookup.models import Grade as _Grade
+    ncp = (await session.execute(_sel(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
+    eng = (await session.execute(_sel(Subject).where(Subject.code == "Eng"))).scalar_one()
+    grade5 = (await session.execute(_sel(_Grade).where(_Grade.code == 5))).scalar_one()
+
     client = Client(
         email="test@school.com",
         name="Test School",
         api_key_hash="deadbeef",
-        curriculum="NCP",
+        curriculum_id=ncp.id,
     )
     session.add(client)
     await session.flush()
@@ -118,7 +126,7 @@ async def _make_school_setup(session: AsyncSession) -> tuple[Client, ClassSubjec
     school_class = SchoolClass(
         client_id=client.id,
         academic_year_id=year.id,
-        grade=5,
+        grade_id=grade5.id,
         section="A",
         name="Grade 5-A",
     )
@@ -127,9 +135,9 @@ async def _make_school_setup(session: AsyncSession) -> tuple[Client, ClassSubjec
     await session.refresh(school_class)
 
     book = Book(
-        curriculum="NCP",
-        grade=5,
-        subject="Eng",
+        curriculum_id=ncp.id,
+        grade_id=grade5.id,
+        subject_id=eng.id,
         title="Grade 5 English",
     )
     session.add(book)
@@ -148,7 +156,7 @@ async def _make_school_setup(session: AsyncSession) -> tuple[Client, ClassSubjec
     cst = ClassSubjectTeacher(
         client_id=client.id,
         class_id=school_class.id,
-        subject="English",
+        subject_id=eng.id,
         book_id=book.id,
     )
     session.add(cst)

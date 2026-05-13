@@ -3,9 +3,20 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import dars.clients.models  # noqa: F401
+import dars.curriculum.models  # noqa: F401
+import dars.curriculum_data.models  # noqa: F401
+import dars.generated_exams.models  # noqa: F401
+import dars.generated_lps.models  # noqa: F401
+import dars.lookup.models  # noqa: F401
+import dars.school.models  # noqa: F401
+import dars.teachers.models  # noqa: F401
+import dars.webhooks.models  # noqa: F401
+
+from dars.clients.models import Client
+from dars.curriculum_data.models import CurriculumData
 from dars.database import Base, get_db
 from dars.main import app
-from dars.clients.models import Client
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
 
@@ -17,6 +28,9 @@ async def db_session():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        session.add(CurriculumData(code="NCP", name="National Curriculum of Pakistan"))
+        session.add(CurriculumData(code="SNC", name="Single National Curriculum"))
+        await session.commit()
         yield session
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

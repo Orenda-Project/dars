@@ -73,7 +73,7 @@ class HolidayListResponse(BaseModel):
 
 class SchoolClassCreate(BaseModel):
     academic_year_id: int
-    grade: int
+    grade_id: int
     section: str
     name: str
     start_date: date | None = None
@@ -84,7 +84,7 @@ class SchoolClassRead(BaseModel):
     id: int
     client_id: int
     academic_year_id: int
-    grade: int
+    grade_id: int
     section: str
     name: str
     start_date: date | None
@@ -105,7 +105,7 @@ class SchoolClassListResponse(BaseModel):
 
 
 class CSTCreate(BaseModel):
-    subject: str
+    subject_id: int
     teacher_id: int | None = None
     book_id: int | None = None
 
@@ -119,7 +119,7 @@ class CSTRead(BaseModel):
     id: int
     client_id: int
     class_id: int
-    subject: str
+    subject_id: int
     teacher_id: int | None
     book_id: int | None
     created_at: datetime
@@ -283,7 +283,7 @@ class AssessmentSlotUpdate(BaseModel):
 class TodaySlotEntry(BaseModel):
     class_id: int
     class_name: str
-    subject: str
+    subject_id: int
     cst_id: int
     teacher_id: int | None
     teacher_name: str | None
@@ -329,8 +329,8 @@ class GenerateExamResponse(BaseModel):
 class MyClassEntry(BaseModel):
     cst_id: int
     class_name: str
-    subject: str
-    grade: int
+    subject_id: int
+    grade_id: int
     book_title: str | None
     chapter_count: int
     taught_count: int
@@ -347,9 +347,9 @@ class MyClassListResponse(BaseModel):
 
 
 class TeacherClassCreate(BaseModel):
-    grade: int
+    grade_id: int
     section: str
-    subject: str
+    subject_id: int
     academic_year_id: int
 
 

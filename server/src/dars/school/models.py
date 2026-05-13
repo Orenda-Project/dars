@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from dars.database import Base
 
 
+
 class AcademicYear(Base):
     __tablename__ = "academic_years"
 
@@ -39,7 +40,7 @@ class SchoolClass(Base):
     academic_year_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("academic_years.id", ondelete="CASCADE"), nullable=False
     )
-    grade: Mapped[int] = mapped_column(Integer, nullable=False)
+    grade_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("grades.id"), nullable=False)
     section: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -48,7 +49,7 @@ class SchoolClass(Base):
 
 class ClassSubjectTeacher(Base):
     __tablename__ = "class_subject_teachers"
-    __table_args__ = (UniqueConstraint("class_id", "subject", name="uq_cst_class_subject"),)
+    __table_args__ = (UniqueConstraint("class_id", "subject_id", name="uq_cst_class_subject"),)
 
     client_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
@@ -56,7 +57,7 @@ class ClassSubjectTeacher(Base):
     class_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("school_classes.id", ondelete="CASCADE"), nullable=False
     )
-    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("subjects.id"), nullable=False)
     teacher_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True
     )

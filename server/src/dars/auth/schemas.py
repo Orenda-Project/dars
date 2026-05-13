@@ -19,4 +19,5 @@ class AuthResponse(BaseModel):
     name: str
     email: str
     is_admin: bool
-    curriculum: str | None = None
+    curriculum_id: int | None = None
+    curriculum: str | None = None  # code string for backwards compatibility

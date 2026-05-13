@@ -306,7 +306,7 @@ async def get_prefill_chapter_plans(
 
     client_result = await db.execute(select(Client).where(Client.id == academic_year.client_id))
     client = client_result.scalar_one_or_none()
-    curriculum = client.curriculum if client else None
+    curriculum_id = client.curriculum_id if client else None
 
     # Load chapters for the book
     chapters_result = await db.execute(
@@ -322,11 +322,11 @@ async def get_prefill_chapter_plans(
 
     # Load curriculum schedule rows for these chapter IDs
     schedule_map: dict[int, CurriculumChapterSchedule] = {}
-    if curriculum:
+    if curriculum_id:
         chapter_ids = [c.id for c in chapters]
         sched_result = await db.execute(
             select(CurriculumChapterSchedule).where(
-                CurriculumChapterSchedule.curriculum == curriculum,
+                CurriculumChapterSchedule.curriculum_id == curriculum_id,
                 CurriculumChapterSchedule.chapter_id.in_(chapter_ids),
             )
         )
@@ -459,7 +459,6 @@ async def ai_breakdown_chapter(
         select(SchoolClass).where(SchoolClass.id == cst.class_id)
     )
     school_class = class_result.scalar_one_or_none()
-    grade = school_class.grade if school_class else "?"
 
     # 5. Load Topics
     topics_result = await db.execute(
@@ -470,7 +469,10 @@ async def ai_breakdown_chapter(
     topics = list(topics_result.scalars().all())
     topic_list = ", ".join(t.title for t in topics) if topics else "General chapter content"
 
-    subject = cst.subject
+    from dars.lookup.service import get_grade_code as _ggc_bd, get_subject_code
+    grade = (await _ggc_bd(db, school_class.grade_id) if school_class and school_class.grade_id else None) or "?"
+    subject_code = await get_subject_code(db, cst.subject_id) if cst.subject_id else "General"
+    subject = subject_code or "General"
     teaching_days = plan.teaching_days
     lp_types_hint = _LP_TYPES_BY_SUBJECT.get(subject.lower(), _DEFAULT_LP_TYPES)
 
@@ -677,11 +679,14 @@ async def generate_lp_for_slot(
 
     class_result = await db.execute(select(SchoolClass).where(SchoolClass.id == cst.class_id))
     school_class = class_result.scalar_one_or_none()
-    grade = school_class.grade if school_class else 5
+
+    from dars.lookup.service import get_grade_code as _ggc_lp, get_subject_code as _gsc
+    grade = (await _ggc_lp(db, school_class.grade_id) if school_class and school_class.grade_id else None) or 5
+    subject_code = (await _gsc(db, cst.subject_id) if cst.subject_id else None) or "General"
 
     lp_data = GeneratedLPCreate(
         grade=grade,
-        subject=cst.subject,
+        subject=subject_code,
         topic=slot.title,
         lp_type=slot.lp_type,
         external_id=str(slot_id),
@@ -728,14 +733,16 @@ async def generate_all_lps_for_chapter(
         select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == plan.class_subject_teacher_id)
     )
     cst = cst_result.scalar_one_or_none()
-    subject = cst.subject if cst else "General"
+    from dars.lookup.service import get_subject_code as _gsc2
+    subject = (await _gsc2(db, cst.subject_id) if cst and cst.subject_id else None) or "General"
 
     grade = 5
     if cst is not None:
         class_result2 = await db.execute(select(SchoolClass).where(SchoolClass.id == cst.class_id))
         school_class2 = class_result2.scalar_one_or_none()
-        if school_class2:
-            grade = school_class2.grade
+        if school_class2 and school_class2.grade_id:
+            from dars.lookup.service import get_grade_code as _ggc2
+            grade = (await _ggc2(db, school_class2.grade_id)) or 5
 
     slots_result = await db.execute(
         select(ClassLessonSlot).where(
@@ -815,11 +822,14 @@ async def generate_exam_for_slot(
 
     class_result = await db.execute(select(SchoolClass).where(SchoolClass.id == cst.class_id))
     school_class = class_result.scalar_one_or_none()
-    grade = school_class.grade if school_class else 5
+
+    from dars.lookup.service import get_grade_code as _ggc_ex, get_subject_code as _gsc3
+    grade = (await _ggc_ex(db, school_class.grade_id) if school_class and school_class.grade_id else None) or 5
+    subject_code3 = (await _gsc3(db, cst.subject_id) if cst.subject_id else None) or "General"
 
     exam_data = GeneratedExamCreate(
         grade=grade,
-        subject=cst.subject,
+        subject=subject_code3,
         page_ranges="1-50",
         generation_type=slot.assessment_type if slot.assessment_type in ("exam", "formative", "summative") else "exam",
         external_id=str(slot_id),
@@ -865,7 +875,9 @@ async def generate_lesson_sequence(
         )
         return []
 
-    subject_key = cst.subject.lower()
+    from dars.lookup.service import get_subject_code as _gsc4
+    subject_str = (await _gsc4(db, cst.subject_id) if cst.subject_id else None) or "General"
+    subject_key = subject_str.lower()
     cycle = _LP_CYCLES.get(subject_key, _DEFAULT_CYCLE)
 
     n = plan.teaching_days

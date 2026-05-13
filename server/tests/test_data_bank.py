@@ -41,11 +41,14 @@ async def db_session():
 
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
-        # Seed required reference data
+        from dars.lookup.models import Grade
         session.add(CurriculumData(code="NCP", name="National Curriculum of Pakistan"))
         session.add(CurriculumData(code="SNC", name="Single National Curriculum"))
         session.add(Subject(code="Eng", display_name="English"))
         session.add(Subject(code="Maths", display_name="Mathematics"))
+        session.add(Grade(code=3, display_name="Grade 3"))
+        session.add(Grade(code=4, display_name="Grade 4"))
+        session.add(Grade(code=5, display_name="Grade 5"))
         await session.commit()
         yield session
 
@@ -60,8 +63,10 @@ async def ncp_client(db_session):
     original_secret = _cfg.settings.admin_secret
     _cfg.settings.admin_secret = "dev-secret"
 
+    from sqlalchemy import select as _sel
     client_obj, raw_key = await create_client(db_session, name="NCP Client")
-    client_obj.curriculum = "NCP"
+    ncp = (await db_session.execute(_sel(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
+    client_obj.curriculum_id = ncp.id
     await db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
@@ -77,8 +82,10 @@ async def snc_client(db_session):
     original_secret = _cfg.settings.admin_secret
     _cfg.settings.admin_secret = "dev-secret"
 
+    from sqlalchemy import select as _sel
     client_obj, raw_key = await create_client(db_session, name="SNC Client")
-    client_obj.curriculum = "SNC"
+    snc = (await db_session.execute(_sel(CurriculumData).where(CurriculumData.code == "SNC"))).scalar_one()
+    client_obj.curriculum_id = snc.id
     await db_session.commit()
 
     app.dependency_overrides[get_db] = lambda: db_session
@@ -89,10 +96,17 @@ async def snc_client(db_session):
 
 
 async def _make_book(db: AsyncSession, curriculum: str = "NCP", **kwargs) -> Book:
+    from sqlalchemy import select as _sel
+    from dars.lookup.models import Grade
+    curr = (await db.execute(_sel(CurriculumData).where(CurriculumData.code == curriculum))).scalar_one()
+    grade_code = kwargs.get("grade", 5)
+    grade_obj = (await db.execute(_sel(Grade).where(Grade.code == grade_code))).scalar_one()
+    subj_code = kwargs.get("subject", "Eng")
+    subj = (await db.execute(_sel(Subject).where(Subject.code == subj_code))).scalar_one()
     book = Book(
-        curriculum=curriculum,
-        grade=kwargs.get("grade", 5),
-        subject=kwargs.get("subject", "Eng"),
+        curriculum_id=curr.id,
+        grade_id=grade_obj.id,
+        subject_id=subj.id,
         title=kwargs.get("title", f"Book {curriculum}"),
     )
     db.add(book)
@@ -118,7 +132,12 @@ async def _make_topic(db: AsyncSession, chapter_id: int) -> Topic:
 
 
 async def _make_slo(db: AsyncSession, curriculum: str = "NCP", code: str = "R1.1") -> SLO:
-    slo = SLO(curriculum=curriculum, grade=3, subject="Eng", code=code, description=f"SLO {code}")
+    from sqlalchemy import select as _sel
+    from dars.lookup.models import Grade
+    curr = (await db.execute(_sel(CurriculumData).where(CurriculumData.code == curriculum))).scalar_one()
+    grade3 = (await db.execute(_sel(Grade).where(Grade.code == 3))).scalar_one()
+    eng = (await db.execute(_sel(Subject).where(Subject.code == "Eng"))).scalar_one()
+    slo = SLO(curriculum_id=curr.id, grade_id=grade3.id, subject_id=eng.id, code=code, description=f"SLO {code}")
     db.add(slo)
     await db.commit()
     await db.refresh(slo)
@@ -230,7 +249,12 @@ async def test_list_slos_ncp_client_sees_only_ncp(ncp_client, db_session):
 async def test_list_slos_filter_by_grade_and_subject(ncp_client, db_session):
     http, key, _ = ncp_client
     await _make_slo(db_session, curriculum="NCP", code="R1.1")  # grade=3, subject=Eng
-    slo2 = SLO(curriculum="NCP", grade=4, subject="Maths", code="M4.1", description="Algebra")
+    from sqlalchemy import select as _selx
+    from dars.lookup.models import Grade as _Grade
+    ncp2 = (await db_session.execute(_selx(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
+    grade4 = (await db_session.execute(_selx(_Grade).where(_Grade.code == 4))).scalar_one()
+    maths = (await db_session.execute(_selx(Subject).where(Subject.code == "Maths"))).scalar_one()
+    slo2 = SLO(curriculum_id=ncp2.id, grade_id=grade4.id, subject_id=maths.id, code="M4.1", description="Algebra")
     db_session.add(slo2)
     await db_session.commit()
 
@@ -252,10 +276,12 @@ async def test_map_and_get_topic_slos(db_session):
     original_secret = _cfg.settings.admin_secret
     _cfg.settings.admin_secret = "dev-secret"
 
+    from sqlalchemy import select as _sel2
+    ncp_row = (await db_session.execute(_sel2(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
     reader, reader_key = await create_client(db_session, name="Reader")
-    reader.curriculum = "NCP"
+    reader.curriculum_id = ncp_row.id
     writer, writer_key = await create_client(db_session, name="Writer")
-    writer.curriculum = "NCP"
+    writer.curriculum_id = ncp_row.id
     writer.is_admin = True
     from dars.clients.service import _hash_key
     admin_key = f"dars_admin_{uuid.uuid4().hex[:8]}"
@@ -295,10 +321,12 @@ async def test_clear_topic_slos(db_session):
     original_secret = _cfg.settings.admin_secret
     _cfg.settings.admin_secret = "dev-secret"
 
+    from sqlalchemy import select as _sel3
+    ncp_row2 = (await db_session.execute(_sel3(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
     reader, reader_key = await create_client(db_session, name="Reader2")
-    reader.curriculum = "NCP"
+    reader.curriculum_id = ncp_row2.id
     writer, _ = await create_client(db_session, name="Writer2")
-    writer.curriculum = "NCP"
+    writer.curriculum_id = ncp_row2.id
     writer.is_admin = True
     from dars.clients.service import _hash_key
     admin_key = f"dars_admin_{uuid.uuid4().hex[:8]}"

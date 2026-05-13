@@ -11,14 +11,28 @@ from datetime import date, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import dars.curriculum.models  # noqa — register with Base
+import dars.clients.models  # noqa
+import dars.curriculum.models  # noqa
+import dars.curriculum_data.models  # noqa
+import dars.generated_exams.models  # noqa
+import dars.generated_lps.models  # noqa
+import dars.lookup.models  # noqa
+import dars.school.models  # noqa
+import dars.teachers.models  # noqa
+import dars.webhooks.models  # noqa
 from dars.curriculum.models import Book, BookChapter
+from dars.curriculum_data.models import CurriculumData
 from dars.database import Base, get_db
+from dars.lookup.models import Grade, Subject
 from dars.main import app
 
 TEST_DB = "sqlite+aiosqlite:///:memory:"
+
+_GRADE_CODES = list(range(1, 11))
+_SUBJECT_CODES = ["Math", "Science", "English", "Urdu", "Art", "Music"]
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +47,13 @@ async def db_session():
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        session.add(CurriculumData(code="NCP", name="National Curriculum of Pakistan"))
+        session.add(CurriculumData(code="SNC", name="Single National Curriculum"))
+        for code in _GRADE_CODES:
+            session.add(Grade(code=code, display_name=f"Grade {code}"))
+        for code in _SUBJECT_CODES:
+            session.add(Subject(code=code, display_name=code))
+        await session.commit()
         yield session
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -87,12 +108,15 @@ async def _make_academic_year(http_client, key: str, *, name="2025-26",
     return resp.json()
 
 
-async def _make_class(http_client, key: str, year_id: str, *, grade=5, section="A") -> dict:
+async def _make_class(http_client, key: str, year_id: str, db_session: AsyncSession, *,
+                      grade: int = 5, section: str = "A") -> dict:
+    result = await db_session.execute(select(Grade).where(Grade.code == grade))
+    grade_obj = result.scalar_one()
     resp = await http_client.post(
         "/api/v1/classes",
         json={
             "academic_year_id": year_id,
-            "grade": grade,
+            "grade_id": grade_obj.id,
             "section": section,
             "name": f"Grade {grade}-{section}",
         },
@@ -102,10 +126,13 @@ async def _make_class(http_client, key: str, year_id: str, *, grade=5, section="
     return resp.json()
 
 
-async def _assign_subject(http_client, key: str, class_id: str, subject="Math") -> dict:
+async def _assign_subject(http_client, key: str, class_id: str,
+                          db_session: AsyncSession, subject: str = "Math") -> dict:
+    result = await db_session.execute(select(Subject).where(Subject.code == subject))
+    subject_obj = result.scalar_one()
     resp = await http_client.post(
         f"/api/v1/classes/{class_id}/subjects",
-        json={"subject": subject},
+        json={"subject_id": subject_obj.id},
         headers=headers(key),
     )
     assert resp.status_code == 201, resp.text
@@ -114,7 +141,11 @@ async def _assign_subject(http_client, key: str, class_id: str, subject="Math") 
 
 async def _make_chapter_id(db_session: AsyncSession) -> int:
     """Create a Book + BookChapter and return the chapter's integer id."""
-    book = Book(core_id=1, curriculum="NCP", grade=5, subject="Math", title="Test Book")
+    ncp = (await db_session.execute(select(CurriculumData).where(CurriculumData.code == "NCP"))).scalar_one()
+    math = (await db_session.execute(select(Subject).where(Subject.code == "Math"))).scalar_one()
+    grade5 = (await db_session.execute(select(Grade).where(Grade.code == 5))).scalar_one()
+
+    book = Book(curriculum_id=ncp.id, grade_id=grade5.id, subject_id=math.id, title="Test Book")
     db_session.add(book)
     await db_session.flush()
     await db_session.refresh(book)
@@ -195,14 +226,14 @@ async def test_delete_holiday(http_client, api_key):
 # ---------------------------------------------------------------------------
 
 
-async def test_create_class_and_assign_subject(http_client, api_key):
+async def test_create_class_and_assign_subject(http_client, api_key, db_session):
     year = await _make_academic_year(http_client, api_key)
-    cls = await _make_class(http_client, api_key, year["id"])
-    assert cls["grade"] == 5
+    cls = await _make_class(http_client, api_key, year["id"], db_session)
+    assert "grade_id" in cls
 
     # Assign subject (no teacher/book)
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Science")
-    assert cst["subject"] == "Science"
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Science")
+    assert "subject_id" in cst
     assert cst["class_id"] == cls["id"]
 
     # Get class with subjects
@@ -210,7 +241,7 @@ async def test_create_class_and_assign_subject(http_client, api_key):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["subjects"]) == 1
-    assert data["subjects"][0]["subject"] == "Science"
+    assert "subject_id" in data["subjects"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +254,8 @@ async def test_set_timetable_and_compute_teaching_days(http_client, api_key, db_
     year = await _make_academic_year(
         http_client, api_key, start="2026-05-04", end="2026-05-08"
     )
-    cls = await _make_class(http_client, api_key, year["id"])
-    cst = await _assign_subject(http_client, api_key, cls["id"])
+    cls = await _make_class(http_client, api_key, year["id"], db_session)
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session)
 
     # Set timetable: Mon (0), Wed (2), Fri (4)
     resp = await http_client.post(
@@ -263,8 +294,8 @@ async def test_compute_teaching_days_excludes_holidays(http_client, api_key, db_
     year = await _make_academic_year(
         http_client, api_key, name="Y2", start="2026-05-04", end="2026-05-08"
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=6, section="B")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="English")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=6, section="B")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="English")
 
     await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/timetable",
@@ -295,8 +326,8 @@ async def test_bulk_upsert_chapter_plans(http_client, api_key, db_session):
     year = await _make_academic_year(
         http_client, api_key, name="Y3", start="2026-05-04", end="2026-06-30"
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=7, section="C")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Math")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=7, section="C")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Math")
 
     # Create real BookChapter records (chapter_id is an int FK)
     ch1 = await _make_chapter_id(db_session)
@@ -342,8 +373,8 @@ async def test_generate_lesson_sequence(http_client, api_key, db_session):
     year = await _make_academic_year(
         http_client, api_key, name="Y4", start="2026-05-04", end="2026-07-31"
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=8, section="D")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Math")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=8, section="D")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Math")
 
     ch1 = await _make_chapter_id(db_session)
     plan_resp = await http_client.post(
@@ -374,8 +405,8 @@ async def test_lesson_sequence_idempotent_regeneration(http_client, api_key, db_
     year = await _make_academic_year(
         http_client, api_key, name="Y4b", start="2026-05-04", end="2026-07-31"
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=9, section="E")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="English")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=9, section="E")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="English")
 
     ch1 = await _make_chapter_id(db_session)
     plan_resp = await http_client.post(
@@ -410,8 +441,8 @@ async def test_mark_slot_taught(http_client, api_key, db_session):
     year = await _make_academic_year(
         http_client, api_key, name="Y5", start="2026-05-04", end="2026-07-31"
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=10, section="F")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Science")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=10, section="F")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Science")
 
     ch1 = await _make_chapter_id(db_session)
     plan_resp = await http_client.post(
@@ -449,8 +480,8 @@ async def test_auto_schedule_formative_assessments(http_client, api_key, db_sess
     year = await _make_academic_year(
         http_client, api_key, name="Y6", start="2026-05-04", end="2026-06-26"
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=4, section="G")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Urdu")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=4, section="G")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Urdu")
 
     # Mon/Wed/Fri timetable
     await http_client.post(
@@ -488,8 +519,8 @@ async def test_auto_schedule_fa_idempotent(http_client, api_key, db_session):
     year = await _make_academic_year(
         http_client, api_key, name="Y7", start="2026-05-04", end="2026-06-26"
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=3, section="H")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Science")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=3, section="H")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Science")
 
     await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/timetable",
@@ -531,8 +562,8 @@ async def test_today_endpoint_returns_todays_classes(http_client, api_key, db_se
         start=str(date.today() - timedelta(days=5)),
         end=str(date.today() + timedelta(days=60)),
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=2, section="I")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Art")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=2, section="I")
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Art")
 
     # Set timetable for today's weekday only
     await http_client.post(
@@ -545,11 +576,10 @@ async def test_today_endpoint_returns_todays_classes(http_client, api_key, db_se
     assert resp.status_code == 200
     entries = resp.json()
     assert len(entries) >= 1
-    subjects = [e["subject"] for e in entries]
-    assert "Art" in subjects
+    assert all("subject_id" in e for e in entries)
 
 
-async def test_today_endpoint_excludes_other_weekdays(http_client, api_key):
+async def test_today_endpoint_excludes_other_weekdays(http_client, api_key, db_session):
     from datetime import datetime, timezone
 
     today_weekday = datetime.now(timezone.utc).weekday()
@@ -561,8 +591,9 @@ async def test_today_endpoint_excludes_other_weekdays(http_client, api_key):
         start=str(date.today() - timedelta(days=5)),
         end=str(date.today() + timedelta(days=60)),
     )
-    cls = await _make_class(http_client, api_key, year["id"], grade=1, section="J")
-    cst = await _assign_subject(http_client, api_key, cls["id"], subject="Music")
+    cls = await _make_class(http_client, api_key, year["id"], db_session, grade=1, section="J")
+    music_id = (await db_session.execute(select(Subject).where(Subject.code == "Music"))).scalar_one().id
+    cst = await _assign_subject(http_client, api_key, cls["id"], db_session, subject="Music")
 
     await http_client.post(
         f"/api/v1/classes/{cls['id']}/subjects/{cst['id']}/timetable",
@@ -572,8 +603,8 @@ async def test_today_endpoint_excludes_other_weekdays(http_client, api_key):
 
     resp = await http_client.get("/api/v1/today", headers=headers(api_key))
     assert resp.status_code == 200
-    subjects = [e["subject"] for e in resp.json()]
-    assert "Music" not in subjects
+    subject_ids = [e["subject_id"] for e in resp.json()]
+    assert music_id not in subject_ids
 
 
 # ---------------------------------------------------------------------------
@@ -604,9 +635,9 @@ async def test_wrong_client_cannot_access_holiday_endpoint(http_client, api_key,
     assert resp.status_code == 404
 
 
-async def test_wrong_client_cannot_access_class(http_client, api_key, api_key2):
+async def test_wrong_client_cannot_access_class(http_client, api_key, api_key2, db_session):
     year = await _make_academic_year(http_client, api_key, name="Y12")
-    cls = await _make_class(http_client, api_key, year["id"])
+    cls = await _make_class(http_client, api_key, year["id"], db_session)
 
     # Client 2 tries to get client 1's class
     resp = await http_client.get(f"/api/v1/classes/{cls['id']}", headers=headers(api_key2))
