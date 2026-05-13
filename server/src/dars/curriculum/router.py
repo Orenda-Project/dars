@@ -32,11 +32,25 @@ from dars.curriculum.schemas import (
     KnownBooksResponse,
     LessonSlotListResponse,
     LessonSlotResponse,
+    SLOImportRequest,
+    SLOImportResponse,
+    SLOListResponse,
+    SLORead,
     TopicListResponse,
     TopicResponse,
+    TopicSLOMapRequest,
+    TopicSLOsResponse,
 )
 from dars.generated_lps.models import GeneratedLP
-from dars.curriculum.service import list_book_chapters, list_books
+from dars.curriculum.service import (
+    clear_topic_slos,
+    get_topic_slos,
+    import_slos,
+    list_book_chapters,
+    list_books,
+    list_slos,
+    map_topic_slos,
+)
 from dars.database import get_db
 from dars.deps import get_admin_client, get_current_client, require_admin_secret
 
@@ -63,19 +77,48 @@ admin_router = APIRouter(prefix="/admin", tags=["admin-curriculum"])
 
 @router.get("/api/v1/books", response_model=BookListResponse)
 async def list_books_endpoint(
-    curriculum: str | None = Query(default=None),
     grade: int | None = Query(default=None),
     subject: str | None = Query(default=None),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ) -> BookListResponse:
-    logger.info("list_books_endpoint: filters curriculum=%s grade=%s subject=%s", curriculum, grade, subject)
+    curriculum = current_client.curriculum
+    logger.info("list_books_endpoint: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, curriculum, grade, subject)
     items, total = await list_books(db, curriculum=curriculum, grade=grade, subject=subject)
     logger.info("list_books_endpoint: returning count=%d total=%d", len(items), total)
     return BookListResponse(
         items=[BookResponse.model_validate(b) for b in items],
         total=total,
     )
+
+
+@router.get("/api/v1/slos", response_model=SLOListResponse)
+async def list_slos_endpoint(
+    grade: int | None = Query(default=None),
+    subject: str | None = Query(default=None),
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> SLOListResponse:
+    if not current_client.curriculum:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Client has no curriculum configured")
+    logger.info("list_slos_endpoint: client_id=%s curriculum=%s grade=%s subject=%s", current_client.id, current_client.curriculum, grade, subject)
+    items, total = await list_slos(db, curriculum=current_client.curriculum, grade=grade, subject=subject)
+    logger.info("list_slos_endpoint: returning count=%d", total)
+    return SLOListResponse(items=[SLORead.model_validate(s) for s in items], total=total)
+
+
+@router.get("/api/v1/topics/{topic_id}/slos", response_model=TopicSLOsResponse)
+async def get_topic_slos_endpoint(
+    topic_id: uuid.UUID,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> TopicSLOsResponse:
+    logger.info("get_topic_slos_endpoint: topic_id=%s", topic_id)
+    topic = await db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+    slos = await get_topic_slos(db, topic_id)
+    return TopicSLOsResponse(topic_id=topic_id, slos=[SLORead.model_validate(s) for s in slos])
 
 
 @router.get("/api/v1/books/{book_id}/chapters", response_model=BookChapterListResponse)
@@ -565,6 +608,52 @@ async def breakdown_chapter_endpoint(
         chapter_id, summary.get("topics"), summary.get("slots"),
     )
     return BreakdownResponse(**summary)
+
+
+@admin_router.post("/slos/import", response_model=SLOImportResponse)
+async def import_slos_endpoint(
+    body: SLOImportRequest,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> SLOImportResponse:
+    logger.info("import_slos_endpoint: curriculum=%s count=%d", body.curriculum, len(body.slos))
+    result = await import_slos(db, body.curriculum, [s.model_dump() for s in body.slos])
+    return SLOImportResponse(**result)
+
+
+@admin_router.post("/topics/{topic_id}/slos")
+async def map_topic_slos_endpoint(
+    topic_id: uuid.UUID,
+    body: TopicSLOMapRequest,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    logger.info("map_topic_slos_endpoint: topic_id=%s codes=%s", topic_id, body.slo_codes)
+    topic = await db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+    chapter = await db.get(BookChapter, topic.chapter_id)
+    book = await db.get(Book, chapter.book_id) if chapter else None
+    if book is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    try:
+        count = await map_topic_slos(db, topic_id, body.slo_codes, book.curriculum)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return {"mapped": count}
+
+
+@admin_router.delete("/topics/{topic_id}/slos", status_code=204)
+async def clear_topic_slos_endpoint(
+    topic_id: uuid.UUID,
+    _admin: Client = Depends(get_admin_client),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    logger.info("clear_topic_slos_endpoint: topic_id=%s", topic_id)
+    topic = await db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+    await clear_topic_slos(db, topic_id)
 
 
 @admin_router.get("/known-books", response_model=KnownBooksResponse)

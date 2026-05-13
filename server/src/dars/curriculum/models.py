@@ -7,6 +7,31 @@ from sqlalchemy.types import Uuid
 from dars.database import Base
 
 
+class SLO(Base):
+    __tablename__ = "slos"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    curriculum: Mapped[str] = mapped_column(Text, ForeignKey("curriculums.code"), nullable=False)
+    grade: Mapped[int] = mapped_column(Integer, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, ForeignKey("subjects.code"), nullable=False)
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class TopicSLO(Base):
+    __tablename__ = "topic_slos"
+
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("topics.id", ondelete="CASCADE"), primary_key=True
+    )
+    slo_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("slos.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 # ---------------------------------------------------------------------------
 # Books
 # ---------------------------------------------------------------------------

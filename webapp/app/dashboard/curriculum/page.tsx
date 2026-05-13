@@ -616,10 +616,11 @@ function AddSlotForm({ topicId, dayCount, onDone }: { topicId: string; dayCount:
 }
 
 function TopicSlotsColumn({
-  topics, slots, chapterSelected, selectedChapterId, loading, onViewLP, onViewAssessment, onViewStudentAssessment, onSlotsRefresh,
+  topics, slots, topicSlos, chapterSelected, selectedChapterId, loading, onViewLP, onViewAssessment, onViewStudentAssessment, onSlotsRefresh,
 }: {
   topics: Topic[];
   slots: Record<string, Slot[]>;
+  topicSlos: Record<string, SLO[]>;
   chapterSelected: boolean;
   selectedChapterId: string | null;
   loading: boolean;
@@ -831,6 +832,15 @@ function TopicSlotsColumn({
                         pp. {topic.start_page}{topic.end_page != null && topic.end_page !== topic.start_page ? `–${topic.end_page}` : ""}
                       </p>
                     )}
+                    {(topicSlos[topic.id] ?? []).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {(topicSlos[topic.id] ?? []).map((slo) => (
+                          <span key={slo.id} title={slo.description} className="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded bg-dars-parchment border border-dars-rule-light text-dars-muted">
+                            {slo.code}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
                     <button
@@ -969,9 +979,9 @@ function TopicSlotsColumn({
   );
 }
 
-const GRADES = [1, 2, 3, 4, 5];
-const SUBJECTS = ["Eng", "Maths", "Urdu"];
-const CURRICULUMS = ["ICT", "Punjab"];
+interface GradeOption { code: number; display_name: string; }
+interface SubjectOption { code: string; display_name: string; }
+interface SLO { id: string; code: string; description: string; subject: string; grade: number; }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -981,7 +991,8 @@ export default function CurriculumPage() {
     if (!isAdmin()) router.replace("/dashboard/lesson-plans");
   }, [router]);
 
-  const [curriculum, setCurriculum] = useState<string | null>(null);
+  const [grades, setGrades] = useState<GradeOption[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [grade, setGrade] = useState<number | null>(null);
   const [subject, setSubject] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
@@ -997,6 +1008,7 @@ export default function CurriculumPage() {
   const [activeAssessmentId, setActiveAssessmentId] = useState<string | null>(null);
   const [activeStudentAssessmentLpId, setActiveStudentAssessmentLpId] = useState<string | null>(null);
   const [bookStats, setBookStats] = useState<Record<string, number> | null>(null);
+  const [topicSlos, setTopicSlos] = useState<Record<string, SLO[]>>({});
 
   // Bulk LP generation state
   const [generatingAllLps, setGeneratingAllLps] = useState<string | null>(null);
@@ -1004,20 +1016,25 @@ export default function CurriculumPage() {
   const [buildingRemaining, setBuildingRemaining] = useState(false);
 
   useEffect(() => {
-    if (curriculum === null || grade === null || subject === null) {
+    fetch(`${API_URL}/api/v1/grades`).then((r) => r.json()).then(setGrades).catch(() => {});
+    fetch(`${API_URL}/api/v1/subjects`).then((r) => r.json()).then(setSubjects).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (grade === null || subject === null) {
       setBooks([]); setSelectedBook(null); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({});
       return;
     }
     setLoadingBooks(true);
     setBooks([]); setSelectedBook(null); setChapters([]); setSelectedChapter(null); setTopics([]); setSlots({});
-    fetch(`${API_URL}/api/v1/books?curriculum=${encodeURIComponent(curriculum)}&grade=${grade}&subject=${encodeURIComponent(subject)}`, {
+    fetch(`${API_URL}/api/v1/books?grade=${grade}&subject=${encodeURIComponent(subject)}`, {
       headers: { "X-API-Key": getApiKey() },
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { items: Book[] }) => setBooks(data.items ?? []))
       .catch(() => { toast.error("Failed to load data."); })
       .finally(() => setLoadingBooks(false));
-  }, [curriculum, grade, subject]);
+  }, [grade, subject]);
 
   const refreshStats = useCallback((bookId: string) => {
     fetch(`${API_URL}/api/v1/books/${bookId}/stats`, { headers: { "X-API-Key": getApiKey() } })
@@ -1038,24 +1055,37 @@ export default function CurriculumPage() {
   }, [refreshStats]);
 
   const loadTopicsAndSlots = useCallback((book: Book, chapter: Chapter) => {
-    setTopics([]); setSlots({}); setLoadingTopics(true);
+    setTopics([]); setSlots({}); setTopicSlos({}); setLoadingTopics(true);
     const apiKey = getApiKey();
     fetch(`${API_URL}/api/v1/books/${book.id}/chapters/${chapter.id}/topics`, { headers: { "X-API-Key": apiKey } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(async (data: { items: Topic[] }) => {
         const fetchedTopics = data.items ?? [];
         setTopics(fetchedTopics);
-        const slotResults = await Promise.all(
-          fetchedTopics.map((t) =>
-            fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, { headers: { "X-API-Key": apiKey } })
-              .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] })))
-              .then((d: { items: Slot[] }) => ({ topicId: t.id, slots: d.items ?? [] }))
-              .catch(() => ({ topicId: t.id, slots: [] }))
-          )
-        );
+        const [slotResults, sloResults] = await Promise.all([
+          Promise.all(
+            fetchedTopics.map((t) =>
+              fetch(`${API_URL}/api/v1/topics/${t.id}/slots`, { headers: { "X-API-Key": apiKey } })
+                .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] })))
+                .then((d: { items: Slot[] }) => ({ topicId: t.id, slots: d.items ?? [] }))
+                .catch(() => ({ topicId: t.id, slots: [] }))
+            )
+          ),
+          Promise.all(
+            fetchedTopics.map((t) =>
+              fetch(`${API_URL}/api/v1/topics/${t.id}/slos`, { headers: { "X-API-Key": apiKey } })
+                .then((r) => (r.ok ? r.json() : Promise.resolve({ slos: [] })))
+                .then((d: { topic_id: string; slos: SLO[] }) => ({ topicId: t.id, slos: d.slos ?? [] }))
+                .catch(() => ({ topicId: t.id, slos: [] }))
+            )
+          ),
+        ]);
         const slotMap: Record<string, Slot[]> = {};
         for (const { topicId, slots: s } of slotResults) slotMap[topicId] = s;
         setSlots(slotMap);
+        const sloMap: Record<string, SLO[]> = {};
+        for (const { topicId, slos } of sloResults) sloMap[topicId] = slos;
+        setTopicSlos(sloMap);
       })
       .catch(() => { toast.error("Failed to load data."); })
       .finally(() => setLoadingTopics(false));
@@ -1129,20 +1159,12 @@ export default function CurriculumPage() {
 
       <div className="flex items-center gap-4 mb-6">
         <select
-          value={curriculum ?? ""}
-          onChange={(e) => setCurriculum(e.target.value || null)}
-          className="border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
-        >
-          <option value="">Curriculum</option>
-          {CURRICULUMS.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
           value={grade ?? ""}
           onChange={(e) => setGrade(e.target.value ? Number(e.target.value) : null)}
           className="border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
         >
           <option value="">Grade</option>
-          {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+          {grades.map((g) => <option key={g.code} value={g.code}>{g.display_name}</option>)}
         </select>
         <select
           value={subject ?? ""}
@@ -1150,7 +1172,7 @@ export default function CurriculumPage() {
           className="border border-dars-rule-light rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra"
         >
           <option value="">Subject</option>
-          {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+          {subjects.map((s) => <option key={s.code} value={s.code}>{s.display_name}</option>)}
         </select>
       </div>
 
@@ -1194,6 +1216,7 @@ export default function CurriculumPage() {
         <TopicSlotsColumn
           topics={topics}
           slots={slots}
+          topicSlos={topicSlos}
           chapterSelected={selectedChapter !== null}
           selectedChapterId={selectedChapter?.id ?? null}
           loading={loadingTopics}

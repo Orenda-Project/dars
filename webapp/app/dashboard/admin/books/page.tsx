@@ -448,6 +448,76 @@ function ImportTab() {
   );
 }
 
+/* ─── SLOs import tab ─── */
+
+interface SLOItem { grade: number; subject: string; code: string; description: string; }
+
+function SLOsTab() {
+  const [curriculum, setCurriculum] = useState("NCP");
+  const [raw, setRaw] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<{ imported: number; updated: number } | null>(null);
+
+  const sel = "border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra";
+  const lbl = "block text-xs font-semibold text-dars-muted mb-1 uppercase tracking-wide";
+
+  async function handleImport(e: React.FormEvent) {
+    e.preventDefault();
+    setResult(null);
+    let parsed: SLOItem[];
+    try { parsed = JSON.parse(raw); }
+    catch { toast.error("Invalid JSON"); return; }
+    if (!Array.isArray(parsed)) { toast.error("Must be a JSON array"); return; }
+    setImporting(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/slos/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": getApiKey() },
+        body: JSON.stringify({ curriculum, slos: parsed }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setResult(await res.json());
+      toast.success("SLOs imported");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    } finally { setImporting(false); }
+  }
+
+  return (
+    <div className="max-w-2xl">
+      <p className="text-sm text-dars-muted mb-6">Bulk import SLOs for a curriculum. Paste a JSON array of <code>{`{grade, subject, code, description}`}</code> objects.</p>
+      <form onSubmit={handleImport} className="space-y-4">
+        <div>
+          <label className={lbl}>Curriculum</label>
+          <select value={curriculum} onChange={(e) => setCurriculum(e.target.value)} className={sel}>
+            <option value="NCP">NCP</option>
+            <option value="SNC">SNC</option>
+          </select>
+        </div>
+        <div>
+          <label className={lbl}>SLOs JSON *</label>
+          <textarea
+            required
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            rows={10}
+            placeholder={`[{"grade": 3, "subject": "Eng", "code": "R1.1", "description": "Read aloud with fluency"}]`}
+            className="w-full border border-dars-rule-dark rounded-md px-3 py-2 text-sm text-dars-ink bg-white focus:outline-none focus:ring-1 focus:ring-dars-terra font-mono"
+          />
+        </div>
+        <button type="submit" disabled={importing} className="px-5 py-2.5 bg-dars-terra text-white text-sm font-semibold rounded-md hover:opacity-90 transition-opacity cursor-pointer border-none disabled:opacity-50">
+          {importing ? "Importing…" : "Import SLOs"}
+        </button>
+      </form>
+      {result && (
+        <div className="mt-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+          Done — <strong>{result.imported}</strong> new, <strong>{result.updated}</strong> updated.
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Page (tab shell) ─── */
 
 function BooksPageInner() {
@@ -482,10 +552,19 @@ function BooksPageInner() {
         >
           Import
         </button>
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/admin/books?tab=slos")}
+          className={tab === "slos" ? activeClass : inactiveClass}
+        >
+          SLOs
+        </button>
       </div>
 
       {tab === "import" ? (
         <ImportTab />
+      ) : tab === "slos" ? (
+        <SLOsTab />
       ) : (
         <ViewTab onSwitchToImport={() => router.push("/dashboard/admin/books?tab=import")} />
       )}
