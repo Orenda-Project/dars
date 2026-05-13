@@ -2,6 +2,8 @@
 -- Uses FK schema: curriculum_id, grade_id, subject_id throughout
 -- Safe to re-run: uses INSERT ... ON CONFLICT DO NOTHING everywhere
 
+BEGIN;
+
 -- ============================================================
 -- LOOKUP TABLES
 -- ============================================================
@@ -61,109 +63,109 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 
 -- NCP Grade 1 English
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=1 AND s.code='english')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=1 AND s.code='english')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'My Family'),(2,'My School'),(3,'Animals Around Us'),(4,'Food We Eat'),(5,'Colours and Shapes'),(6,'My Country')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 1 Urdu
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=1 AND s.code='urdu')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=1 AND s.code='urdu')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'حروف تہجی'),(2,'میرا گھر'),(3,'میرا سکول'),(4,'جانور'),(5,'پھل اور سبزیاں'),(6,'موسم')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 1 Maths
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=1 AND s.code='maths')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=1 AND s.code='maths')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Numbers 1-10'),(2,'Numbers 11-20'),(3,'Addition'),(4,'Subtraction'),(5,'Shapes'),(6,'Measurement')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 2 English
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=2 AND s.code='english')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=2 AND s.code='english')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Our Neighbourhood'),(2,'Healthy Habits'),(3,'Transport'),(4,'Seasons'),(5,'Wild Animals'),(6,'Occupations'),(7,'Our Environment')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 2 Urdu
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=2 AND s.code='urdu')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=2 AND s.code='urdu')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'میرا محلہ'),(2,'صحت اور صفائی'),(3,'ذرائع آمد و رفت'),(4,'موسم'),(5,'جنگلی جانور'),(6,'پیشے'),(7,'ہمارا ماحول')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 2 Maths
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=2 AND s.code='maths')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=2 AND s.code='maths')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Numbers to 100'),(2,'Addition to 100'),(3,'Subtraction to 100'),(4,'Multiplication Introduction'),(5,'Fractions'),(6,'Geometry'),(7,'Time and Money')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 3 English
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=3 AND s.code='english')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=3 AND s.code='english')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Reading Comprehension'),(2,'Grammar: Nouns and Pronouns'),(3,'Grammar: Verbs and Tenses'),(4,'Creative Writing'),(5,'Poetry'),(6,'Stories and Fables'),(7,'Pakistan'),(8,'Science and Technology')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 3 Urdu
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=3 AND s.code='urdu')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=3 AND s.code='urdu')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'نظم'),(2,'کہانی'),(3,'گرامر: اسم'),(4,'گرامر: فعل'),(5,'خط نویسی'),(6,'ہمارا پاکستان'),(7,'مشاہیر'),(8,'تخلیقی تحریر')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- NCP Grade 3 Maths
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=3 AND s.code='maths')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='NCP' AND g.code=3 AND s.code='maths')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Numbers to 1000'),(2,'Addition and Subtraction'),(3,'Multiplication Tables'),(4,'Division'),(5,'Fractions'),(6,'Geometry'),(7,'Measurement'),(8,'Data Handling')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 1 English
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=1 AND s.code='english')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=1 AND s.code='english')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Hello World'),(2,'My Home'),(3,'School Life'),(4,'Nature Walk'),(5,'Healthy Me'),(6,'Festivals')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 1 Urdu
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=1 AND s.code='urdu')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=1 AND s.code='urdu')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'الفاظ سیکھیں'),(2,'میرا گھر'),(3,'سکول'),(4,'فطرت'),(5,'صحت'),(6,'تہوار')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 1 Maths
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=1 AND s.code='maths')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=1 AND s.code='maths')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Counting 1-10'),(2,'Counting 11-20'),(3,'Adding Numbers'),(4,'Subtracting Numbers'),(5,'Basic Shapes'),(6,'Comparing Objects')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 2 English
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=2 AND s.code='english')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=2 AND s.code='english')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Community Helpers'),(2,'Good Habits'),(3,'How We Travel'),(4,'Four Seasons'),(5,'Safari Animals'),(6,'Jobs and Work'),(7,'Green Earth')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 2 Urdu
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=2 AND s.code='urdu')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=2 AND s.code='urdu')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'مددگار لوگ'),(2,'اچھی عادتیں'),(3,'سفر'),(4,'موسم'),(5,'جانور'),(6,'پیشے'),(7,'ماحول کی حفاظت')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 2 Maths
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=2 AND s.code='maths')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=2 AND s.code='maths')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Place Value'),(2,'Addition'),(3,'Subtraction'),(4,'Introduction to Multiplication'),(5,'Half and Quarter'),(6,'2D and 3D Shapes'),(7,'Clocks and Calendar')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 3 English
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=3 AND s.code='english')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=3 AND s.code='english')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Reading Skills'),(2,'Nouns and Pronouns'),(3,'Verbs and Tenses'),(4,'Writing Skills'),(5,'Poems'),(6,'Short Stories'),(7,'Our Beautiful Pakistan'),(8,'Technology Today')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 3 Urdu
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=3 AND s.code='urdu')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=3 AND s.code='urdu')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'نثر پارہ'),(2,'نظم'),(3,'اسم اور ضمیر'),(4,'فعل'),(5,'خط'),(6,'پاکستان'),(7,'عظیم لوگ'),(8,'تحریری مشق')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
 
 -- SNC Grade 3 Maths
-WITH b AS (SELECT id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=3 AND s.code='maths')
+WITH b AS (SELECT books.id FROM books JOIN curriculums c ON c.id=curriculum_id JOIN grades g ON g.id=grade_id JOIN subjects s ON s.id=subject_id WHERE c.code='SNC' AND g.code=3 AND s.code='maths')
 INSERT INTO book_chapters (book_id, chapter_number, title) SELECT b.id, n, t FROM b, (VALUES
   (1,'Large Numbers'),(2,'Addition and Subtraction'),(3,'Multiplication'),(4,'Division'),(5,'Fractions and Decimals'),(6,'Geometry and Shapes'),(7,'Units of Measurement'),(8,'Graphs and Data')
 ) AS v(n,t) ON CONFLICT DO NOTHING;
@@ -312,8 +314,9 @@ SELECT
   grade_id,
   subject_id,
   REPLACE(slos.code, 'NCP', 'SNC'),
-  description
+  slos.description
 FROM slos
 JOIN curriculums c ON c.id = slos.curriculum_id
 WHERE c.code = 'NCP'
 ON CONFLICT DO NOTHING;
+COMMIT;

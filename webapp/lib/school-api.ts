@@ -254,6 +254,30 @@ async function apiFetch<T>(
 }
 
 // ---------------------------------------------------------------------------
+// Lookup — grades & subjects (no auth required)
+// ---------------------------------------------------------------------------
+
+export interface GradeOption {
+  id: number;
+  code: number;
+  display_name: string;
+}
+
+export interface SubjectOption {
+  id: number;
+  code: string;
+  display_name: string;
+}
+
+export function getGrades(): Promise<GradeOption[]> {
+  return apiFetch<GradeOption[]>("/api/v1/grades");
+}
+
+export function getSubjects(): Promise<SubjectOption[]> {
+  return apiFetch<SubjectOption[]>("/api/v1/subjects");
+}
+
+// ---------------------------------------------------------------------------
 // Academic Years
 // ---------------------------------------------------------------------------
 
