@@ -55,8 +55,8 @@ function ProgressBar({ taught, total }: { taught: number; total: number }) {
 // DayPills
 // ---------------------------------------------------------------------------
 
-function DayPills({ days }: { days: number[] }) {
-  if (days.length === 0) return (
+function DayPills({ days }: { days: number[] | undefined }) {
+  if (!days || days.length === 0) return (
     <span className="text-[10px] text-gray-400 italic">No schedule set</span>
   );
   return (
