@@ -146,7 +146,8 @@ class AssessmentSlot(Base):
         BigInteger, ForeignKey("chapter_plans.id", ondelete="SET NULL"), nullable=True
     )
     assessment_type: Mapped[str] = mapped_column(Text, nullable=False)  # formative | summative
-    scheduled_date: Mapped[date] = mapped_column(Date, nullable=False)
+    day_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scheduled_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     exam_id: Mapped[int | None] = mapped_column(
         BigInteger,

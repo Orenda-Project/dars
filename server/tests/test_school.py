@@ -279,14 +279,13 @@ async def test_set_timetable_and_compute_teaching_days(http_client, api_key, db_
     assert resp.status_code == 200
     assert len(resp.json()["items"]) == 3
 
-    # Verify via service
+    # Verify via service — timetable is ignored; all Mon–Sat academic days are returned
     from dars.school.service import compute_teaching_days
     teaching = await compute_teaching_days(int(cst["id"]), db_session)
-    # Mon 05-04, Wed 05-06, Fri 05-08 → 3 days
-    assert len(teaching) == 3
+    # Mon 05-04 through Fri 05-08 → 5 days (Sat 05-09 is outside the year)
+    assert len(teaching) == 5
     assert teaching[0] == date(2026, 5, 4)
-    assert teaching[1] == date(2026, 5, 6)
-    assert teaching[2] == date(2026, 5, 8)
+    assert teaching[-1] == date(2026, 5, 8)
 
 
 async def test_compute_teaching_days_excludes_holidays(http_client, api_key, db_session):
@@ -312,8 +311,8 @@ async def test_compute_teaching_days_excludes_holidays(http_client, api_key, db_
 
     from dars.school.service import compute_teaching_days
     teaching = await compute_teaching_days(int(cst["id"]), db_session)
-    # Should be Mon 05-04 and Fri 05-08 (Wed excluded)
-    assert len(teaching) == 2
+    # Mon–Fri (5 days) minus the Wednesday holiday = 4 days
+    assert len(teaching) == 4
     assert date(2026, 5, 6) not in teaching
 
 

@@ -25,7 +25,6 @@ from dars.school.models import (
     ClassSubjectTeacher,
     Holiday,
     SchoolClass,
-    Timetable,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,13 +79,10 @@ async def compute_teaching_days(
     db: AsyncSession,
 ) -> list[date]:
     """
-    Return sorted list of teaching dates for a ClassSubjectTeacher.
+    Return sorted list of all academic teaching dates for a CST's academic year.
 
-    Logic:
-    1. Load CST → SchoolClass → AcademicYear
-    2. Get timetable rows (day_of_week); fall back to Mon-Fri if empty
-    3. Walk every date in [start_date, end_date], keep only timetable days
-    4. Remove holidays for the academic year
+    Logic: Mon–Sat (0–5), excluding holidays. Timetable is not used here —
+    every academic day is a teaching day. The timetable is reserved for display only.
     """
     logger.info("compute_teaching_days: cst_id=%s", cst_id)
 
@@ -112,29 +108,19 @@ async def compute_teaching_days(
         logger.error("compute_teaching_days: academic_year not found for cst_id=%s", cst_id)
         return []
 
-    # Timetable days
-    tt_result = await db.execute(
-        select(Timetable).where(Timetable.class_subject_teacher_id == cst_id)
-    )
-    tt_rows = list(tt_result.scalars().all())
-    if tt_rows:
-        active_days = {row.day_of_week for row in tt_rows}
-    else:
-        active_days = {0, 1, 2, 3, 4}  # Mon-Fri fallback
-
     # Holidays
     hol_result = await db.execute(
         select(Holiday).where(Holiday.academic_year_id == school_class.academic_year_id)
     )
     holiday_dates = {h.date for h in hol_result.scalars().all()}
 
-    # Walk dates
+    # Walk dates: Mon–Sat (0–5), exclude holidays and Sundays
     start = academic_year.start_date
     end = academic_year.end_date
     teaching: list[date] = []
     current = start
     while current <= end:
-        if current.weekday() in active_days and current not in holiday_dates:
+        if current.weekday() < 6 and current not in holiday_dates:
             teaching.append(current)
         current += timedelta(days=1)
 
@@ -420,13 +406,17 @@ def _extract_json_array_from_response(response: str) -> list:
 async def ai_breakdown_chapter(
     chapter_plan_id: int,
     db: AsyncSession,
+    global_day_offset: int = 0,
 ) -> dict:
     """
     Use Claude to generate a pedagogically sound lesson sequence for a chapter plan.
     Creates ClassLessonSlot rows (lessons) and AssessmentSlot rows (formative only).
     Falls back to generate_lesson_sequence() if Claude fails.
 
-    Returns {"lesson_slots": [...], "assessment_slots": [...]}.
+    global_day_offset: the running day count before this chapter (so day_number is
+    globally unique across all chapters for the CST, not per-chapter).
+
+    Returns {"lesson_slots": [...], "assessment_slots": [], "days_used": N}.
     """
     logger.info("ai_breakdown_chapter: chapter_plan_id=%s", chapter_plan_id)
 
@@ -524,25 +514,28 @@ async def ai_breakdown_chapter(
             )
         )
 
-        # 11+12. Insert new slots
+        # 11+12. Insert new slots — day numbers are global (offset + local day)
         lesson_slots: list[ClassLessonSlot] = []
         assessment_slots: list[AssessmentSlot] = []
         fa_counter = 1
+        max_local_day = 0
 
         for item in items:
             if not isinstance(item, dict):
                 continue
             item_type = item.get("type", "lesson")
+            local_day = item.get("day", 1)
+            global_day = global_day_offset + local_day
+            max_local_day = max(max_local_day, local_day)
 
             if item_type == "lesson":
-                day_num = item.get("day", len(lesson_slots) + 1)
                 lp_type = item.get("lp_type", "Introduction")
-                title = item.get("title", f"Day {day_num}: {lp_type}")
+                title = item.get("title", f"Day {global_day}: {lp_type}")
                 slot = ClassLessonSlot(
                     client_id=cst.client_id,
                     class_subject_teacher_id=cst.id,
                     chapter_plan_id=chapter_plan_id,
-                    day_number=day_num,
+                    day_number=global_day,
                     lp_type=lp_type,
                     title=title,
                     status="planned",
@@ -559,7 +552,8 @@ async def ai_breakdown_chapter(
                     class_subject_teacher_id=cst.id,
                     chapter_plan_id=chapter_plan_id,
                     assessment_type=assessment_type,
-                    scheduled_date=date.today(),
+                    day_number=global_day,
+                    scheduled_date=None,
                     title=title,
                     status="scheduled",
                 )
@@ -573,11 +567,12 @@ async def ai_breakdown_chapter(
             await db.refresh(s)
 
         await db.commit()
+        days_used = max_local_day
         logger.info(
-            "ai_breakdown_chapter: done chapter_plan_id=%s lesson_slots=%d assessment_slots=%d",
-            chapter_plan_id, len(lesson_slots), len(assessment_slots),
+            "ai_breakdown_chapter: done chapter_plan_id=%s lesson_slots=%d assessment_slots=%d days_used=%d",
+            chapter_plan_id, len(lesson_slots), len(assessment_slots), days_used,
         )
-        return {"lesson_slots": lesson_slots, "assessment_slots": assessment_slots}
+        return {"lesson_slots": lesson_slots, "assessment_slots": assessment_slots, "days_used": days_used}
 
     except Exception:
         logger.error(
@@ -585,8 +580,9 @@ async def ai_breakdown_chapter(
             chapter_plan_id,
             exc_info=True,
         )
-        fallback_slots = await generate_lesson_sequence(chapter_plan_id, db)
-        return {"lesson_slots": fallback_slots, "assessment_slots": []}
+        fallback_slots = await generate_lesson_sequence(chapter_plan_id, db, global_day_offset=global_day_offset)
+        days_used = max((s.day_number - global_day_offset for s in fallback_slots), default=0)
+        return {"lesson_slots": fallback_slots, "assessment_slots": [], "days_used": days_used}
 
 
 async def ai_breakdown_all(
@@ -608,11 +604,13 @@ async def ai_breakdown_all(
 
     total_lesson_slots = 0
     total_assessment_slots = 0
+    global_offset = 0
 
     for plan in plans:
-        result = await ai_breakdown_chapter(plan.id, db)
+        result = await ai_breakdown_chapter(plan.id, db, global_day_offset=global_offset)
         total_lesson_slots += len(result["lesson_slots"])
         total_assessment_slots += len(result["assessment_slots"])
+        global_offset += result.get("days_used", plan.teaching_days)
 
     logger.info(
         "ai_breakdown_all: cst_id=%s chapters=%d lesson_slots=%d assessment_slots=%d",
@@ -849,11 +847,14 @@ async def generate_exam_for_slot(
 async def generate_lesson_sequence(
     chapter_plan_id: int,
     db: AsyncSession,
+    global_day_offset: int = 0,
 ) -> list[ClassLessonSlot]:
     """
     Generate ClassLessonSlot rows for a chapter plan using subject-aware LP type cycling.
     Deletes any existing rows for this chapter plan, then inserts fresh ones.
     Last slot is always "Revision".
+
+    global_day_offset: added to each local day_number so slots are globally unique.
     """
     logger.info("generate_lesson_sequence: chapter_plan_id=%s", chapter_plan_id)
 
@@ -894,14 +895,15 @@ async def generate_lesson_sequence(
     )
 
     new_slots: list[ClassLessonSlot] = []
-    for day_num, lp_type in enumerate(lp_types, start=1):
+    for local_day, lp_type in enumerate(lp_types, start=1):
+        global_day = global_day_offset + local_day
         slot = ClassLessonSlot(
             client_id=cst.client_id,
             class_subject_teacher_id=cst.id,
             chapter_plan_id=chapter_plan_id,
-            day_number=day_num,
+            day_number=global_day,
             lp_type=lp_type,
-            title=f"Day {day_num}: {lp_type}",
+            title=f"Day {global_day}: {lp_type}",
             status="planned",
         )
         db.add(slot)
@@ -923,22 +925,6 @@ async def generate_lesson_sequence(
 # ---------------------------------------------------------------------------
 
 
-def _nth_timetable_day(start: date, timetable_weekdays: list[int], n: int) -> date | None:
-    """Return the date of the nth occurrence (1-indexed) of any of timetable_weekdays on/after start."""
-    if not timetable_weekdays:
-        return None
-    sorted_days = sorted(timetable_weekdays)
-    count = 0
-    cursor = start
-    for _ in range(n * 7 + 14):  # upper bound: at most n weeks + buffer
-        if cursor.weekday() in sorted_days:
-            count += 1
-            if count == n:
-                return cursor
-        cursor += timedelta(days=1)
-    return None
-
-
 async def get_calendar_week(
     client_id: int,
     teacher_id: int,
@@ -946,10 +932,9 @@ async def get_calendar_week(
     db: AsyncSession,
 ) -> dict:
     """
-    Return one period per (class, timetable day in week).
-    If an assessment is scheduled on that day for the class → period_type="assessment".
-    Otherwise → the next planned lesson slot from the breakdown → period_type="lesson".
-    Already-taught lesson slots are still shown for days in the past.
+    Return one period per (class, academic day in week).
+    Day numbers from the breakdown sequence map 1:1 to academic days (Mon–Sat, no holidays).
+    Assessment slots take priority over lesson slots on the same day.
     """
     week_end = week_start + timedelta(days=6)
     logger.info(
@@ -981,62 +966,67 @@ async def get_calendar_week(
         subject_obj = await db.get(Subject, cst.subject_id)
         subject_display = subject_obj.display_name if subject_obj else str(cst.subject_id)
 
-        # Timetable weekdays for this CST
-        tt_result = await db.execute(
-            select(Timetable).where(
-                Timetable.class_subject_teacher_id == cst.id,
-                Timetable.client_id == client_id,
+        # Build global day_number → date index from academic teaching days
+        teaching_days = await compute_teaching_days(cst.id, db)
+        if not teaching_days:
+            continue
+        day_num_to_date: dict[int, date] = {
+            i + 1: d for i, d in enumerate(teaching_days)
+        }
+        # Reverse: date → day_number (for the week range)
+        week_dates = {week_start + timedelta(days=i) for i in range(7)}
+        date_to_day_num: dict[date, int] = {
+            d: n for n, d in day_num_to_date.items() if d in week_dates
+        }
+
+        if not date_to_day_num:
+            continue  # no academic days in this week for this CST
+
+        week_day_nums = set(date_to_day_num.values())
+
+        # Lesson slots whose day_number falls in this week
+        lesson_slots_result = await db.execute(
+            select(ClassLessonSlot).where(
+                ClassLessonSlot.class_subject_teacher_id == cst.id,
+                ClassLessonSlot.client_id == client_id,
+                ClassLessonSlot.day_number.in_(week_day_nums),
             )
         )
-        timetable_weekdays = sorted(t.day_of_week for t in tt_result.scalars().all())
+        lessons_by_day: dict[int, ClassLessonSlot] = {}
+        for slot in lesson_slots_result.scalars().all():
+            lessons_by_day[slot.day_number] = slot
 
-        if not timetable_weekdays:
-            continue
-
-        # Assessment slots in this week for this CST, keyed by date
+        # Assessment slots whose day_number falls in this week
         assessments_result = await db.execute(
             select(AssessmentSlot).where(
                 AssessmentSlot.class_subject_teacher_id == cst.id,
                 AssessmentSlot.client_id == client_id,
+                AssessmentSlot.day_number.in_(week_day_nums),
+            )
+        )
+        assessments_by_day: dict[int, list] = {}
+        for aslot in assessments_result.scalars().all():
+            if aslot.day_number is not None:
+                assessments_by_day.setdefault(aslot.day_number, []).append(aslot)
+
+        # Also include assessment slots with explicit scheduled_date in this week
+        # (legacy / manual entries that predate the day_number migration)
+        legacy_assessments_result = await db.execute(
+            select(AssessmentSlot).where(
+                AssessmentSlot.class_subject_teacher_id == cst.id,
+                AssessmentSlot.client_id == client_id,
+                AssessmentSlot.day_number.is_(None),
                 AssessmentSlot.scheduled_date >= week_start,
                 AssessmentSlot.scheduled_date <= week_end,
             )
         )
-        assessments_by_date: dict[date, list] = {}
-        for aslot in assessments_result.scalars().all():
-            assessments_by_date.setdefault(aslot.scheduled_date, []).append(aslot)
+        legacy_by_date: dict[date, list] = {}
+        for aslot in legacy_assessments_result.scalars().all():
+            if aslot.scheduled_date is not None:
+                legacy_by_date.setdefault(aslot.scheduled_date, []).append(aslot)
 
-        # Build a date→lesson_slot map using breakdown sequence
-        # For each lesson slot, compute its calendar date via timetable walking
-        date_to_lesson: dict[date, ClassLessonSlot] = {}
-        plans_result = await db.execute(
-            select(ChapterPlan)
-            .where(ChapterPlan.class_subject_teacher_id == cst.id)
-            .order_by(ChapterPlan.position)
-        )
-        plans = list(plans_result.scalars().all())
-        date_ranges = await compute_chapter_date_ranges(cst.id, db)
-        dr_map = {dr["chapter_plan_id"]: dr for dr in date_ranges}
-
-        for plan in plans:
-            chapter_start: date | None = dr_map.get(plan.id, {}).get("start_date")
-            if chapter_start is None:
-                continue
-            slots_result = await db.execute(
-                select(ClassLessonSlot)
-                .where(ClassLessonSlot.chapter_plan_id == plan.id)
-                .order_by(ClassLessonSlot.day_number)
-            )
-            for slot in slots_result.scalars().all():
-                slot_date = _nth_timetable_day(chapter_start, timetable_weekdays, slot.day_number)
-                if slot_date is not None and slot_date not in date_to_lesson:
-                    date_to_lesson[slot_date] = slot
-
-        # For each timetable day in this week, emit one period per class
-        for d in sorted(day_map.keys()):
-            if d.weekday() not in timetable_weekdays:
-                continue
-
+        # Emit one period per academic day in this week
+        for d, day_num in sorted(date_to_day_num.items()):
             base = {
                 "date": d,
                 "cst_id": cst.id,
@@ -1045,9 +1035,8 @@ async def get_calendar_week(
                 "subject": subject_display,
             }
 
-            # Assessment takes priority over lesson
-            if d in assessments_by_date:
-                for aslot in assessments_by_date[d]:
+            if day_num in assessments_by_day:
+                for aslot in assessments_by_day[day_num]:
                     day_map[d].append({
                         **base,
                         "period_type": "assessment",
@@ -1057,8 +1046,19 @@ async def get_calendar_week(
                         "assessment_status": aslot.status,
                         "exam_id": aslot.exam_id,
                     })
-            elif d in date_to_lesson:
-                slot = date_to_lesson[d]
+            elif d in legacy_by_date:
+                for aslot in legacy_by_date[d]:
+                    day_map[d].append({
+                        **base,
+                        "period_type": "assessment",
+                        "assessment_slot_id": aslot.id,
+                        "assessment_type": aslot.assessment_type,
+                        "assessment_title": aslot.title,
+                        "assessment_status": aslot.status,
+                        "exam_id": aslot.exam_id,
+                    })
+            elif day_num in lessons_by_day:
+                slot = lessons_by_day[day_num]
                 day_map[d].append({
                     **base,
                     "period_type": "lesson",
@@ -1070,7 +1070,6 @@ async def get_calendar_week(
                     "lesson_plan_id": slot.lesson_plan_id,
                 })
             else:
-                # Timetable day but no breakdown yet — show placeholder
                 day_map[d].append({
                     **base,
                     "period_type": "no_breakdown",

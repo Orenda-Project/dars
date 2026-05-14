@@ -255,7 +255,8 @@ class AssessmentSlotRead(BaseModel):
     class_subject_teacher_id: int
     chapter_plan_id: int | None
     assessment_type: str
-    scheduled_date: date
+    day_number: int | None = None
+    scheduled_date: date | None = None
     title: str | None
     exam_id: int | None = None
     status: str
