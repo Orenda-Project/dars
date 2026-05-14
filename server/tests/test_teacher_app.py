@@ -167,11 +167,13 @@ async def test_my_classes_returns_teacher_csts(http_client, db_session):
 
     item = data["items"][0]
     assert item["cst_id"] == cst["id"]
-    assert item["subject_id"] == subject_id
-    assert item["grade_id"] == grade_id
+    assert item["class_id"] == school_class["id"]
+    assert item["subject"] == "English"
+    assert item["grade"] == 5
     assert item["class_name"] == "Class A"
     assert item["chapter_count"] == 0
     assert item["taught_count"] == 0
+    assert item["timetable_days"] == []
     assert item["next_slot"] is None
 
 
@@ -225,5 +227,33 @@ async def test_my_classes_client_isolation(http_client, db_session):
     assert resp_b.status_code == 200, resp_b.text
     data_b = resp_b.json()
     assert len(data_b["items"]) == 1
-    assert data_b["items"][0]["subject_id"] == maths_id
-    assert data_b["items"][0]["grade_id"] == grade6_id
+    assert data_b["items"][0]["subject"] == "Maths"
+    assert data_b["items"][0]["grade"] == 6
+
+
+@pytest.mark.asyncio
+async def test_my_classes_timetable_days(http_client, db_session):
+    """timetable_days in MyClassEntry reflects saved timetable slots."""
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
+
+    key = await _signup(http_client, "timetable@school.com", "School T")
+    me = await _get_me(http_client, key)
+    default_teacher_id = me["default_teacher_id"]
+
+    year = await _make_academic_year(http_client, key)
+    school_class = await _make_class(http_client, key, year["id"], grade_id)
+    cst = await _assign_subject(http_client, key, school_class["id"], subject_id, default_teacher_id)
+
+    # Set timetable: Mon (0) and Wed (2)
+    tt_resp = await http_client.post(
+        f"/api/v1/classes/{school_class['id']}/subjects/{cst['id']}/timetable",
+        json={"slots": [{"day_of_week": 0}, {"day_of_week": 2}]},
+        headers=headers(key),
+    )
+    assert tt_resp.status_code == 200, tt_resp.text
+
+    resp = await http_client.get("/api/v1/me/classes", headers=headers(key))
+    assert resp.status_code == 200, resp.text
+    item = resp.json()["items"][0]
+    assert item["timetable_days"] == [0, 2]

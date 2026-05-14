@@ -366,6 +366,10 @@ export function getTimetable(classId: string, cstId: string): Promise<TimetableR
   );
 }
 
+export function getCst(cstId: string): Promise<CSTRead> {
+  return apiFetch<CSTRead>(`/api/v1/cst/${cstId}`);
+}
+
 // ---------------------------------------------------------------------------
 // Chapter Plans
 // ---------------------------------------------------------------------------
@@ -581,12 +585,14 @@ export function getExam(examId: string): Promise<GeneratedExamResponse> {
 
 export interface MyClassEntry {
   cst_id: string;
+  class_id: string;
   class_name: string;
   subject: string;
   grade: number;
   book_title: string | null;
   chapter_count: number;
   taught_count: number;
+  timetable_days: number[];
   next_slot: ClassLessonSlotRead | null;
 }
 
