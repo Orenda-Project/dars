@@ -8,6 +8,7 @@ import {
   getGrades,
   getSubjects,
   createTeacherClass,
+  setTimetable,
   type MyClassEntry,
   type AcademicYearRead,
   type TeacherClassCreated,
@@ -106,6 +107,15 @@ interface CreateClassModalProps {
   onCreated: (result: TeacherClassCreated) => void;
 }
 
+const DAYS = [
+  { label: "Mon", value: 0 },
+  { label: "Tue", value: 1 },
+  { label: "Wed", value: 2 },
+  { label: "Thu", value: 3 },
+  { label: "Fri", value: 4 },
+  { label: "Sat", value: 5 },
+];
+
 function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
   const [years, setYears] = useState<AcademicYearRead[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
@@ -114,10 +124,16 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Step 1 fields
   const [academicYearId, setAcademicYearId] = useState("");
   const [gradeId, setGradeId] = useState<number>(0);
   const [section, setSection] = useState("A");
   const [subjectId, setSubjectId] = useState<number>(0);
+
+  // Step 2 state
+  const [step, setStep] = useState<1 | 2>(1);
+  const [createdResult, setCreatedResult] = useState<TeacherClassCreated | null>(null);
+  const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -137,7 +153,16 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function toggleDay(day: number) {
+    setSelectedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+  }
+
+  async function handleSubmitStep1(e: React.FormEvent) {
     e.preventDefault();
     if (!academicYearId || !subjectId || !gradeId) {
       setError("Please fill in all fields.");
@@ -152,9 +177,30 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
         subject_id: subjectId,
         academic_year_id: academicYearId,
       });
-      onCreated(result);
+      setCreatedResult(result);
+      setStep(2);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create class");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSubmitStep2() {
+    if (!createdResult) return;
+    if (selectedDays.size === 0) {
+      setError("Select at least one class day.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await setTimetable(createdResult.class_id, createdResult.cst_id, {
+        slots: Array.from(selectedDays).map((d) => ({ day_of_week: d })),
+      });
+      onCreated(createdResult);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save timetable");
       setSaving(false);
     }
   }
@@ -163,123 +209,133 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         <div className="bg-gray-900 px-6 py-4">
-          <h2 className="text-base font-semibold text-white">Create Class</h2>
+          <h2 className="text-base font-semibold text-white">
+            {step === 1 ? "Create Class" : "Class Days"}
+          </h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            Select grade, section, and subject to get started.
+            {step === 1
+              ? "Select grade, section, and subject to get started."
+              : "Which days of the week do you teach this class?"}
           </p>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5 space-y-4">
           {error && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
               {error}
             </p>
           )}
 
-          {loading ? (
-            <p className="text-sm text-gray-400 animate-pulse">Loading options...</p>
-          ) : (
-            <>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">
-                  Academic Year
-                </label>
-                {years.length === 0 ? (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                    No academic years found. Ask your school admin to set up the academic year first.
-                  </p>
-                ) : (
-                  <select
-                    value={academicYearId}
-                    onChange={(e) => setAcademicYearId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  >
-                    {years.map((y) => (
-                      <option key={y.id} value={y.id}>
-                        {y.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+          {step === 1 ? (
+            loading ? (
+              <p className="text-sm text-gray-400 animate-pulse">Loading options...</p>
+            ) : (
+              <>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1">
-                    Grade
+                    Academic Year
                   </label>
-                  {grades.length === 0 ? (
+                  {years.length === 0 ? (
                     <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                      No grades available.
+                      No academic years found. Ask your school admin to set up the academic year first.
                     </p>
                   ) : (
                     <select
-                      value={gradeId}
-                      onChange={(e) => setGradeId(Number(e.target.value))}
+                      value={academicYearId}
+                      onChange={(e) => setAcademicYearId(e.target.value)}
                       className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     >
-                      {grades.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.display_name}
-                        </option>
+                      {years.map((y) => (
+                        <option key={y.id} value={y.id}>{y.name}</option>
                       ))}
                     </select>
                   )}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">
-                    Section
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="A"
-                    value={section}
-                    onChange={(e) => setSection(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                    required
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">
-                  Subject
-                </label>
-                {subjects.length === 0 ? (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                    No subjects available.
-                  </p>
-                ) : (
-                  <select
-                    value={subjectId}
-                    onChange={(e) => setSubjectId(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  >
-                    {subjects.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.display_name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Grade</label>
+                    {grades.length === 0 ? (
+                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">No grades available.</p>
+                    ) : (
+                      <select
+                        value={gradeId}
+                        onChange={(e) => setGradeId(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      >
+                        {grades.map((g) => (
+                          <option key={g.id} value={g.id}>{g.display_name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Section</label>
+                    <input
+                      type="text"
+                      placeholder="A"
+                      value={section}
+                      onChange={(e) => setSection(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Subject</label>
+                  {subjects.length === 0 ? (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">No subjects available.</p>
+                  ) : (
+                    <select
+                      value={subjectId}
+                      onChange={(e) => setSubjectId(Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    >
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>{s.display_name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </>
+            )
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              {DAYS.map((d) => (
+                <button
+                  key={d.value}
+                  type="button"
+                  onClick={() => toggleDay(d.value)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors cursor-pointer ${
+                    selectedDays.has(d.value)
+                      ? "bg-amber-600 text-white border-amber-600"
+                      : "bg-white text-gray-700 border-gray-300 hover:border-amber-400"
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
           )}
-        </form>
+        </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50">
           <button
             type="button"
-            onClick={onClose}
+            onClick={step === 2 && createdResult ? () => onCreated(createdResult) : onClose}
             disabled={saving}
             className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-300 text-gray-600 hover:border-gray-500 hover:text-gray-900 transition-colors cursor-pointer bg-white disabled:opacity-40"
           >
-            Cancel
+            {step === 2 ? "Skip" : "Cancel"}
           </button>
           <button
             type="button"
-            onClick={(e) => void handleSubmit(e as unknown as React.FormEvent)}
-            disabled={saving || loading || years.length === 0 || grades.length === 0 || subjects.length === 0}
+            onClick={step === 1
+              ? (e) => void handleSubmitStep1(e as unknown as React.FormEvent)
+              : () => void handleSubmitStep2()
+            }
+            disabled={saving || (step === 1 && (loading || years.length === 0 || grades.length === 0 || subjects.length === 0))}
             className="px-5 py-2 bg-amber-600 text-white text-sm font-semibold rounded-md hover:bg-amber-700 transition-colors cursor-pointer border-none disabled:opacity-60 flex items-center gap-2"
           >
             {saving && (
@@ -288,7 +344,7 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
               </svg>
             )}
-            Create Class
+            {step === 1 ? "Next" : "Save"}
           </button>
         </div>
       </div>
