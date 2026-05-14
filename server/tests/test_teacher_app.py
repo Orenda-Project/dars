@@ -173,7 +173,7 @@ async def test_my_classes_returns_teacher_csts(http_client, db_session):
     assert item["class_name"] == "Class A"
     assert item["chapter_count"] == 0
     assert item["taught_count"] == 0
-    assert item["timetable_days"] == []
+    assert item["timetable_days"] == [0, 1, 2, 3, 4, 5]  # auto-populated Mon–Sat
     assert item["next_slot"] is None
 
 

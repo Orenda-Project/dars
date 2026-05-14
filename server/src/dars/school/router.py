@@ -335,6 +335,9 @@ async def assign_subject(
         book_id=body.book_id,
     )
     db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    await _auto_create_timetable(obj, db)
     await db.commit()
     await db.refresh(obj)
     logger.info("assign_subject: done cst_id=%s", obj.id)
@@ -369,6 +372,22 @@ async def update_subject(
 # ---------------------------------------------------------------------------
 # Timetable
 # ---------------------------------------------------------------------------
+
+
+async def _auto_create_timetable(cst: ClassSubjectTeacher, db: AsyncSession) -> None:
+    """Create Mon–Sat timetable rows for a new CST. Idempotent — skips if rows exist."""
+    existing = await db.execute(
+        select(Timetable).where(Timetable.class_subject_teacher_id == cst.id).limit(1)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+    for day in range(6):  # 0=Mon … 5=Sat
+        db.add(Timetable(
+            client_id=cst.client_id,
+            class_subject_teacher_id=cst.id,
+            day_of_week=day,
+        ))
+    await db.flush()
 
 
 @router.post(
@@ -1330,6 +1349,7 @@ async def create_teacher_class(
     db.add(cst)
     await db.flush()
     await db.refresh(cst)
+    await _auto_create_timetable(cst, db)
     logger.info("create_teacher_class: created cst id=%s", cst.id)
 
     # 8. Load prefill chapter plans (via cst_id — needs to be committed first)

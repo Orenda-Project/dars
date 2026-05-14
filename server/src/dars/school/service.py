@@ -25,6 +25,7 @@ from dars.school.models import (
     ClassSubjectTeacher,
     Holiday,
     SchoolClass,
+    Timetable,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,10 +80,17 @@ async def compute_teaching_days(
     db: AsyncSession,
 ) -> list[date]:
     """
-    Return sorted list of all academic teaching dates for a CST's academic year.
+    Return sorted list of teaching dates for a ClassSubjectTeacher.
 
-    Logic: Mon–Sat (0–5), excluding holidays. Timetable is not used here —
-    every academic day is a teaching day. The timetable is reserved for display only.
+    Logic:
+    1. Load CST → SchoolClass → AcademicYear
+    2. Get timetable rows (day_of_week); fall back to Mon–Sat (0–5) if empty
+    3. Walk every date in [start_date, end_date], keep only timetable days
+    4. Remove holidays for the academic year
+
+    By default a CST is auto-created with Mon–Sat timetable rows, so this
+    effectively returns all weekday academic days unless the teacher has
+    manually customised their timetable.
     """
     logger.info("compute_teaching_days: cst_id=%s", cst_id)
 
@@ -108,19 +116,26 @@ async def compute_teaching_days(
         logger.error("compute_teaching_days: academic_year not found for cst_id=%s", cst_id)
         return []
 
+    # Timetable days (auto-populated Mon–Sat on CST creation; falls back if empty)
+    tt_result = await db.execute(
+        select(Timetable).where(Timetable.class_subject_teacher_id == cst_id)
+    )
+    tt_rows = list(tt_result.scalars().all())
+    active_days = {row.day_of_week for row in tt_rows} if tt_rows else {0, 1, 2, 3, 4, 5}
+
     # Holidays
     hol_result = await db.execute(
         select(Holiday).where(Holiday.academic_year_id == school_class.academic_year_id)
     )
     holiday_dates = {h.date for h in hol_result.scalars().all()}
 
-    # Walk dates: Mon–Sat (0–5), exclude holidays and Sundays
+    # Walk dates
     start = academic_year.start_date
     end = academic_year.end_date
     teaching: list[date] = []
     current = start
     while current <= end:
-        if current.weekday() < 6 and current not in holiday_dates:
+        if current.weekday() in active_days and current not in holiday_dates:
             teaching.append(current)
         current += timedelta(days=1)
 
