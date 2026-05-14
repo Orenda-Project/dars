@@ -28,6 +28,7 @@ from dars.school.schemas import (
     AssessmentSlotRead,
     AssessmentSlotUpdate,
     BreakdownYearResponse,
+    CalendarPeriod,
     CalendarResponse,
     ChapterPlanBulkUpsertRequest,
     ChapterPlanListResponse,
@@ -1535,7 +1536,7 @@ async def get_my_calendar(
         logger.info("get_my_calendar: no default_teacher_id, returning empty calendar")
         week_end = week_start + timedelta(days=6)
         from dars.school.schemas import CalendarDayResponse
-        items = [CalendarDayResponse(date=week_start + timedelta(days=i), lessons=[], assessments=[]) for i in range(7)]
+        items = [CalendarDayResponse(date=week_start + timedelta(days=i), periods=[]) for i in range(7)]
         return CalendarResponse(items=items, week_start=week_start, week_end=week_end)
 
     data = await get_calendar_week(
@@ -1545,13 +1546,12 @@ async def get_my_calendar(
         db=db,
     )
 
-    from dars.school.schemas import CalendarDayResponse, CalendarLessonEntry, CalendarAssessmentEntry
+    from dars.school.schemas import CalendarDayResponse, CalendarPeriod
     items = []
     for day in data["items"]:
         items.append(CalendarDayResponse(
             date=day["date"],
-            lessons=[CalendarLessonEntry(**e) for e in day["lessons"]],
-            assessments=[CalendarAssessmentEntry(**e) for e in day["assessments"]],
+            periods=[CalendarPeriod(**p) for p in day["periods"]],
         ))
 
     logger.info("get_my_calendar: week=%s items=%d", week_start, len(items))

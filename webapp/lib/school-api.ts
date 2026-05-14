@@ -649,37 +649,31 @@ export function createTeacherClass(data: TeacherClassCreate): Promise<TeacherCla
 // Teacher App — Calendar
 // ---------------------------------------------------------------------------
 
-export interface CalendarLessonEntry {
+export interface CalendarPeriod {
   date: string; // ISO date
   cst_id: string;
   class_id: string;
   class_name: string;
   subject: string;
-  slot_id: string;
-  day_number: number;
-  lp_type: string;
-  title: string;
-  status: string;
-  lesson_plan_id: string | null;
-}
-
-export interface CalendarAssessmentEntry {
-  date: string;
-  cst_id: string;
-  class_id: string;
-  class_name: string;
-  subject: string;
-  slot_id: string;
-  assessment_type: string;
+  period_type: string; // "lesson" | "assessment" | "no_breakdown"
+  // lesson fields
+  slot_id: string | null;
+  day_number: number | null;
+  lp_type: string | null;
   title: string | null;
-  status: string;
+  lesson_status: string | null;
+  lesson_plan_id: string | null;
+  // assessment fields
+  assessment_slot_id: string | null;
+  assessment_type: string | null;
+  assessment_title: string | null;
+  assessment_status: string | null;
   exam_id: string | null;
 }
 
 export interface CalendarDayResponse {
   date: string;
-  lessons: CalendarLessonEntry[];
-  assessments: CalendarAssessmentEntry[];
+  periods: CalendarPeriod[];
 }
 
 export interface CalendarResponse {

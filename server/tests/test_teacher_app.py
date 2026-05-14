@@ -281,13 +281,12 @@ async def test_calendar_week_empty_without_teacher(http_client, db_session):
     assert data["week_end"] == "2026-05-18"
     assert len(data["items"]) == 7
     for day in data["items"]:
-        assert day["lessons"] == []
-        assert day["assessments"] == []
+        assert day["periods"] == []
 
 
 @pytest.mark.asyncio
 async def test_calendar_week_includes_assessments(http_client, db_session):
-    """Assessment slots with scheduled_date in the week appear on the correct day."""
+    """Assessment with scheduled_date on a timetable day appears as period_type='assessment'."""
     grade_id = await _get_grade_id(db_session, 5)
     subject_id = await _get_subject_id(db_session, "english")
 
@@ -299,7 +298,14 @@ async def test_calendar_week_includes_assessments(http_client, db_session):
     school_class = await _make_class(http_client, key, year["id"], grade_id)
     cst = await _assign_subject(http_client, key, school_class["id"], subject_id, default_teacher_id)
 
-    # Create an assessment on 2026-05-14 (Thursday, weekday index 3 in the 2026-05-12 week)
+    # 2026-05-12 is a Tuesday; Thursday=3 lands on 2026-05-14 (index 2 in the week list)
+    await http_client.post(
+        f"/api/v1/classes/{school_class['id']}/subjects/{cst['id']}/timetable",
+        json={"slots": [{"day_of_week": 3}]},
+        headers=headers(key),
+    )
+
+    # Create an assessment on 2026-05-14 (Thursday of that week)
     aslot_resp = await http_client.post(
         f"/api/v1/classes/{school_class['id']}/subjects/{cst['id']}/assessment-slots",
         json={
@@ -315,14 +321,15 @@ async def test_calendar_week_includes_assessments(http_client, db_session):
     assert resp.status_code == 200, resp.text
     data = resp.json()
 
-    # Wednesday is index 2 in the week (Mon=0, Tue=1, Wed=2 …)
-    wednesday = data["items"][2]
-    assert wednesday["date"] == "2026-05-14"
-    assert len(wednesday["assessments"]) == 1
-    a = wednesday["assessments"][0]
-    assert a["assessment_type"] == "formative"
-    assert a["title"] == "Chapter 1 FA"
-    assert a["cst_id"] == cst["id"]
+    # Find the item for 2026-05-14 by date field (don't assume index)
+    thursday_item = next((d for d in data["items"] if d["date"] == "2026-05-14"), None)
+    assert thursday_item is not None
+    assert len(thursday_item["periods"]) == 1
+    p = thursday_item["periods"][0]
+    assert p["period_type"] == "assessment"
+    assert p["assessment_type"] == "formative"
+    assert p["assessment_title"] == "Chapter 1 FA"
+    assert p["cst_id"] == cst["id"]
 
 
 @pytest.mark.asyncio
@@ -341,6 +348,12 @@ async def test_calendar_week_client_isolation(http_client, db_session):
     class_b = await _make_class(http_client, key_b, year_b["id"], grade_id)
     cst_b = await _assign_subject(http_client, key_b, class_b["id"], subject_id, teacher_b_id)
 
+    # 2026-05-12 is Tuesday; May 13 is Wednesday(2) — timetable must match the assessment date
+    await http_client.post(
+        f"/api/v1/classes/{class_b['id']}/subjects/{cst_b['id']}/timetable",
+        json={"slots": [{"day_of_week": 2}]},
+        headers=headers(key_b),
+    )
     await http_client.post(
         f"/api/v1/classes/{class_b['id']}/subjects/{cst_b['id']}/assessment-slots",
         json={"assessment_type": "formative", "scheduled_date": "2026-05-13", "title": "B's FA"},
@@ -351,12 +364,12 @@ async def test_calendar_week_client_isolation(http_client, db_session):
     resp_a = await http_client.get("/api/v1/me/calendar?week_start=2026-05-12", headers=headers(key_a))
     assert resp_a.status_code == 200
     for day in resp_a.json()["items"]:
-        assert day["assessments"] == []
-        assert day["lessons"] == []
+        assert day["periods"] == []
 
     # Client B sees their own event
     resp_b = await http_client.get("/api/v1/me/calendar?week_start=2026-05-12", headers=headers(key_b))
     assert resp_b.status_code == 200
-    all_assessments = [a for day in resp_b.json()["items"] for a in day["assessments"]]
-    assert len(all_assessments) == 1
-    assert all_assessments[0]["title"] == "B's FA"
+    all_periods = [p for day in resp_b.json()["items"] for p in day["periods"]]
+    assessment_periods = [p for p in all_periods if p["period_type"] == "assessment"]
+    assert len(assessment_periods) == 1
+    assert assessment_periods[0]["assessment_title"] == "B's FA"

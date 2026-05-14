@@ -946,8 +946,10 @@ async def get_calendar_week(
     db: AsyncSession,
 ) -> dict:
     """
-    Return all lesson slots and assessment slots for a teacher in the given week
-    (week_start through week_start + 6 days), grouped by date.
+    Return one period per (class, timetable day in week).
+    If an assessment is scheduled on that day for the class → period_type="assessment".
+    Otherwise → the next planned lesson slot from the breakdown → period_type="lesson".
+    Already-taught lesson slots are still shown for days in the past.
     """
     week_end = week_start + timedelta(days=6)
     logger.info(
@@ -966,11 +968,10 @@ async def get_calendar_week(
     )
     csts = list(cst_result.scalars().all())
 
-    # Keyed day map: date → {lessons: [], assessments: []}
-    day_map: dict[date, dict] = {}
+    # day_map: date → list[period dicts]
+    day_map: dict[date, list] = {}
     for i in range(7):
-        d = week_start + timedelta(days=i)
-        day_map[d] = {"date": d, "lessons": [], "assessments": []}
+        day_map[week_start + timedelta(days=i)] = []
 
     for cst in csts:
         sc = await db.get(SchoolClass, cst.class_id)
@@ -987,51 +988,12 @@ async def get_calendar_week(
                 Timetable.client_id == client_id,
             )
         )
-        timetable_weekdays = [t.day_of_week for t in tt_result.scalars().all()]
+        timetable_weekdays = sorted(t.day_of_week for t in tt_result.scalars().all())
 
-        if timetable_weekdays:
-            # Chapter plans with date ranges
-            plans_result = await db.execute(
-                select(ChapterPlan)
-                .where(ChapterPlan.class_subject_teacher_id == cst.id)
-                .order_by(ChapterPlan.position)
-            )
-            plans = list(plans_result.scalars().all())
-            date_ranges = await compute_chapter_date_ranges(cst.id, db)
-            dr_map = {dr["chapter_plan_id"]: dr for dr in date_ranges}
+        if not timetable_weekdays:
+            continue
 
-            for plan in plans:
-                dr = dr_map.get(plan.id, {})
-                chapter_start: date | None = dr.get("start_date")
-                if chapter_start is None:
-                    continue
-
-                slots_result = await db.execute(
-                    select(ClassLessonSlot)
-                    .where(ClassLessonSlot.chapter_plan_id == plan.id)
-                    .order_by(ClassLessonSlot.day_number)
-                )
-                lesson_slots = list(slots_result.scalars().all())
-
-                for slot in lesson_slots:
-                    slot_date = _nth_timetable_day(chapter_start, timetable_weekdays, slot.day_number)
-                    if slot_date is None or slot_date not in day_map:
-                        continue
-                    day_map[slot_date]["lessons"].append({
-                        "date": slot_date,
-                        "cst_id": cst.id,
-                        "class_id": sc.id,
-                        "class_name": sc.name,
-                        "subject": subject_display,
-                        "slot_id": slot.id,
-                        "day_number": slot.day_number,
-                        "lp_type": slot.lp_type,
-                        "title": slot.title,
-                        "status": slot.status,
-                        "lesson_plan_id": slot.lesson_plan_id,
-                    })
-
-        # Assessment slots with scheduled_date in week range
+        # Assessment slots in this week for this CST, keyed by date
         assessments_result = await db.execute(
             select(AssessmentSlot).where(
                 AssessmentSlot.class_subject_teacher_id == cst.id,
@@ -1040,27 +1002,81 @@ async def get_calendar_week(
                 AssessmentSlot.scheduled_date <= week_end,
             )
         )
+        assessments_by_date: dict[date, list] = {}
         for aslot in assessments_result.scalars().all():
-            d = aslot.scheduled_date
-            if d in day_map:
-                day_map[d]["assessments"].append({
-                    "date": d,
-                    "cst_id": cst.id,
-                    "class_id": sc.id,
-                    "class_name": sc.name,
-                    "subject": subject_display,
-                    "slot_id": aslot.id,
-                    "assessment_type": aslot.assessment_type,
-                    "title": aslot.title,
-                    "status": aslot.status,
-                    "exam_id": aslot.exam_id,
+            assessments_by_date.setdefault(aslot.scheduled_date, []).append(aslot)
+
+        # Build a date→lesson_slot map using breakdown sequence
+        # For each lesson slot, compute its calendar date via timetable walking
+        date_to_lesson: dict[date, ClassLessonSlot] = {}
+        plans_result = await db.execute(
+            select(ChapterPlan)
+            .where(ChapterPlan.class_subject_teacher_id == cst.id)
+            .order_by(ChapterPlan.position)
+        )
+        plans = list(plans_result.scalars().all())
+        date_ranges = await compute_chapter_date_ranges(cst.id, db)
+        dr_map = {dr["chapter_plan_id"]: dr for dr in date_ranges}
+
+        for plan in plans:
+            chapter_start: date | None = dr_map.get(plan.id, {}).get("start_date")
+            if chapter_start is None:
+                continue
+            slots_result = await db.execute(
+                select(ClassLessonSlot)
+                .where(ClassLessonSlot.chapter_plan_id == plan.id)
+                .order_by(ClassLessonSlot.day_number)
+            )
+            for slot in slots_result.scalars().all():
+                slot_date = _nth_timetable_day(chapter_start, timetable_weekdays, slot.day_number)
+                if slot_date is not None and slot_date not in date_to_lesson:
+                    date_to_lesson[slot_date] = slot
+
+        # For each timetable day in this week, emit one period per class
+        for d in sorted(day_map.keys()):
+            if d.weekday() not in timetable_weekdays:
+                continue
+
+            base = {
+                "date": d,
+                "cst_id": cst.id,
+                "class_id": sc.id,
+                "class_name": sc.name,
+                "subject": subject_display,
+            }
+
+            # Assessment takes priority over lesson
+            if d in assessments_by_date:
+                for aslot in assessments_by_date[d]:
+                    day_map[d].append({
+                        **base,
+                        "period_type": "assessment",
+                        "assessment_slot_id": aslot.id,
+                        "assessment_type": aslot.assessment_type,
+                        "assessment_title": aslot.title,
+                        "assessment_status": aslot.status,
+                        "exam_id": aslot.exam_id,
+                    })
+            elif d in date_to_lesson:
+                slot = date_to_lesson[d]
+                day_map[d].append({
+                    **base,
+                    "period_type": "lesson",
+                    "slot_id": slot.id,
+                    "day_number": slot.day_number,
+                    "lp_type": slot.lp_type,
+                    "title": slot.title,
+                    "lesson_status": slot.status,
+                    "lesson_plan_id": slot.lesson_plan_id,
+                })
+            else:
+                # Timetable day but no breakdown yet — show placeholder
+                day_map[d].append({
+                    **base,
+                    "period_type": "no_breakdown",
                 })
 
-    items = [day_map[week_start + timedelta(days=i)] for i in range(7)]
-    logger.info(
-        "get_calendar_week: week=%s total_lessons=%d total_assessments=%d",
-        week_start,
-        sum(len(d["lessons"]) for d in items),
-        sum(len(d["assessments"]) for d in items),
-    )
+    total_periods = sum(len(v) for v in day_map.values())
+    logger.info("get_calendar_week: week=%s total_periods=%d", week_start, total_periods)
+    items = [{"date": week_start + timedelta(days=i), "periods": day_map[week_start + timedelta(days=i)]} for i in range(7)]
     return {"items": items, "week_start": week_start, "week_end": week_end}

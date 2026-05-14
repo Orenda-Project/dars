@@ -5,8 +5,7 @@ import Link from "next/link";
 import {
   getCalendar,
   type CalendarDayResponse,
-  type CalendarLessonEntry,
-  type CalendarAssessmentEntry,
+  type CalendarPeriod,
 } from "@/lib/school-api";
 
 // ---------------------------------------------------------------------------
@@ -16,7 +15,6 @@ import {
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function isoToDate(iso: string): Date {
-  // Parse YYYY-MM-DD without timezone shift
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d);
 }
@@ -50,7 +48,7 @@ function isToday(iso: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Lesson pill
+// Period pill
 // ---------------------------------------------------------------------------
 
 const LP_TYPE_COLORS: Record<string, string> = {
@@ -62,43 +60,63 @@ const LP_TYPE_COLORS: Record<string, string> = {
   Introduction: "bg-blue-100 text-blue-800 border-blue-200",
 };
 
-function LessonPill({ lesson }: { lesson: CalendarLessonEntry }) {
-  const colorCls = LP_TYPE_COLORS[lesson.lp_type] ?? "bg-amber-100 text-amber-800 border-amber-200";
+function PeriodPill({ period }: { period: CalendarPeriod }) {
+  if (period.period_type === "assessment") {
+    const isFa = period.assessment_type === "formative";
+    const colorCls = isFa
+      ? "bg-rose-100 text-rose-800 border-rose-200"
+      : "bg-violet-100 text-violet-800 border-violet-200";
+    return (
+      <Link
+        href={`/teacher-app/classes/${period.cst_id}`}
+        className={`block px-2 py-1.5 rounded border text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity ${colorCls}`}
+      >
+        <div className="flex items-center gap-1 mb-0.5">
+          <span className="font-bold uppercase text-[9px] px-1 py-0.5 rounded bg-white/50">
+            {isFa ? "FA" : "SA"}
+          </span>
+          <span className="truncate font-semibold">{period.class_name}</span>
+        </div>
+        <div className="truncate text-[9px] opacity-80">{period.subject}</div>
+        {period.assessment_title && (
+          <div className="truncate text-[9px] opacity-70 mt-0.5">{period.assessment_title}</div>
+        )}
+        {period.assessment_status === "completed" && (
+          <div className="text-[9px] font-semibold text-green-700 mt-0.5">✓ done</div>
+        )}
+      </Link>
+    );
+  }
+
+  if (period.period_type === "lesson") {
+    const colorCls =
+      LP_TYPE_COLORS[period.lp_type ?? ""] ?? "bg-amber-100 text-amber-800 border-amber-200";
+    return (
+      <Link
+        href={`/teacher-app/classes/${period.cst_id}`}
+        className={`block px-2 py-1.5 rounded border text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity ${colorCls}`}
+      >
+        <div className="truncate font-semibold">{period.class_name}</div>
+        <div className="truncate text-[9px] opacity-75">{period.subject}</div>
+        {period.title && (
+          <div className="truncate text-[9px] opacity-70 mt-0.5">{period.title}</div>
+        )}
+        {period.lesson_status === "taught" && (
+          <div className="text-[9px] font-semibold text-green-700 mt-0.5">✓ taught</div>
+        )}
+      </Link>
+    );
+  }
+
+  // no_breakdown — class is on timetable but no lesson planned yet
   return (
     <Link
-      href={`/teacher-app/classes/${lesson.cst_id}`}
-      className={`block px-2 py-1 rounded border text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity ${colorCls}`}
+      href={`/teacher-app/classes/${period.cst_id}`}
+      className="block px-2 py-1.5 rounded border border-dashed border-gray-300 text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity text-gray-500"
     >
-      <div className="truncate font-semibold">{lesson.class_name}</div>
-      <div className="truncate text-[9px] opacity-75">{lesson.title}</div>
-      {lesson.status === "taught" && (
-        <div className="text-[9px] font-semibold text-green-700 mt-0.5">✓ taught</div>
-      )}
-    </Link>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Assessment pill
-// ---------------------------------------------------------------------------
-
-function AssessmentPill({ assessment }: { assessment: CalendarAssessmentEntry }) {
-  const isFa = assessment.assessment_type === "formative";
-  const colorCls = isFa
-    ? "bg-rose-100 text-rose-800 border-rose-200"
-    : "bg-violet-100 text-violet-800 border-violet-200";
-  return (
-    <Link
-      href={`/teacher-app/classes/${assessment.cst_id}`}
-      className={`block px-2 py-1 rounded border text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity ${colorCls}`}
-    >
-      <div className="flex items-center gap-1">
-        <span className="font-bold uppercase text-[9px]">{isFa ? "FA" : "SA"}</span>
-        <span className="truncate font-semibold">{assessment.class_name}</span>
-      </div>
-      {assessment.title && (
-        <div className="truncate text-[9px] opacity-75">{assessment.title}</div>
-      )}
+      <div className="truncate font-semibold">{period.class_name}</div>
+      <div className="truncate text-[9px] opacity-75">{period.subject}</div>
+      <div className="text-[9px] opacity-60 mt-0.5 italic">No plan yet</div>
     </Link>
   );
 }
@@ -110,7 +128,7 @@ function AssessmentPill({ assessment }: { assessment: CalendarAssessmentEntry })
 function DayColumn({ day, dayIndex }: { day: CalendarDayResponse; dayIndex: number }) {
   const today = isToday(day.date);
   const dayNum = isoToDate(day.date).getDate();
-  const empty = day.lessons.length === 0 && day.assessments.length === 0;
+  const empty = day.periods.length === 0;
 
   return (
     <div className={`flex flex-col min-h-[200px] ${today ? "bg-amber-50 rounded-lg" : ""}`}>
@@ -124,19 +142,17 @@ function DayColumn({ day, dayIndex }: { day: CalendarDayResponse; dayIndex: numb
         </p>
       </div>
 
-      {/* Events */}
+      {/* Periods */}
       <div className="flex-1 px-1.5 py-2 space-y-1.5">
-        {empty && (
+        {empty ? (
           <div className="h-full flex items-center justify-center">
             <div className="w-full h-full border border-dashed border-gray-200 rounded-md" />
           </div>
+        ) : (
+          day.periods.map((period, idx) => (
+            <PeriodPill key={`${period.cst_id}-${idx}`} period={period} />
+          ))
         )}
-        {day.lessons.map((lesson) => (
-          <LessonPill key={`l-${lesson.slot_id}`} lesson={lesson} />
-        ))}
-        {day.assessments.map((assessment) => (
-          <AssessmentPill key={`a-${assessment.slot_id}`} assessment={assessment} />
-        ))}
       </div>
     </div>
   );
@@ -275,6 +291,10 @@ export default function CalendarPage() {
           <div className="flex items-center gap-1">
             <span className="inline-block w-3 h-3 rounded bg-violet-100 border border-violet-200" />
             Summative assessment
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded border border-dashed border-gray-300" />
+            No plan yet
           </div>
         </div>
       )}
