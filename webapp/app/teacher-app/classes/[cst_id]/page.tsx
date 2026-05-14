@@ -13,6 +13,9 @@ import {
   getLessonPlan,
   generateExamForSlot,
   getExam,
+  getCst,
+  getTimetable,
+  setTimetable,
   type ChapterPlanWithDates,
   type ClassLessonSlotRead,
   type AssessmentSlotRead,
@@ -453,6 +456,122 @@ function AssessmentsTab({ cstId }: { cstId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Timetable tab
+// ---------------------------------------------------------------------------
+
+const DAYS = [
+  { label: "Mon", value: 0 },
+  { label: "Tue", value: 1 },
+  { label: "Wed", value: 2 },
+  { label: "Thu", value: 3 },
+  { label: "Fri", value: 4 },
+  { label: "Sat", value: 5 },
+];
+
+function TimetableTab({ cstId }: { cstId: string }) {
+  const [classId, setClassId] = useState<string | null>(null);
+  const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const cst = await getCst(cstId);
+        setClassId(String(cst.class_id));
+        const tt = await getTimetable(String(cst.class_id), cstId);
+        setSelectedDays(new Set(tt.items.map((s) => s.day_of_week)));
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Failed to load timetable");
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
+  }, [cstId]);
+
+  function toggleDay(day: number) {
+    setSelectedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+    setSaved(false);
+  }
+
+  async function handleSave() {
+    if (!classId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await setTimetable(classId, cstId, {
+        slots: Array.from(selectedDays).map((d) => ({ day_of_week: d })),
+      });
+      setSaved(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save timetable");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <p className="text-sm text-gray-400 animate-pulse py-4">Loading timetable…</p>;
+
+  return (
+    <div className="space-y-5">
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>
+      )}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          Class days
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          {DAYS.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              onClick={() => toggleDay(d.value)}
+              className={`px-5 py-2.5 rounded-lg text-sm font-semibold border transition-colors cursor-pointer ${
+                selectedDays.has(d.value)
+                  ? "bg-amber-600 text-white border-amber-600"
+                  : "bg-white text-gray-700 border-gray-300 hover:border-amber-400"
+              }`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+        {selectedDays.size === 0 && (
+          <p className="text-xs text-gray-400 mt-2">No days selected — Today view will be empty.</p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="px-5 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition-colors cursor-pointer border-none disabled:opacity-60 flex items-center gap-2"
+        >
+          {saving && (
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+          )}
+          Save
+        </button>
+        {saved && <span className="text-xs text-green-600 font-medium">Saved</span>}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -462,7 +581,13 @@ export default function ClassDetailPage({
   params: Promise<{ cst_id: string }>;
 }) {
   const { cst_id } = use(params);
-  const [tab, setTab] = useState<"lessons" | "assessments">("lessons");
+  const [tab, setTab] = useState<"lessons" | "assessments" | "timetable">("lessons");
+
+  const TAB_LABELS: Record<"lessons" | "assessments" | "timetable", string> = {
+    lessons: "Lessons",
+    assessments: "Assessments",
+    timetable: "Timetable",
+  };
 
   return (
     <div>
@@ -477,7 +602,7 @@ export default function ClassDetailPage({
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">
-        {(["lessons", "assessments"] as const).map((t) => (
+        {(["lessons", "assessments", "timetable"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -487,13 +612,14 @@ export default function ClassDetailPage({
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
-            {t === "lessons" ? "Lessons" : "Assessments"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {tab === "lessons" && <LessonsTab cstId={cst_id} />}
       {tab === "assessments" && <AssessmentsTab cstId={cst_id} />}
+      {tab === "timetable" && <TimetableTab cstId={cst_id} />}
     </div>
   );
 }

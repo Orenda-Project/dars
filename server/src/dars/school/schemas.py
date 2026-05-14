@@ -328,12 +328,14 @@ class GenerateExamResponse(BaseModel):
 
 class MyClassEntry(BaseModel):
     cst_id: int
+    class_id: int
     class_name: str
-    subject_id: int
-    grade_id: int
+    subject: str
+    grade: int
     book_title: str | None
     chapter_count: int
     taught_count: int
+    timetable_days: list[int]
     next_slot: ClassLessonSlotRead | None
 
 

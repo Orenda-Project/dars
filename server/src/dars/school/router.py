@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dars.clients.models import Client
 from dars.database import get_db
 from dars.deps import get_current_client
+from dars.lookup.models import Grade, Subject
 from dars.school.models import (
     AcademicYear,
     AssessmentSlot,
@@ -425,6 +426,20 @@ async def get_timetable(
     rows = list(result.scalars().all())
     logger.info("get_timetable: cst_id=%s rows=%d", cst_id, len(rows))
     return TimetableResponse(items=[TimetableSlotRead.model_validate(r) for r in rows])
+
+
+@router.get("/api/v1/cst/{cst_id}", response_model=CSTRead)
+async def get_cst(
+    cst_id: int,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> CSTRead:
+    """Return a single ClassSubjectTeacher record by ID."""
+    logger.info("get_cst: cst_id=%s client_id=%s", cst_id, current_client.id)
+    cst = await db.get(ClassSubjectTeacher, cst_id)
+    if cst is None or cst.client_id != current_client.id:
+        raise HTTPException(status_code=404, detail="CST not found")
+    return CSTRead.model_validate(cst)
 
 
 # ---------------------------------------------------------------------------
@@ -1155,6 +1170,21 @@ async def get_my_classes(
         )
         taught_count = len(list(taught_result.scalars().all()))
 
+        # Resolve display names from lookup tables
+        subject_obj = await db.get(Subject, cst.subject_id)
+        subject_display = subject_obj.display_name if subject_obj else str(cst.subject_id)
+        grade_obj = await db.get(Grade, sc.grade_id)
+        grade_code = grade_obj.code if grade_obj else 0
+
+        # Timetable days for this CST
+        tt_result = await db.execute(
+            select(Timetable).where(
+                Timetable.class_subject_teacher_id == cst.id,
+                Timetable.client_id == current_client.id,
+            )
+        )
+        timetable_days = sorted(t.day_of_week for t in tt_result.scalars().all())
+
         # Next planned slot (lowest day_number among planned)
         next_slot_result = await db.execute(
             select(ClassLessonSlot)
@@ -1171,12 +1201,14 @@ async def get_my_classes(
         items.append(
             MyClassEntry(
                 cst_id=cst.id,
+                class_id=sc.id,
                 class_name=sc.name,
-                subject_id=cst.subject_id,
-                grade_id=sc.grade_id,
+                subject=subject_display,
+                grade=grade_code,
                 book_title=book_title,
                 chapter_count=chapter_count,
                 taught_count=taught_count,
+                timetable_days=timetable_days,
                 next_slot=(
                     ClassLessonSlotRead.model_validate(next_slot_obj)
                     if next_slot_obj

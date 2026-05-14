@@ -17,6 +17,19 @@ import {
 } from "@/lib/school-api";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DAYS = [
+  { label: "Mon", value: 0 },
+  { label: "Tue", value: 1 },
+  { label: "Wed", value: 2 },
+  { label: "Thu", value: 3 },
+  { label: "Fri", value: 4 },
+  { label: "Sat", value: 5 },
+];
+
+// ---------------------------------------------------------------------------
 // ProgressBar
 // ---------------------------------------------------------------------------
 
@@ -25,8 +38,8 @@ function ProgressBar({ taught, total }: { taught: number; total: number }) {
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-        <span>{taught} lessons taught</span>
-        <span>{total} total slots</span>
+        <span>{taught} taught</span>
+        <span>{total} total</span>
       </div>
       <div className="w-full bg-gray-100 rounded-full h-1.5">
         <div
@@ -39,7 +52,31 @@ function ProgressBar({ taught, total }: { taught: number; total: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// ClassCard
+// DayPills
+// ---------------------------------------------------------------------------
+
+function DayPills({ days }: { days: number[] | undefined }) {
+  if (!days || days.length === 0) return (
+    <span className="text-[10px] text-gray-400 italic">No schedule set</span>
+  );
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {DAYS.map((d) =>
+        days.includes(d.value) ? (
+          <span
+            key={d.value}
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200"
+          >
+            {d.label}
+          </span>
+        ) : null
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ClassCard (grid view)
 // ---------------------------------------------------------------------------
 
 function ClassCard({ entry, pending }: { entry: MyClassEntry; pending?: boolean }) {
@@ -72,9 +109,13 @@ function ClassCard({ entry, pending }: { entry: MyClassEntry; pending?: boolean 
         </div>
         <div className="shrink-0">
           <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full font-medium">
-            {entry.chapter_count} chapter{entry.chapter_count !== 1 ? "s" : ""}
+            {entry.chapter_count} ch
           </span>
         </div>
+      </div>
+
+      <div className="mt-2">
+        <DayPills days={entry.timetable_days} />
       </div>
 
       <ProgressBar taught={entry.taught_count} total={totalSlots > 0 ? totalSlots : entry.chapter_count} />
@@ -99,6 +140,52 @@ function ClassCard({ entry, pending }: { entry: MyClassEntry; pending?: boolean 
 }
 
 // ---------------------------------------------------------------------------
+// ClassRow (group view — compact list row)
+// ---------------------------------------------------------------------------
+
+function ClassRow({ entry, pending }: { entry: MyClassEntry; pending?: boolean }) {
+  const totalSlots = entry.taught_count + (entry.next_slot ? 1 : 0);
+  const total = totalSlots > 0 ? totalSlots : entry.chapter_count;
+  const pct = total > 0 ? Math.round((entry.taught_count / total) * 100) : 0;
+
+  return (
+    <Link
+      href={`/teacher-app/classes/${entry.cst_id}`}
+      className="flex items-center gap-4 px-4 py-3 bg-white hover:bg-amber-50 transition-colors no-underline group border-b border-gray-100 last:border-0"
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-900 group-hover:text-amber-700 transition-colors">
+            {entry.class_name}
+          </span>
+          <span className="text-xs text-gray-500">{entry.subject}</span>
+          {pending && (
+            <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">
+              Generating...
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 mt-1">
+          <DayPills days={entry.timetable_days} />
+          {entry.book_title && (
+            <span className="text-[10px] text-gray-400 italic truncate max-w-[120px]">{entry.book_title}</span>
+          )}
+        </div>
+      </div>
+      <div className="shrink-0 flex items-center gap-3">
+        <div className="text-right">
+          <p className="text-xs text-gray-500">{pct}%</p>
+          <div className="w-16 bg-gray-100 rounded-full h-1 mt-0.5">
+            <div className="bg-amber-500 h-1 rounded-full" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+        <span className="text-xs text-gray-400">{entry.chapter_count} ch</span>
+      </div>
+    </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // CreateClassModal
 // ---------------------------------------------------------------------------
 
@@ -106,15 +193,6 @@ interface CreateClassModalProps {
   onClose: () => void;
   onCreated: (result: TeacherClassCreated) => void;
 }
-
-const DAYS = [
-  { label: "Mon", value: 0 },
-  { label: "Tue", value: 1 },
-  { label: "Wed", value: 2 },
-  { label: "Thu", value: 3 },
-  { label: "Fri", value: 4 },
-  { label: "Sat", value: 5 },
-];
 
 function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
   const [years, setYears] = useState<AcademicYearRead[]>([]);
@@ -124,13 +202,11 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 1 fields
   const [academicYearId, setAcademicYearId] = useState("");
   const [gradeId, setGradeId] = useState<number>(0);
   const [section, setSection] = useState("A");
   const [subjectId, setSubjectId] = useState<number>(0);
 
-  // Step 2 state
   const [step, setStep] = useState<1 | 2>(1);
   const [createdResult, setCreatedResult] = useState<TeacherClassCreated | null>(null);
   const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
@@ -353,6 +429,28 @@ function CreateClassModal({ onClose, onCreated }: CreateClassModalProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+function GridIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+
+function GroupIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -363,6 +461,16 @@ export default function MyClassesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
+  const [viewMode, setViewMode] = useState<"grid" | "group">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("classes_view_mode") as "grid" | "group") ?? "grid";
+    }
+    return "grid";
+  });
+
+  const [gradeFilter, setGradeFilter] = useState<number | null>(null);
+  const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
+
   useEffect(() => {
     getMyClasses()
       .then((data) => setClasses(data.items))
@@ -370,19 +478,21 @@ export default function MyClassesPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  function toggleViewMode() {
+    setViewMode((prev) => {
+      const next = prev === "grid" ? "group" : "grid";
+      localStorage.setItem("classes_view_mode", next);
+      return next;
+    });
+  }
+
   function handleCreated(result: TeacherClassCreated) {
     setShowModal(false);
-    // Add a placeholder entry while breakdown generates; reload to get real data
     setPendingCstIds((prev) => new Set([...prev, result.cst_id]));
-    // Reload classes after a short delay
     setTimeout(() => {
       getMyClasses()
-        .then((data) => {
-          setClasses(data.items);
-        })
-        .catch(() => {
-          // ignore
-        });
+        .then((data) => setClasses(data.items))
+        .catch(() => {});
     }, 800);
   }
 
@@ -402,6 +512,22 @@ export default function MyClassesPage() {
     );
   }
 
+  // Unique grades and subjects for filter chips
+  const allGrades = [...new Set(classes.map((c) => c.grade))].sort((a, b) => a - b);
+  const allSubjects = [...new Set(classes.map((c) => c.subject))].sort();
+
+  const filtered = classes.filter((c) => {
+    if (gradeFilter !== null && c.grade !== gradeFilter) return false;
+    if (subjectFilter !== null && c.subject !== subjectFilter) return false;
+    return true;
+  });
+
+  // Group by grade for group view
+  const byGrade = allGrades.reduce<Record<number, MyClassEntry[]>>((acc, g) => {
+    acc[g] = filtered.filter((c) => c.grade === g);
+    return acc;
+  }, {});
+
   return (
     <div>
       {showModal && (
@@ -411,35 +537,46 @@ export default function MyClassesPage() {
         />
       )}
 
-      <div className="mb-6 flex items-center justify-between gap-4">
+      {/* Header */}
+      <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">My Classes</h1>
           <p className="text-sm text-gray-500 mt-1">
             {classes.length === 0
               ? "No classes yet."
-              : `${classes.length} class${classes.length !== 1 ? "es" : ""} assigned`}
+              : `${classes.length} class${classes.length !== 1 ? "es" : ""}`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition-colors cursor-pointer border-none"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Create Class
-        </button>
+        <div className="flex items-center gap-2">
+          {classes.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleViewMode}
+              title={viewMode === "grid" ? "Switch to group view" : "Switch to grid view"}
+              className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:text-amber-600 hover:border-amber-300 transition-colors bg-white cursor-pointer"
+            >
+              {viewMode === "grid" ? <GroupIcon /> : <GridIcon />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition-colors cursor-pointer border-none"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Create Class
+          </button>
+        </div>
       </div>
 
       {classes.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">🏫</div>
           <p className="text-gray-500 font-medium">No classes yet.</p>
-          <p className="text-sm text-gray-400 mt-1">
-            Create your first class to get started.
-          </p>
+          <p className="text-sm text-gray-400 mt-1">Create your first class to get started.</p>
           <button
             type="button"
             onClick={() => setShowModal(true)}
@@ -453,15 +590,88 @@ export default function MyClassesPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {classes.map((c) => (
-            <ClassCard
-              key={c.cst_id}
-              entry={c}
-              pending={pendingCstIds.has(c.cst_id)}
-            />
-          ))}
-        </div>
+        <>
+          {/* Filter chips */}
+          {(allGrades.length > 1 || allSubjects.length > 1) && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => { setGradeFilter(null); setSubjectFilter(null); }}
+                className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors cursor-pointer ${
+                  gradeFilter === null && subjectFilter === null
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                }`}
+              >
+                All
+              </button>
+              {allGrades.map((g) => (
+                <button
+                  key={`g-${g}`}
+                  type="button"
+                  onClick={() => setGradeFilter(gradeFilter === g ? null : g)}
+                  className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors cursor-pointer ${
+                    gradeFilter === g
+                      ? "bg-amber-600 text-white border-amber-600"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-amber-300"
+                  }`}
+                >
+                  Grade {g}
+                </button>
+              ))}
+              {allSubjects.map((s) => (
+                <button
+                  key={`s-${s}`}
+                  type="button"
+                  onClick={() => setSubjectFilter(subjectFilter === s ? null : s)}
+                  className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors cursor-pointer ${
+                    subjectFilter === s
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {filtered.length === 0 ? (
+            <p className="text-sm text-gray-400 py-8 text-center">No classes match the selected filters.</p>
+          ) : viewMode === "grid" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map((c) => (
+                <ClassCard key={c.cst_id} entry={c} pending={pendingCstIds.has(c.cst_id)} />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {allGrades
+                .filter((g) => (gradeFilter === null || g === gradeFilter) && byGrade[g]?.length > 0)
+                .map((grade) => {
+                  const gradeClasses = byGrade[grade].filter(
+                    (c) => subjectFilter === null || c.subject === subjectFilter
+                  );
+                  if (gradeClasses.length === 0) return null;
+                  return (
+                    <div key={grade} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                          Grade {grade}
+                        </span>
+                        <span className="text-xs text-gray-400">{gradeClasses.length} class{gradeClasses.length !== 1 ? "es" : ""}</span>
+                      </div>
+                      <div>
+                        {gradeClasses.map((c) => (
+                          <ClassRow key={c.cst_id} entry={c} pending={pendingCstIds.has(c.cst_id)} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
