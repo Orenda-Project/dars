@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select
@@ -28,6 +28,8 @@ from dars.school.schemas import (
     AssessmentSlotRead,
     AssessmentSlotUpdate,
     BreakdownYearResponse,
+    CalendarPeriod,
+    CalendarResponse,
     ChapterPlanBulkUpsertRequest,
     ChapterPlanListResponse,
     ChapterPlanRead,
@@ -73,6 +75,7 @@ from dars.school.service import (
     generate_exam_for_slot,
     generate_lp_for_slot,
     generate_lesson_sequence,
+    get_calendar_week,
     get_prefill_chapter_plans,
 )
 from dars.teachers.models import Teacher
@@ -332,6 +335,9 @@ async def assign_subject(
         book_id=body.book_id,
     )
     db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    await _auto_create_timetable(obj, db)
     await db.commit()
     await db.refresh(obj)
     logger.info("assign_subject: done cst_id=%s", obj.id)
@@ -366,6 +372,22 @@ async def update_subject(
 # ---------------------------------------------------------------------------
 # Timetable
 # ---------------------------------------------------------------------------
+
+
+async def _auto_create_timetable(cst: ClassSubjectTeacher, db: AsyncSession) -> None:
+    """Create Mon–Sat timetable rows for a new CST. Idempotent — skips if rows exist."""
+    existing = await db.execute(
+        select(Timetable).where(Timetable.class_subject_teacher_id == cst.id).limit(1)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+    for day in range(6):  # 0=Mon … 5=Sat
+        db.add(Timetable(
+            client_id=cst.client_id,
+            class_subject_teacher_id=cst.id,
+            day_of_week=day,
+        ))
+    await db.flush()
 
 
 @router.post(
@@ -1327,6 +1349,7 @@ async def create_teacher_class(
     db.add(cst)
     await db.flush()
     await db.refresh(cst)
+    await _auto_create_timetable(cst, db)
     logger.info("create_teacher_class: created cst id=%s", cst.id)
 
     # 8. Load prefill chapter plans (via cst_id — needs to be committed first)
@@ -1503,3 +1526,53 @@ async def list_assessment_slots_flat(
     return AssessmentSlotListResponse(
         items=[AssessmentSlotRead.model_validate(s) for s in items]
     )
+
+
+# ---------------------------------------------------------------------------
+# Teacher App — Calendar
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/v1/me/calendar", response_model=CalendarResponse)
+async def get_my_calendar(
+    week_start: date | None = Query(default=None, description="Monday of the target week (YYYY-MM-DD). Defaults to current Monday."),
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> CalendarResponse:
+    """
+    Return all lesson slots and assessments for the teacher's classes in the given week.
+    Lesson slot dates are computed from timetable days + chapter plan start dates.
+    """
+    if week_start is None:
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+
+    logger.info(
+        "get_my_calendar: client_id=%s teacher_id=%s week_start=%s",
+        current_client.id, current_client.default_teacher_id, week_start,
+    )
+
+    if current_client.default_teacher_id is None:
+        logger.info("get_my_calendar: no default_teacher_id, returning empty calendar")
+        week_end = week_start + timedelta(days=6)
+        from dars.school.schemas import CalendarDayResponse
+        items = [CalendarDayResponse(date=week_start + timedelta(days=i), periods=[]) for i in range(7)]
+        return CalendarResponse(items=items, week_start=week_start, week_end=week_end)
+
+    data = await get_calendar_week(
+        client_id=current_client.id,
+        teacher_id=current_client.default_teacher_id,
+        week_start=week_start,
+        db=db,
+    )
+
+    from dars.school.schemas import CalendarDayResponse, CalendarPeriod
+    items = []
+    for day in data["items"]:
+        items.append(CalendarDayResponse(
+            date=day["date"],
+            periods=[CalendarPeriod(**p) for p in day["periods"]],
+        ))
+
+    logger.info("get_my_calendar: week=%s items=%d", week_start, len(items))
+    return CalendarResponse(items=items, week_start=data["week_start"], week_end=data["week_end"])

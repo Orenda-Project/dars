@@ -279,7 +279,7 @@ async def test_set_timetable_and_compute_teaching_days(http_client, api_key, db_
     assert resp.status_code == 200
     assert len(resp.json()["items"]) == 3
 
-    # Verify via service
+    # Verify via service — timetable Mon/Wed/Fri gives 3 days
     from dars.school.service import compute_teaching_days
     teaching = await compute_teaching_days(int(cst["id"]), db_session)
     # Mon 05-04, Wed 05-06, Fri 05-08 → 3 days
@@ -312,7 +312,7 @@ async def test_compute_teaching_days_excludes_holidays(http_client, api_key, db_
 
     from dars.school.service import compute_teaching_days
     teaching = await compute_teaching_days(int(cst["id"]), db_session)
-    # Should be Mon 05-04 and Fri 05-08 (Wed excluded)
+    # Mon/Wed/Fri minus Wed holiday → Mon 05-04 and Fri 05-08 = 2 days
     assert len(teaching) == 2
     assert date(2026, 5, 6) not in teaching
 

@@ -15,7 +15,6 @@ import {
   getExam,
   getCst,
   getTimetable,
-  setTimetable,
   type ChapterPlanWithDates,
   type ClassLessonSlotRead,
   type AssessmentSlotRead,
@@ -469,20 +468,16 @@ const DAYS = [
 ];
 
 function TimetableTab({ cstId }: { cstId: string }) {
-  const [classId, setClassId] = useState<string | null>(null);
-  const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
+  const [days, setDays] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
         const cst = await getCst(cstId);
-        setClassId(String(cst.class_id));
         const tt = await getTimetable(String(cst.class_id), cstId);
-        setSelectedDays(new Set(tt.items.map((s) => s.day_of_week)));
+        setDays(tt.items.map((s) => s.day_of_week).sort((a, b) => a - b));
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load timetable");
       } finally {
@@ -492,80 +487,32 @@ function TimetableTab({ cstId }: { cstId: string }) {
     void load();
   }, [cstId]);
 
-  function toggleDay(day: number) {
-    setSelectedDays((prev) => {
-      const next = new Set(prev);
-      if (next.has(day)) next.delete(day);
-      else next.add(day);
-      return next;
-    });
-    setSaved(false);
-  }
-
-  async function handleSave() {
-    if (!classId) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await setTimetable(classId, cstId, {
-        slots: Array.from(selectedDays).map((d) => ({ day_of_week: d })),
-      });
-      setSaved(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to save timetable");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   if (loading) return <p className="text-sm text-gray-400 animate-pulse py-4">Loading timetable…</p>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {error && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>
       )}
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-          Class days
-        </p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Class days</p>
         <div className="flex gap-2 flex-wrap">
           {DAYS.map((d) => (
-            <button
+            <span
               key={d.value}
-              type="button"
-              onClick={() => toggleDay(d.value)}
-              className={`px-5 py-2.5 rounded-lg text-sm font-semibold border transition-colors cursor-pointer ${
-                selectedDays.has(d.value)
+              className={`px-5 py-2.5 rounded-lg text-sm font-semibold border ${
+                days.includes(d.value)
                   ? "bg-amber-600 text-white border-amber-600"
-                  : "bg-white text-gray-700 border-gray-300 hover:border-amber-400"
+                  : "bg-gray-50 text-gray-300 border-gray-200"
               }`}
             >
               {d.label}
-            </button>
+            </span>
           ))}
         </div>
-        {selectedDays.size === 0 && (
-          <p className="text-xs text-gray-400 mt-2">No days selected — Today view will be empty.</p>
-        )}
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={saving}
-          className="px-5 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition-colors cursor-pointer border-none disabled:opacity-60 flex items-center gap-2"
-        >
-          {saving && (
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-          )}
-          Save
-        </button>
-        {saved && <span className="text-xs text-green-600 font-medium">Saved</span>}
+        <p className="text-xs text-gray-400 mt-3">
+          Class days are set automatically based on your academic year schedule.
+        </p>
       </div>
     </div>
   );

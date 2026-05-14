@@ -173,7 +173,7 @@ async def test_my_classes_returns_teacher_csts(http_client, db_session):
     assert item["class_name"] == "Class A"
     assert item["chapter_count"] == 0
     assert item["taught_count"] == 0
-    assert item["timetable_days"] == []
+    assert item["timetable_days"] == [0, 1, 2, 3, 4, 5]  # auto-populated Mon–Sat
     assert item["next_slot"] is None
 
 
@@ -257,3 +257,119 @@ async def test_my_classes_timetable_days(http_client, db_session):
     assert resp.status_code == 200, resp.text
     item = resp.json()["items"][0]
     assert item["timetable_days"] == [0, 2]
+
+
+# ---------------------------------------------------------------------------
+# Calendar tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_calendar_week_empty_without_teacher(http_client, db_session):
+    """Client with no default_teacher_id gets empty calendar."""
+    key = await _signup(http_client, "nocalteacher@school.com", "School NC")
+
+    result = await db_session.execute(select(Client).where(Client.email == "nocalteacher@school.com"))
+    client = result.scalar_one()
+    client.default_teacher_id = None
+    await db_session.commit()
+
+    resp = await http_client.get("/api/v1/me/calendar?week_start=2026-05-12", headers=headers(key))
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["week_start"] == "2026-05-12"
+    assert data["week_end"] == "2026-05-18"
+    assert len(data["items"]) == 7
+    for day in data["items"]:
+        assert day["periods"] == []
+
+
+@pytest.mark.asyncio
+async def test_calendar_week_includes_assessments(http_client, db_session):
+    """Assessment with scheduled_date on a timetable day appears as period_type='assessment'."""
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
+
+    key = await _signup(http_client, "calassess@school.com", "School CA")
+    me = await _get_me(http_client, key)
+    default_teacher_id = me["default_teacher_id"]
+
+    year = await _make_academic_year(http_client, key)
+    school_class = await _make_class(http_client, key, year["id"], grade_id)
+    cst = await _assign_subject(http_client, key, school_class["id"], subject_id, default_teacher_id)
+
+    # 2026-05-12 is a Tuesday; Thursday=3 lands on 2026-05-14 (index 2 in the week list)
+    await http_client.post(
+        f"/api/v1/classes/{school_class['id']}/subjects/{cst['id']}/timetable",
+        json={"slots": [{"day_of_week": 3}]},
+        headers=headers(key),
+    )
+
+    # Create an assessment on 2026-05-14 (Thursday of that week)
+    aslot_resp = await http_client.post(
+        f"/api/v1/classes/{school_class['id']}/subjects/{cst['id']}/assessment-slots",
+        json={
+            "assessment_type": "formative",
+            "scheduled_date": "2026-05-14",
+            "title": "Chapter 1 FA",
+        },
+        headers=headers(key),
+    )
+    assert aslot_resp.status_code == 201, aslot_resp.text
+
+    resp = await http_client.get("/api/v1/me/calendar?week_start=2026-05-12", headers=headers(key))
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    # Find the item for 2026-05-14 by date field (don't assume index)
+    thursday_item = next((d for d in data["items"] if d["date"] == "2026-05-14"), None)
+    assert thursday_item is not None
+    assert len(thursday_item["periods"]) == 1
+    p = thursday_item["periods"][0]
+    assert p["period_type"] == "assessment"
+    assert p["assessment_type"] == "formative"
+    assert p["assessment_title"] == "Chapter 1 FA"
+    assert p["cst_id"] == cst["id"]
+
+
+@pytest.mark.asyncio
+async def test_calendar_week_client_isolation(http_client, db_session):
+    """Two clients cannot see each other's calendar events."""
+    grade_id = await _get_grade_id(db_session, 5)
+    subject_id = await _get_subject_id(db_session, "english")
+
+    key_a = await _signup(http_client, "calA@school.com", "School A")
+    key_b = await _signup(http_client, "calB@school.com", "School B")
+
+    me_b = await _get_me(http_client, key_b)
+    teacher_b_id = me_b["default_teacher_id"]
+
+    year_b = await _make_academic_year(http_client, key_b)
+    class_b = await _make_class(http_client, key_b, year_b["id"], grade_id)
+    cst_b = await _assign_subject(http_client, key_b, class_b["id"], subject_id, teacher_b_id)
+
+    # 2026-05-12 is Tuesday; May 13 is Wednesday(2) — timetable must match the assessment date
+    await http_client.post(
+        f"/api/v1/classes/{class_b['id']}/subjects/{cst_b['id']}/timetable",
+        json={"slots": [{"day_of_week": 2}]},
+        headers=headers(key_b),
+    )
+    await http_client.post(
+        f"/api/v1/classes/{class_b['id']}/subjects/{cst_b['id']}/assessment-slots",
+        json={"assessment_type": "formative", "scheduled_date": "2026-05-13", "title": "B's FA"},
+        headers=headers(key_b),
+    )
+
+    # Client A's calendar should be empty
+    resp_a = await http_client.get("/api/v1/me/calendar?week_start=2026-05-12", headers=headers(key_a))
+    assert resp_a.status_code == 200
+    for day in resp_a.json()["items"]:
+        assert day["periods"] == []
+
+    # Client B sees their own event
+    resp_b = await http_client.get("/api/v1/me/calendar?week_start=2026-05-12", headers=headers(key_b))
+    assert resp_b.status_code == 200
+    all_periods = [p for day in resp_b.json()["items"] for p in day["periods"]]
+    assessment_periods = [p for p in all_periods if p["period_type"] == "assessment"]
+    assert len(assessment_periods) == 1
+    assert assessment_periods[0]["assessment_title"] == "B's FA"

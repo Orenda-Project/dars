@@ -255,7 +255,8 @@ class AssessmentSlotRead(BaseModel):
     class_subject_teacher_id: int
     chapter_plan_id: int | None
     assessment_type: str
-    scheduled_date: date
+    day_number: int | None = None
+    scheduled_date: date | None = None
     title: str | None
     exam_id: int | None = None
     status: str
@@ -360,3 +361,43 @@ class TeacherClassCreated(BaseModel):
     cst_id: int
     chapter_count: int
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Teacher App — Calendar
+# ---------------------------------------------------------------------------
+
+
+class CalendarPeriod(BaseModel):
+    """One class period on one calendar day — either a lesson or an assessment."""
+    date: date
+    cst_id: int
+    class_id: int
+    class_name: str
+    subject: str
+    # type: "lesson" | "assessment"
+    period_type: str
+    # lesson fields (present when period_type == "lesson")
+    slot_id: int | None = None
+    day_number: int | None = None
+    lp_type: str | None = None
+    title: str | None = None
+    lesson_status: str | None = None
+    lesson_plan_id: int | None = None
+    # assessment fields (present when period_type == "assessment")
+    assessment_slot_id: int | None = None
+    assessment_type: str | None = None
+    assessment_title: str | None = None
+    assessment_status: str | None = None
+    exam_id: int | None = None
+
+
+class CalendarDayResponse(BaseModel):
+    date: date
+    periods: list[CalendarPeriod]
+
+
+class CalendarResponse(BaseModel):
+    items: list[CalendarDayResponse]
+    week_start: date
+    week_end: date

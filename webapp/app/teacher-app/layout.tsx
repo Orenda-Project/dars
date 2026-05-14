@@ -7,6 +7,7 @@ import Link from "next/link";
 const NAV_ITEMS = [
   { label: "Today", href: "/teacher-app/today" },
   { label: "My Classes", href: "/teacher-app/classes" },
+  { label: "Calendar", href: "/teacher-app/calendar" },
   { label: "Quick LP", href: "/teacher-app/quick-lp" },
   { label: "Quick Exam", href: "/teacher-app/quick-exam" },
 ];

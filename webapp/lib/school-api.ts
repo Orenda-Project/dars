@@ -644,3 +644,45 @@ export function createTeacherClass(data: TeacherClassCreate): Promise<TeacherCla
     body: JSON.stringify(data),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Teacher App — Calendar
+// ---------------------------------------------------------------------------
+
+export interface CalendarPeriod {
+  date: string; // ISO date
+  cst_id: string;
+  class_id: string;
+  class_name: string;
+  subject: string;
+  period_type: string; // "lesson" | "assessment" | "no_breakdown"
+  // lesson fields
+  slot_id: string | null;
+  day_number: number | null;
+  lp_type: string | null;
+  title: string | null;
+  lesson_status: string | null;
+  lesson_plan_id: string | null;
+  // assessment fields
+  assessment_slot_id: string | null;
+  assessment_type: string | null;
+  assessment_title: string | null;
+  assessment_status: string | null;
+  exam_id: string | null;
+}
+
+export interface CalendarDayResponse {
+  date: string;
+  periods: CalendarPeriod[];
+}
+
+export interface CalendarResponse {
+  items: CalendarDayResponse[];
+  week_start: string;
+  week_end: string;
+}
+
+export function getCalendar(weekStart?: string): Promise<CalendarResponse> {
+  const qs = weekStart ? `?week_start=${weekStart}` : "";
+  return apiFetch<CalendarResponse>(`/api/v1/me/calendar${qs}`);
+}
