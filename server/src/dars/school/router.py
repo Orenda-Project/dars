@@ -28,6 +28,7 @@ from dars.school.schemas import (
     AssessmentSlotRead,
     AssessmentSlotUpdate,
     BreakdownYearResponse,
+    CalendarPeriod,
     CalendarResponse,
     ChapterPlanBulkUpsertRequest,
     ChapterPlanListResponse,
@@ -334,6 +335,9 @@ async def assign_subject(
         book_id=body.book_id,
     )
     db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    await _auto_create_timetable(obj, db)
     await db.commit()
     await db.refresh(obj)
     logger.info("assign_subject: done cst_id=%s", obj.id)
@@ -368,6 +372,22 @@ async def update_subject(
 # ---------------------------------------------------------------------------
 # Timetable
 # ---------------------------------------------------------------------------
+
+
+async def _auto_create_timetable(cst: ClassSubjectTeacher, db: AsyncSession) -> None:
+    """Create Mon–Sat timetable rows for a new CST. Idempotent — skips if rows exist."""
+    existing = await db.execute(
+        select(Timetable).where(Timetable.class_subject_teacher_id == cst.id).limit(1)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+    for day in range(6):  # 0=Mon … 5=Sat
+        db.add(Timetable(
+            client_id=cst.client_id,
+            class_subject_teacher_id=cst.id,
+            day_of_week=day,
+        ))
+    await db.flush()
 
 
 @router.post(
@@ -1329,6 +1349,7 @@ async def create_teacher_class(
     db.add(cst)
     await db.flush()
     await db.refresh(cst)
+    await _auto_create_timetable(cst, db)
     logger.info("create_teacher_class: created cst id=%s", cst.id)
 
     # 8. Load prefill chapter plans (via cst_id — needs to be committed first)
@@ -1535,7 +1556,7 @@ async def get_my_calendar(
         logger.info("get_my_calendar: no default_teacher_id, returning empty calendar")
         week_end = week_start + timedelta(days=6)
         from dars.school.schemas import CalendarDayResponse
-        items = [CalendarDayResponse(date=week_start + timedelta(days=i), lessons=[], assessments=[]) for i in range(7)]
+        items = [CalendarDayResponse(date=week_start + timedelta(days=i), periods=[]) for i in range(7)]
         return CalendarResponse(items=items, week_start=week_start, week_end=week_end)
 
     data = await get_calendar_week(
@@ -1545,13 +1566,12 @@ async def get_my_calendar(
         db=db,
     )
 
-    from dars.school.schemas import CalendarDayResponse, CalendarLessonEntry, CalendarAssessmentEntry
+    from dars.school.schemas import CalendarDayResponse, CalendarPeriod
     items = []
     for day in data["items"]:
         items.append(CalendarDayResponse(
             date=day["date"],
-            lessons=[CalendarLessonEntry(**e) for e in day["lessons"]],
-            assessments=[CalendarAssessmentEntry(**e) for e in day["assessments"]],
+            periods=[CalendarPeriod(**p) for p in day["periods"]],
         ))
 
     logger.info("get_my_calendar: week=%s items=%d", week_start, len(items))
