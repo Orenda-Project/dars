@@ -360,3 +360,47 @@ class TeacherClassCreated(BaseModel):
     cst_id: int
     chapter_count: int
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Teacher App — Calendar
+# ---------------------------------------------------------------------------
+
+
+class CalendarLessonEntry(BaseModel):
+    date: date
+    cst_id: int
+    class_id: int
+    class_name: str
+    subject: str
+    slot_id: int
+    day_number: int
+    lp_type: str
+    title: str
+    status: str
+    lesson_plan_id: int | None
+
+
+class CalendarAssessmentEntry(BaseModel):
+    date: date
+    cst_id: int
+    class_id: int
+    class_name: str
+    subject: str
+    slot_id: int
+    assessment_type: str
+    title: str | None
+    status: str
+    exam_id: int | None
+
+
+class CalendarDayResponse(BaseModel):
+    date: date
+    lessons: list[CalendarLessonEntry]
+    assessments: list[CalendarAssessmentEntry]
+
+
+class CalendarResponse(BaseModel):
+    items: list[CalendarDayResponse]
+    week_start: date
+    week_end: date
