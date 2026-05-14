@@ -78,6 +78,6 @@ async def get_lesson_plan_endpoint(
     lp = await get_lesson_plan(db, lp_id=lp_id)
     if lp is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson plan not found")
-    return LessonPlanResponse.model_validate(lp)
+    return lp
 
 

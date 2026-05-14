@@ -50,6 +50,7 @@ class LessonPlanResponse(BaseModel):
     tags: dict = {}
     metadata_: dict = {}
     external_ref: str | None = None
+    topic_text: str | None = None
     created_at: datetime
     updated_at: datetime
 
