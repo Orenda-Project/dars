@@ -2,12 +2,12 @@ import logging
 import uuid
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dars.config import settings
 from dars.lesson_plans.models import LessonPlan
-from dars.lesson_plans.schemas import LessonPlanCreateRequest
+from dars.lesson_plans.schemas import LessonPlanCreateRequest, LessonPlanResponse
 from dars.mapping import canonical_grade, canonical_subject
 
 logger = logging.getLogger(__name__)
@@ -43,9 +43,19 @@ async def queue_lesson_plan(
 async def get_lesson_plan(
     db: AsyncSession,
     lp_id: uuid.UUID,
-) -> LessonPlan | None:
+) -> LessonPlanResponse | None:
     result = await db.execute(select(LessonPlan).where(LessonPlan.id == lp_id))
-    return result.scalar_one_or_none()
+    lp = result.scalar_one_or_none()
+    if lp is None:
+        return None
+    row = await db.execute(
+        text("SELECT t.topic_text FROM lesson_slots ls JOIN topics t ON t.id = ls.topic_id WHERE ls.lesson_plan_id = :lp_id LIMIT 1"),
+        {"lp_id": str(lp_id)},
+    )
+    topic_text_row = row.one_or_none()
+    response = LessonPlanResponse.model_validate(lp)
+    response.topic_text = topic_text_row[0] if topic_text_row else None
+    return response
 
 
 async def list_lesson_plans(
