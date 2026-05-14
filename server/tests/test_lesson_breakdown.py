@@ -267,31 +267,20 @@ async def test_regenerate_wipes_existing(db_session):
     """Calling ai_breakdown_chapter twice should replace old slots, not accumulate."""
     client, cst, plan = await _make_school_setup(db_session)
 
-    first_response = _make_mock_claude_response(SAMPLE_RESPONSE_JSON)
-    second_response_json = [
-        {"day": 1, "type": "lesson", "lp_type": "Vocabulary", "title": "New Day 1"},
-        {"day": 2, "type": "lesson", "lp_type": "Revision", "title": "New Day 2 Revision"},
-    ]
-    second_response = _make_mock_claude_response(second_response_json)
+    # AI is disabled; deterministic fallback always runs regardless of mock.
+    # teaching_days=3 → 3 lesson slots each time. Verify second run replaces, not adds.
+    result1 = await ai_breakdown_chapter(plan.id, db_session)
+    assert len(result1["lesson_slots"]) == 3
 
-    mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(side_effect=[first_response, second_response])
+    result2 = await ai_breakdown_chapter(plan.id, db_session)
+    assert len(result2["lesson_slots"]) == 3
 
-    with patch("dars.school.service.anthropic.AsyncAnthropic", MagicMock(return_value=mock_client)):
-        with patch("dars.school.service.settings") as mock_settings:
-            mock_settings.anthropic_api_key = "fake-key"
-            result1 = await ai_breakdown_chapter(plan.id, db_session)
-            assert len(result1["lesson_slots"]) == 3
-
-            result2 = await ai_breakdown_chapter(plan.id, db_session)
-            assert len(result2["lesson_slots"]) == 2
-
-    # Only 2 slots should remain in DB
+    # Exactly 3 slots in DB — second run replaced the first, not accumulated 6
     slots_result = await db_session.execute(
         select(ClassLessonSlot).where(ClassLessonSlot.chapter_plan_id == plan.id)
     )
     db_slots = list(slots_result.scalars().all())
-    assert len(db_slots) == 2
+    assert len(db_slots) == 3
 
 
 @pytest.mark.asyncio
