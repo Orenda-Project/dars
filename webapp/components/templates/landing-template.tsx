@@ -86,6 +86,12 @@ export function LandingTemplate() {
               Start generating plans →
             </a>
             <a
+              href="/showcase/ali-sipra-2026-05-15"
+              className="text-dars-parchment text-sm font-medium no-underline border border-dars-rule-dark px-6 py-3 rounded-md hover:border-dars-parchment transition-colors"
+            >
+              View sample lesson plans →
+            </a>
+            <a
               href="#how"
               className="text-dars-muted-light text-[13px] no-underline border-b border-dars-rule-dark pb-0.5 hover:text-dars-parchment transition-colors"
             >
