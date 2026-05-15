@@ -1,12 +1,12 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "144 / 184",
-    "percentage": "78%",
+    "grandTotal": "176 / 180",
+    "percentage": "98%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
-        "totalScore": "21 / 24",
+        "totalScore": "24 / 24",
         "subCriteria": [
           {
             "name": "SLO present and non-empty",
@@ -14,11 +14,11 @@
           },
           {
             "name": "Hook present and non-empty",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Explanation present and non-empty",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Practice present and non-empty",
@@ -29,20 +29,20 @@
             "rating": "4"
           },
           {
-            "name": "Single-Lesson Scope",
-            "rating": "3"
+            "name": "Single-Lesson Scope (One 40-Minute Class)",
+            "rating": "4"
           }
         ],
-        "rationale": "The lesson plan contains all necessary structural components. The SLO is specific and actionable, and the Practice and Conclusion sections contain concrete tasks with answers. However, it lacks time allocations for the sections.",
+        "rationale": "The lesson plan is structurally complete, with all required sections present, well-detailed, and appropriately scoped for a single 40-minute class period.",
         "strengths": [
-          "SLO is precise and immediately usable.",
-          "Practice and Conclusion sections include specific questions and answer keys."
+          "All sections contain substantive, actionable content.",
+          "The lesson is perfectly scoped for a 40-minute class, with timings adding up exactly."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "22 / 24",
+        "totalScore": "24 / 24",
         "subCriteria": [
           {
             "name": "Clear, specific, and single-focus SLO",
@@ -54,11 +54,11 @@
           },
           {
             "name": "Scaffolded activities",
-            "rating": "3"
+            "rating": "4"
           },
           {
-            "name": "Aligned with the textbook's content",
-            "rating": "3"
+            "name": "Aligned with textbook content",
+            "rating": "4"
           },
           {
             "name": "SLO\u2013assessment alignment",
@@ -69,20 +69,21 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson aligns well with the stated SLO of identifying and using five vocabulary words. The activities progress logically, and the assessments directly measure the target skills at the correct Bloom's level (Applying).",
+        "rationale": "The SLO is highly specific, measurable, and accurately aligned with Bloom's taxonomy. The activities scaffold logically from understanding vocabulary to applying it in sentences.",
         "strengths": [
-          "Strong alignment between the SLO, Practice, and Conclusion.",
-          "Bloom's level is accurately stated and matched by the tasks."
+          "The SLO targets a clear, measurable outcome (defining words and constructing sentences).",
+          "Assessments in the Conclusion directly measure the stated SLO.",
+          "Activities are well-scaffolded, moving from physical gestures to sentence construction."
         ],
         "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "34 / 44",
+        "totalScore": "39 / 44",
         "subCriteria": [
           {
             "name": "Opening hook relevant to SLO",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Explicit instructions in Explanation",
@@ -94,11 +95,11 @@
           },
           {
             "name": "Smooth transitions across steps",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Practice opportunities for students",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Appropriately placed and spaced CFU questions",
@@ -110,7 +111,7 @@
           },
           {
             "name": "Higher-order thinking opportunities",
-            "rating": "2"
+            "rating": "3"
           },
           {
             "name": "Visual aid effectiveness",
@@ -118,52 +119,36 @@
           },
           {
             "name": "Gradual release of responsibility (I Do \u2192 We Do \u2192 You Do)",
-            "rating": "2"
+            "rating": "3"
           },
           {
             "name": "Prior knowledge activation",
             "rating": "3"
           }
         ],
-        "rationale": "The instructional flow is generally strong, with excellent teacher modeling using physical actions. However, the lesson lacks a 'We Do' phase and higher-order thinking opportunities.",
+        "rationale": "The instructional flow is excellent, featuring strong modeling, explicit teacher instructions, and grade-appropriate strategies like TPR. Minor areas like prior knowledge activation and guided practice for sentence making are present but could be slightly more pronounced.",
         "strengths": [
-          "Teacher instructions for explaining vocabulary using physical actions are highly specific and effective.",
-          "CFU questions are naturally integrated into the explanation."
+          "Excellent use of a 'think-aloud' strategy for modeling sentence construction.",
+          "Incorporation of Total Physical Response (TPR) to teach vocabulary meanings.",
+          "Clear, step-by-step instructions for the teacher."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Higher-order thinking opportunities",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Add a task asking students to create their own original sentence using one of the new vocabulary words to encourage application beyond fill-in-the-blanks."
-          },
-          {
-            "subCriterion": "Gradual release of responsibility (I Do \u2192 We Do \u2192 You Do)",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Include a 'We Do' phase by solving the first fill-in-the-blank question together as a class on the board before asking students to complete the rest independently."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Practicality & Teacher Support",
-        "totalScore": "13 / 20",
+        "totalScore": "20 / 20",
         "subCriteria": [
           {
             "name": "Appropriately timed sections",
-            "rating": "1"
+            "rating": "4"
           },
           {
             "name": "Adequate time for Practice and Explanation",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Teacher support materials",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Resource requirements",
@@ -171,44 +156,28 @@
           },
           {
             "name": "Teacher flexibility / no over-scripting",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "The lesson uses low-cost resources and provides good teacher support with answer keys. However, it completely lacks time allocations, making it difficult to gauge pacing.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom. Timings are realistic, resources are low-cost, and the teacher is provided with excellent support notes and flexible practice options.",
         "strengths": [
-          "Requires minimal, locally available resources.",
-          "Provides clear answer keys for all activities."
+          "Provides multiple practice options, allowing the teacher to adapt to the class's needs.",
+          "Resources required (whiteboard, markers, lunchbox) are easily accessible.",
+          "Teacher notes and CFU answer keys are provided."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Appropriately timed sections",
-            "currentScore": "1",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "All Sections",
-            "instruction": "Add specific time allocations in minutes to the Hook, Explanation, Practice, and Conclusion sections so they total 35-40 minutes."
-          },
-          {
-            "subCriterion": "Adequate time for Practice and Explanation",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "All Sections",
-            "instruction": "Assign realistic times (e.g., 15 mins for Explanation, 15 mins for Practice) to ensure sufficient time is dedicated to student mastery."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Accessibility & Differentiation",
-        "totalScore": "12 / 16",
+        "totalScore": "16 / 16",
         "subCriteria": [
           {
             "name": "Suggestions for struggling or advanced students",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Named differentiation strategies with instructions",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Instructional language for students",
@@ -219,41 +188,25 @@
             "rating": "4"
           }
         ],
-        "rationale": "The language used is simple and clear. The lesson mentions translating for struggling students but lacks support for advanced learners and does not explicitly name differentiation strategies.",
+        "rationale": "Differentiation is explicitly addressed with concrete strategies for both struggling and advanced learners. The language used for both teachers and students is clear and appropriate.",
         "strengths": [
-          "Language is highly accessible for Grade 2 ESL learners.",
-          "Teacher instructions are concise and easy to follow."
+          "Includes specific sentence starters for struggling students.",
+          "Provides a clear challenge task (using two focus words in one sentence) for advanced learners.",
+          "Teacher instructions are exceptionally clear and empowering."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Suggestions for struggling or advanced students",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Add an extension task for advanced students, such as asking them to write sentences for the remaining two vocabulary words ('magic' and 'flavours')."
-          },
-          {
-            "subCriterion": "Named differentiation strategies with instructions",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "MODIFY",
-            "location": "Practice",
-            "instruction": "Explicitly name the strategy used for struggling students (e.g., 'Bilingual Support' or 'L1 Scaffolding') alongside the instruction to translate sentences into Urdu."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Deeper Learning & Student Engagement",
-        "totalScore": "10 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
             "name": "Active student participation",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Peer interaction opportunities",
-            "rating": "1"
+            "rating": "4"
           },
           {
             "name": "Real-world application",
@@ -261,28 +214,20 @@
           },
           {
             "name": "Closing assessment / lesson consolidation",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged in writing and answering questions, and there are good real-world connections. However, there are no opportunities for peer interaction.",
+        "rationale": "Students are actively engaged throughout the lesson via physical movements, board work, and peer interaction. The closing assessment effectively consolidates learning.",
         "strengths": [
-          "Connects vocabulary to real-world experiences like eating biryani and sharing lunch.",
-          "Includes a clear closing assessment to check understanding."
+          "High level of active participation through TPR and interactive board activities.",
+          "Structured peer interaction included in the practice options.",
+          "The 1-2-3 finger check and specific questions provide a strong closing assessment."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Peer interaction opportunities",
-            "currentScore": "1",
-            "targetScore": "3",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Include an instruction for students to compare their fill-in-the-blank answers with a partner before the teacher reviews them with the whole class."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
-        "totalScore": "12 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
             "name": "Contextually relevant content",
@@ -290,48 +235,32 @@
           },
           {
             "name": "Inclusive & diverse representation",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Student voice & cultural connection",
-            "rating": "2"
+            "rating": "3"
           },
           {
             "name": "Language & cultural sensitivity",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses culturally relevant examples like 'spicy biryani' and the name 'Ali'. However, representation is limited to one male name, and student voice could be amplified.",
+        "rationale": "The lesson uses culturally familiar names and a relatable context (lunchtime/sharing food). Representation is inclusive and appropriate for the target demographic.",
         "strengths": [
-          "Uses highly relatable local examples (biryani, mango).",
-          "Language is culturally appropriate."
+          "Uses familiar local names (Ali, Zainab, Ahmed, Fatima).",
+          "The context of sharing lunch is highly relatable for young students.",
+          "Both male and female characters are represented in the examples."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Inclusive & diverse representation",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "MODIFY",
-            "location": "Practice",
-            "instruction": "Include a female name in the practice sentences (e.g., change Q1 to 'Sana likes to _____ her lunch') to ensure gender balance."
-          },
-          {
-            "subCriterion": "Student voice & cultural connection",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "ADD",
-            "location": "Explanation",
-            "instruction": "Ask students to share a quick example of a time they shared something with a sibling or friend to connect the word 'share' to their own lives."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Factual Accuracy & Bias",
-        "totalScore": "11 / 12",
+        "totalScore": "12 / 12",
         "subCriteria": [
           {
             "name": "Internal consistency",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Academic content accuracy",
@@ -342,16 +271,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is factually accurate, unbiased, and internally consistent. The textbook reference is plausible, though it could not be verified against actual text.",
+        "rationale": "The lesson plan is internally consistent, academically accurate, and free from bias. Timings, instructions, and examples all align perfectly.",
         "strengths": [
-          "Vocabulary definitions are accurate and age-appropriate.",
-          "No bias or stereotyping present."
+          "No internal contradictions; timings and activities align.",
+          "Sentence structure formula (Who + Action + Description) is accurate and age-appropriate."
         ],
         "improvements": []
       },
       {
         "criterion": "Subject Specific Review - English",
-        "totalScore": "9 / 12",
+        "totalScore": "11 / 12",
         "subCriteria": [
           {
             "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
@@ -359,42 +288,33 @@
           },
           {
             "name": "Named Teaching Strategies",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Evidence of Textbook Material Usage",
             "rating": "3"
           }
         ],
-        "rationale": "The lesson maintains a strong focus on vocabulary acquisition. It uses effective physical actions for teaching words, but does not explicitly name the pedagogical strategy.",
+        "rationale": "The lesson maintains a strong focus on vocabulary acquisition and sentence writing. It employs effective ESL strategies like TPR and visual word webs.",
         "strengths": [
-          "Clear and consistent focus on vocabulary building.",
-          "Integrates textbook page reference logically into the hook."
+          "Clear focus on vocabulary and writing skills.",
+          "Effective use of named strategies like TPR (physical movements) and Word Webs to teach meaning."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Named Teaching Strategies",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Explanation",
-            "instruction": "Explicitly name the strategy 'Total Physical Response (TPR)' when instructing the teacher to use actions (smiling, rubbing stomach) to explain vocabulary."
-          }
-        ]
+        "improvements": []
       }
     ]
   },
   "metadata": {
     "timings": {
-      "review_time": 37.277,
-      "total_time": 37.278
+      "review_time": 30.186,
+      "total_time": 30.186
     },
     "tokens": {
-      "input_tokens": 12794,
-      "output_tokens": 4761,
-      "total_tokens": 17555,
+      "input_tokens": 13338,
+      "output_tokens": 4087,
+      "total_tokens": 17425,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.08272
+      "cost_usd": 0.07572
     }
   }
 }
