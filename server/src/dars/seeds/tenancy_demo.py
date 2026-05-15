@@ -22,6 +22,7 @@ staging API; that's acceptable for v1.
 import hashlib
 import logging
 import uuid
+from datetime import date
 
 import asyncpg
 import bcrypt
@@ -49,8 +50,8 @@ DEMO_TEACHER_NAME = "Aisha Khan"
 DEMO_TEACHER_EMAIL: str | None = None  # auth-free per D-9
 
 DEMO_ACADEMIC_YEAR_NAME = "2026-2027"
-DEMO_ACADEMIC_YEAR_START = "2026-04-01"
-DEMO_ACADEMIC_YEAR_END = "2027-03-31"
+DEMO_ACADEMIC_YEAR_START = date(2026, 4, 1)
+DEMO_ACADEMIC_YEAR_END = date(2027, 3, 31)
 
 DEMO_CLASS_GRADE_CODE = 1
 DEMO_CLASS_SECTION = "A"
@@ -161,7 +162,7 @@ async def seed_demo_tenancy(conn: asyncpg.Connection) -> None:
     await conn.execute(
         """
         INSERT INTO academic_years (id, org_id, school_id, name, start_date, end_date)
-        VALUES ($1, $2, $3, $4, $5::date, $6::date)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (id) DO NOTHING
         """,
         academic_year_id, org_id, school_id, DEMO_ACADEMIC_YEAR_NAME,
