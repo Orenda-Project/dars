@@ -1,12 +1,12 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "155 / 180",
-    "percentage": "86%",
+    "grandTotal": "177 / 184",
+    "percentage": "96%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
-        "totalScore": "22 / 24",
+        "totalScore": "24 / 24",
         "subCriteria": [
           {
             "name": "SLO Present and Non-Empty",
@@ -14,7 +14,7 @@
           },
           {
             "name": "Hook Present and Non-Empty",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Explanation Present and Non-Empty",
@@ -30,19 +30,19 @@
           },
           {
             "name": "Single-Lesson Scope (One 40-Minute Class)",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "All required sections are present with substantive, actionable content. The lesson is clearly scoped for a single session, though explicit time allocations are missing.",
+        "rationale": "The lesson plan is structurally complete, containing all necessary sections with substantive content. The scope is perfectly tailored for a single 40-minute class focusing on one clear objective.",
         "strengths": [
-          "The Explanation section provides clear, step-by-step instructions for the teacher.",
-          "The Practice section includes concrete tasks with an answer key."
+          "All sections are fully developed with actionable content.",
+          "The time allocations are realistic and sum up to an appropriate single-lesson duration."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "23 / 24",
+        "totalScore": "22 / 24",
         "subCriteria": [
           {
             "name": "Clear, Specific, and Single-Focus SLO",
@@ -58,27 +58,36 @@
           },
           {
             "name": "Aligned with Textbook Content",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "SLO\u2013Assessment Alignment",
-            "rating": "4"
+            "rating": "2"
           },
           {
             "name": "Bloom's Level Accuracy",
             "rating": "4"
           }
         ],
-        "rationale": "The SLO is highly specific and measurable, focusing entirely on answering comprehension questions using keywords. The activities scaffold logically toward this goal, and the Bloom's level (Applying) accurately reflects the practice tasks.",
+        "rationale": "The SLO is highly specific and measurable, focusing on keyword hunting for comprehension. However, the assessment tasks in the Practice and Conclusion sections include spelling exercises (Activity 2) which do not align with the stated comprehension SLO.",
         "strengths": [
-          "The SLO is precise and targets a single, measurable skill.",
-          "Assessments directly measure the stated SLO without deviation."
+          "The SLO is precise, single-focused, and uses an appropriate action verb.",
+          "Activities are well-scaffolded, building logically toward the objective."
         ],
-        "improvements": []
+        "improvements": [
+          {
+            "subCriterion": "SLO\u2013Assessment Alignment",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "MODIFY",
+            "location": "Practice and Conclusion",
+            "instruction": "Remove tasks related to spelling/missing letters (Activity 2) from the practice and final assessment, ensuring all tasks strictly measure the stated SLO of keyword hunting for comprehension."
+          }
+        ]
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "37 / 44",
+        "totalScore": "40 / 44",
         "subCriteria": [
           {
             "name": "Opening Hook Relevant to SLO",
@@ -98,11 +107,11 @@
           },
           {
             "name": "Practice Opportunities for Students",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Appropriately Placed and Spaced CFU Questions",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Grade-Appropriate Strategies Aligned with SLO",
@@ -118,44 +127,44 @@
           },
           {
             "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
-            "rating": "3"
+            "rating": "2"
           },
           {
             "name": "Prior Knowledge Activation",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "The lesson flows logically with strong explicit instructions and modeling. However, it lacks dedicated Checks for Understanding (CFUs) to verify students grasp the keyword strategy before moving to independent practice.",
+        "rationale": "The instructional flow is generally excellent, with a highly relevant hook and explicit teacher modeling. However, the Gradual Release of Responsibility is compromised by presenting guided pair work and independent work as mutually exclusive options rather than a sequence.",
         "strengths": [
-          "The teacher explicitly models the cognitive process of finding keywords and locating answers.",
-          "The Hook effectively activates prior knowledge about the story to contextualize the new skill."
+          "The YouTube search analogy in the Hook brilliantly activates prior knowledge and connects to the new skill.",
+          "Teacher modeling is explicit, detailing exactly what to write and how to demonstrate scanning."
         ],
         "improvements": [
           {
-            "subCriterion": "Appropriately Placed and Spaced CFU Questions",
+            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
             "currentScore": "2",
             "targetScore": "4",
-            "action": "ADD",
-            "location": "Explanation",
-            "instruction": "Add a specific CFU question at the end of the Explanation to check if students understand the 3-step process before they begin independent practice (e.g., 'What is the first step we take when we read a new question?')."
+            "action": "MODIFY",
+            "location": "Practice",
+            "instruction": "Structure the Practice section to explicitly sequence Option 1 (Pair work) as the 'We Do' phase, followed by Option 2 (Independent work) as the 'You Do' phase, rather than presenting them as either/or choices."
           }
         ]
       },
       {
         "criterion": "Practicality & Teacher Support",
-        "totalScore": "13 / 20",
+        "totalScore": "20 / 20",
         "subCriteria": [
           {
             "name": "Appropriately Timed Sections",
-            "rating": "1"
+            "rating": "4"
           },
           {
             "name": "Adequate Time for Practice and Explanation",
-            "rating": "1"
+            "rating": "4"
           },
           {
             "name": "Teacher Support Materials",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Resource Requirements",
@@ -166,41 +175,24 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson provides good teacher support and uses accessible resources, but it completely lacks time allocations for any of its sections, making it difficult for a teacher to pace the lesson.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom. Timings are realistic, resources are minimal and accessible, and the teacher is provided with excellent support notes and answer keys.",
         "strengths": [
-          "Instructions are directive but leave room for teacher flexibility.",
-          "Resource requirements are minimal and highly practical for Pakistani classrooms."
+          "Time allocations are perfectly balanced, allowing ample time for both explanation and practice.",
+          "The inclusion of a comprehensive answer key and specific teacher notes empowers low-skill teachers."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Appropriately Timed Sections",
-            "currentScore": "1",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "All Sections",
-            "instruction": "Add realistic minute allocations to each section heading (Hook, Explanation, Practice, Conclusion) ensuring they sum to a 35-45 minute class period."
-          },
-          {
-            "subCriterion": "Adequate Time for Practice and Explanation",
-            "currentScore": "1",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "Explanation and Practice",
-            "instruction": "Allocate specific, balanced timings to the Explanation (e.g., 15 mins) and Practice (e.g., 15 mins) sections to ensure adequate time for both teaching and student application."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Accessibility & Differentiation",
-        "totalScore": "13 / 16",
+        "totalScore": "16 / 16",
         "subCriteria": [
           {
             "name": "Suggestions for Struggling or Advanced Students",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Named Differentiation Strategies with Instructions",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Instructional Language for Students",
@@ -211,25 +203,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson includes a helpful strategy for struggling students (pre-underlining keywords) but offers no extension or support for advanced learners.",
+        "rationale": "Differentiation is handled exceptionally well, with specific, named strategies provided for both struggling learners (sentence starters) and advanced learners (peer questioning). The language used is clear and accessible.",
         "strengths": [
-          "Language used for both teachers and students is clear, simple, and accessible.",
-          "A concrete differentiation strategy is provided for struggling learners."
+          "Concrete differentiation strategies are provided for both ends of the learning spectrum.",
+          "Instructional language is engaging, simple, and age-appropriate."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Suggestions for Struggling or Advanced Students",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Add an extension task for advanced students, such as asking them to write their own comprehension question using a 'Why' or 'How' question word based on the text."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Deeper Learning & Student Engagement",
-        "totalScore": "11 / 16",
+        "totalScore": "16 / 16",
         "subCriteria": [
           {
             "name": "Active Student Participation",
@@ -237,36 +220,27 @@
           },
           {
             "name": "Peer Interaction Opportunities",
-            "rating": "1"
+            "rating": "4"
           },
           {
             "name": "Real-World Application",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Closing Assessment / Lesson Consolidation",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged in finding answers and participating in the lesson, but there are absolutely no opportunities for peer interaction or collaborative learning.",
+        "rationale": "Students are actively engaged throughout the lesson. The real-world connection to searching for YouTube videos makes the abstract concept of scanning highly relatable. The closing assessment effectively consolidates learning.",
         "strengths": [
-          "Students are consistently required to produce output by locating words and writing answers.",
-          "The Conclusion includes a quick, formative True/False game to consolidate learning."
+          "The YouTube search analogy provides a highly authentic real-world application of the skill.",
+          "The Traffic Lights strategy offers a quick, effective formative assessment tool for the conclusion."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Peer Interaction Opportunities",
-            "currentScore": "1",
-            "targetScore": "3",
-            "action": "MODIFY",
-            "location": "Practice",
-            "instruction": "Instruct students to work in pairs to find the keywords in the text for questions 1-3 before writing the answers independently in their notebooks."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
-        "totalScore": "14 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
             "name": "Contextually Relevant Content",
@@ -274,7 +248,7 @@
           },
           {
             "name": "Inclusive & Diverse Representation",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Student Voice & Cultural Connection",
@@ -285,20 +259,20 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses culturally relevant names (Sir Riaz, Pinky) and scenarios. It invites student voice by asking for their personal definition of freedom.",
+        "rationale": "The lesson uses culturally familiar names and relatable scenarios. Representation is inclusive, featuring both male and female names in the examples and practice options.",
         "strengths": [
-          "Content is rooted in a familiar, local context.",
-          "Language is culturally sensitive and appropriate."
+          "Use of local names (Sir Riaz, Pinky, Ali, Zainab) makes the content relatable.",
+          "The scenarios used (losing a toy, searching YouTube) are highly relevant to the students' daily lives."
         ],
         "improvements": []
       },
       {
         "criterion": "Factual Accuracy & Bias",
-        "totalScore": "11 / 12",
+        "totalScore": "12 / 12",
         "subCriteria": [
           {
             "name": "Internal Consistency",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Academic Content Accuracy",
@@ -309,16 +283,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "The academic content regarding question words and keywords is accurate. The lesson is internally consistent, though the lack of timings prevents a perfect score for consistency.",
+        "rationale": "The lesson is internally consistent, with timings, instructions, and answer keys aligning perfectly. The academic content regarding reading strategies is accurate and unbiased.",
         "strengths": [
-          "The explanation of question words (Who, What, Why) is accurate and grade-appropriate.",
-          "The lesson is free from bias and presents information objectively."
+          "The explanation of keyword hunting and scanning is academically sound and precise.",
+          "Textbook references and answer keys are internally consistent throughout the plan."
         ],
         "improvements": []
       },
       {
         "criterion": "Subject Specific Review - English",
-        "totalScore": "11 / 12",
+        "totalScore": "12 / 12",
         "subCriteria": [
           {
             "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
@@ -330,13 +304,13 @@
           },
           {
             "name": "Evidence of Textbook Material Usage",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "The lesson maintains a strong, consistent focus on reading comprehension and writing answers. It effectively employs the keyword location strategy.",
+        "rationale": "The lesson maintains a strong, consistent focus on the reading skill of scanning. Specific reading strategies are named and explicitly taught, and textbook activities are integrated seamlessly.",
         "strengths": [
-          "Clear prioritization of reading comprehension skills.",
-          "Explicit teaching of the keyword strategy to locate information."
+          "Clear prioritization of reading comprehension and scanning skills.",
+          "Explicit teaching and modeling of the 'Keyword Hunting' strategy."
         ],
         "improvements": []
       }
@@ -344,15 +318,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 36.71,
-      "total_time": 36.711
+      "review_time": 33.334,
+      "total_time": 33.335
     },
     "tokens": {
-      "input_tokens": 13028,
-      "output_tokens": 3782,
-      "total_tokens": 16810,
+      "input_tokens": 13610,
+      "output_tokens": 4321,
+      "total_tokens": 17931,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.07144
+      "cost_usd": 0.079072
     }
   }
 }

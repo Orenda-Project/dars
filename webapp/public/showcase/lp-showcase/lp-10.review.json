@@ -1,357 +1,289 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "148 / 180",
-    "percentage": "82%",
+    "grandTotal": "175 / 184",
+    "percentage": "95%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
-        "totalScore": "22 / 24",
+        "totalScore": "24 / 24",
         "subCriteria": [
           {
-            "name": "SLO Present and Non-Empty",
+            "name": "SLO present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Hook Present and Non-Empty",
-            "rating": "3"
-          },
-          {
-            "name": "Explanation Present and Non-Empty",
+            "name": "Hook present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Practice Present and Non-Empty",
+            "name": "Explanation present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Conclusion Present and Non-Empty",
+            "name": "Practice present and non-empty",
+            "rating": "4"
+          },
+          {
+            "name": "Conclusion present and non-empty",
             "rating": "4"
           },
           {
             "name": "Single-Lesson Scope (One 40-Minute Class)",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "All required sections are present and contain substantive, actionable content. The lesson is clearly scoped for a single session, though time allocations are missing.",
+        "rationale": "The lesson plan includes all required sections with substantive, actionable content. The scope is perfectly tailored for a single 40-minute class.",
         "strengths": [
-          "The SLO is fully formed, specific, and immediately usable.",
-          "The Explanation and Practice sections contain clear, step-by-step instructions."
+          "Clear and specific SLO that is immediately usable.",
+          "Well-structured sections with actionable teacher instructions."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "22 / 24",
+        "totalScore": "23 / 24",
         "subCriteria": [
           {
-            "name": "Clear, Specific, and Single-Focus SLO",
-            "rating": "3"
+            "name": "Clear, specific, and single-focus SLO",
+            "rating": "4"
           },
           {
             "name": "Measurable SLOs",
             "rating": "4"
           },
           {
-            "name": "Scaffolded Activities",
+            "name": "Scaffolded activities",
             "rating": "4"
           },
           {
-            "name": "Aligned with Textbook Content",
+            "name": "Aligned with textbook content",
             "rating": "3"
           },
           {
-            "name": "SLO\u2013Assessment Alignment",
+            "name": "SLO\u2013assessment alignment",
             "rating": "4"
           },
           {
-            "name": "Bloom's Level Accuracy",
+            "name": "Bloom's level accuracy",
             "rating": "4"
           }
         ],
-        "rationale": "The SLO is highly measurable and aligns perfectly with the assessment tasks. The activities are well-scaffolded, building logically toward the writing task. (Note: Textbook content was not provided, but references appear plausible).",
+        "rationale": "The SLO is highly specific, measurable, and accurately aligned with the 'Create' Bloom's level. Activities and assessments directly support the SLO. Textbook alignment is plausible based on the provided references.",
         "strengths": [
-          "Assessments directly measure the specific skills stated in the SLO (capitalization and syllables).",
-          "The cognitive demand (Create) matches the writing task perfectly."
+          "SLO clearly defines the expected output (5 sentences, 3-syllable words, capitalization).",
+          "Strong alignment between the SLO and the practice/conclusion tasks."
         ],
         "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "38 / 44",
+        "totalScore": "40 / 44",
         "subCriteria": [
           {
-            "name": "Opening Hook Relevant to SLO",
+            "name": "Opening hook relevant to SLO",
             "rating": "4"
           },
           {
-            "name": "Explicit Instructions in Explanation",
+            "name": "Explicit instructions in Explanation",
             "rating": "4"
           },
           {
-            "name": "Modeling/Demonstration by Teacher",
+            "name": "Modeling/demonstration by teacher",
             "rating": "4"
           },
           {
-            "name": "Smooth Transitions Across Steps",
+            "name": "Smooth transitions across steps",
             "rating": "4"
           },
           {
-            "name": "Practice Opportunities for Students",
+            "name": "Practice opportunities for students",
+            "rating": "4"
+          },
+          {
+            "name": "Appropriately placed and spaced CFU questions",
+            "rating": "4"
+          },
+          {
+            "name": "Grade-appropriate strategies aligned with SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Higher-order thinking opportunities",
+            "rating": "4"
+          },
+          {
+            "name": "Visual aid effectiveness",
             "rating": "3"
           },
           {
-            "name": "Appropriately Placed and Spaced CFU Questions",
+            "name": "Gradual release of responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
             "rating": "3"
           },
           {
-            "name": "Grade-Appropriate Strategies Aligned with SLO",
-            "rating": "4"
-          },
-          {
-            "name": "Higher-Order Thinking Opportunities",
-            "rating": "4"
-          },
-          {
-            "name": "Visual Aid Effectiveness",
-            "rating": "3"
-          },
-          {
-            "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "name": "Prior knowledge activation",
             "rating": "2"
-          },
-          {
-            "name": "Prior Knowledge Activation",
-            "rating": "3"
           }
         ],
-        "rationale": "The lesson flows logically with strong explicit instructions and modeling. However, it lacks a 'We Do' phase, jumping straight from teacher explanation to independent practice.",
+        "rationale": "The lesson flows logically with a strong hook, clear modeling, and well-placed CFUs. However, prior knowledge activation is relegated to a teacher note rather than integrated into the instructional script.",
         "strengths": [
-          "Teacher instructions are highly specific, providing exact examples and questions to ask.",
-          "The hook is engaging and directly relevant to the creative writing topic."
+          "Excellent use of teacher modeling (mind map and clapping).",
+          "CFUs are specific and well-placed after the explanation."
         ],
         "improvements": [
           {
-            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "subCriterion": "Prior knowledge activation",
             "currentScore": "2",
             "targetScore": "4",
-            "action": "ADD",
+            "action": "MODIFY",
             "location": "Explanation",
-            "instruction": "Include a 'We Do' phase where the teacher and students co-construct one sentence together on the board using a 3-syllable word before students write their own sentences independently."
+            "instruction": "Integrate the question 'Who remembers what a syllable is?' from the Teacher Note directly into the beginning of the Explanation script, and have the class clap out a familiar 1- or 2-syllable word to actively recall the concept before introducing 3-syllable words."
           }
         ]
       },
       {
         "criterion": "Practicality & Teacher Support",
-        "totalScore": "13 / 20",
+        "totalScore": "20 / 20",
         "subCriteria": [
           {
-            "name": "Appropriately Timed Sections",
-            "rating": "1"
-          },
-          {
-            "name": "Adequate Time for Practice and Explanation",
-            "rating": "1"
-          },
-          {
-            "name": "Teacher Support Materials",
-            "rating": "3"
-          },
-          {
-            "name": "Resource Requirements",
+            "name": "Appropriately timed sections",
             "rating": "4"
           },
           {
-            "name": "Teacher Flexibility / No Over-Scripting",
+            "name": "Adequate time for Practice and Explanation",
+            "rating": "4"
+          },
+          {
+            "name": "Teacher support materials",
+            "rating": "4"
+          },
+          {
+            "name": "Resource requirements",
+            "rating": "4"
+          },
+          {
+            "name": "Teacher flexibility / no over-scripting",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson provides good teacher support with examples and answer keys, and uses low-cost resources. However, it completely lacks time allocations for any section.",
+        "rationale": "Timings are realistic for a 40-minute class. The lesson provides excellent teacher support, including a sample paragraph and word lists, using low-cost resources.",
         "strengths": [
-          "Provides specific examples of 3-syllable words to support the teacher.",
-          "Instructions are clear and directive without being overly scripted."
+          "Realistic time allocations across all sections.",
+          "Comprehensive teacher support materials including a sample paragraph."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Appropriately Timed Sections",
-            "currentScore": "1",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "All sections",
-            "instruction": "Add realistic time allocations in minutes next to each section heading (e.g., Hook: 5 min, Explanation: 15 min) ensuring the total equals 35-45 minutes."
-          },
-          {
-            "subCriterion": "Adequate Time for Practice and Explanation",
-            "currentScore": "1",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "All sections",
-            "instruction": "Allocate specific times to ensure the Practice section has sufficient duration (e.g., 15-20 minutes) for students to complete the writing task."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Accessibility & Differentiation",
-        "totalScore": "13 / 16",
+        "totalScore": "16 / 16",
         "subCriteria": [
           {
-            "name": "Suggestions for Struggling or Advanced Students",
-            "rating": "2"
-          },
-          {
-            "name": "Named Differentiation Strategies with Instructions",
-            "rating": "3"
-          },
-          {
-            "name": "Instructional Language for Students",
+            "name": "Suggestions for struggling or advanced students",
             "rating": "4"
           },
           {
-            "name": "Instructional Language for Teachers",
+            "name": "Named differentiation strategies with instructions",
+            "rating": "4"
+          },
+          {
+            "name": "Instructional language for students",
+            "rating": "4"
+          },
+          {
+            "name": "Instructional language for teachers",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson includes excellent, concrete support for struggling students (sentence starters, word lists) but fails to provide any extension or support for advanced learners.",
+        "rationale": "The lesson provides clear, named differentiation strategies for both struggling and advanced students, and uses accessible language for both teachers and students.",
         "strengths": [
-          "Language used for both teachers and students is clear, simple, and age-appropriate.",
-          "Provides a concrete, named strategy (sentence starters) for struggling learners."
+          "Specific differentiation strategies provided (sentence starters and 4-syllable challenge).",
+          "Clear, engaging, and empowering instructional language."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Suggestions for Struggling or Advanced Students",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Add an extension task for advanced students, such as challenging them to include a 4-syllable word or to write a short paragraph instead of isolated sentences."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Deeper Learning & Student Engagement",
-        "totalScore": "10 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
-            "name": "Active Student Participation",
+            "name": "Active student participation",
             "rating": "4"
           },
           {
-            "name": "Peer Interaction Opportunities",
-            "rating": "1"
+            "name": "Peer interaction opportunities",
+            "rating": "4"
           },
           {
-            "name": "Real-World Application",
-            "rating": "2"
-          },
-          {
-            "name": "Closing Assessment / Lesson Consolidation",
+            "name": "Real-world application",
             "rating": "3"
-          }
-        ],
-        "rationale": "Students are actively engaged in creating their own writing, but the lesson lacks any peer interaction, which is a missed opportunity in a small class setting. The real-world connection is superficial.",
-        "strengths": [
-          "Students are required to produce independent written output.",
-          "The closing T/F activity effectively consolidates the technical rules taught (capitalization and syllables)."
-        ],
-        "improvements": [
-          {
-            "subCriterion": "Peer Interaction Opportunities",
-            "currentScore": "1",
-            "targetScore": "3",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Include an instruction for students to pair up and read their sentences to a partner to check for capitalization and 3-syllable words."
           },
           {
-            "subCriterion": "Real-World Application",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "MODIFY",
-            "location": "Hook",
-            "instruction": "Connect the concept of 'superpowers' to real-world strengths, such as asking students how they can use their unique talents to help their family or community."
+            "name": "Closing assessment / lesson consolidation",
+            "rating": "4"
           }
-        ]
+        ],
+        "rationale": "Students are actively engaged through clapping, brainstorming, and writing. Peer interaction is well-structured, and the closing assessment effectively consolidates learning.",
+        "strengths": [
+          "Multiple opportunities for active participation.",
+          "Structured peer review task to check capitalization."
+        ],
+        "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
-        "totalScore": "9 / 16",
+        "totalScore": "14 / 16",
         "subCriteria": [
           {
-            "name": "Contextually Relevant Content",
-            "rating": "2"
-          },
-          {
-            "name": "Inclusive & Diverse Representation",
-            "rating": "2"
-          },
-          {
-            "name": "Student Voice & Cultural Connection",
-            "rating": "2"
-          },
-          {
-            "name": "Language & Cultural Sensitivity",
+            "name": "Contextually relevant content",
             "rating": "3"
+          },
+          {
+            "name": "Inclusive & diverse representation",
+            "rating": "4"
+          },
+          {
+            "name": "Student voice & cultural connection",
+            "rating": "3"
+          },
+          {
+            "name": "Language & cultural sensitivity",
+            "rating": "4"
           }
         ],
-        "rationale": "The lesson content is generic and lacks specific cultural relevance or representation for Pakistani students, though it is culturally sensitive and allows for some student voice.",
+        "rationale": "The lesson uses familiar local names and an engaging, universal topic (superpowers). It is inclusive and culturally sensitive.",
         "strengths": [
-          "Language is respectful and appropriate.",
-          "Invites students to think about their own personal strengths."
+          "Use of diverse local names (Ali, Sara, Ahmed, Zainab).",
+          "Engaging and relatable topic for Grade 5 students."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Contextually Relevant Content",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Explanation",
-            "instruction": "Use examples of 'superpowers' that relate to the local context, such as 'helping neighbors during a power outage' or 'making the best local tea'."
-          },
-          {
-            "subCriterion": "Inclusive & Diverse Representation",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "ADD",
-            "location": "Explanation",
-            "instruction": "Include diverse Pakistani names when giving example sentences on the board (e.g., 'Sana has a-maz-ing powers')."
-          },
-          {
-            "subCriterion": "Student Voice & Cultural Connection",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "MODIFY",
-            "location": "Hook",
-            "instruction": "Ask students to share a 'superpower' or special skill that someone in their family or community possesses, connecting the topic to their lived experience."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Factual Accuracy & Bias",
-        "totalScore": "11 / 12",
+        "totalScore": "12 / 12",
         "subCriteria": [
           {
-            "name": "Internal Consistency",
-            "rating": "3"
-          },
-          {
-            "name": "Academic Content Accuracy",
+            "name": "Internal consistency",
             "rating": "4"
           },
           {
-            "name": "Bias and Balance",
+            "name": "Academic content accuracy",
+            "rating": "4"
+          },
+          {
+            "name": "Bias and balance",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is factually accurate, with correct syllable breakdowns provided for the teacher. It is internally consistent and unbiased.",
+        "rationale": "The content is factually accurate, particularly the syllable counting examples. The lesson is internally consistent and free from bias.",
         "strengths": [
-          "Syllable breakdowns (won-der-ful, en-er-gy, mag-i-cal) are accurate and helpful.",
-          "Instructions and examples align perfectly with the stated SLO."
+          "Accurate academic content (syllable breakdowns).",
+          "Strong internal consistency across timings and instructions."
         ],
         "improvements": []
       },
       {
         "criterion": "Subject Specific Review - English",
-        "totalScore": "10 / 12",
+        "totalScore": "11 / 12",
         "subCriteria": [
           {
             "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
@@ -359,17 +291,17 @@
           },
           {
             "name": "Named Teaching Strategies",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Evidence of Textbook Material Usage",
             "rating": "3"
           }
         ],
-        "rationale": "The lesson maintains a strong, consistent focus on writing skills and employs appropriate strategies like mind mapping.",
+        "rationale": "The lesson clearly prioritizes writing while integrating speaking and listening (clapping syllables). It uses named strategies like mind mapping and peer review.",
         "strengths": [
-          "Clear prioritization of writing and sentence structure.",
-          "Effective use of a mind map as a pre-writing strategy."
+          "Clear focus on creative writing.",
+          "Effective integration of syllable counting as a spelling/vocabulary strategy."
         ],
         "improvements": []
       }
@@ -377,15 +309,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 52.304,
-      "total_time": 52.304
+      "review_time": 131.407,
+      "total_time": 131.408
     },
     "tokens": {
-      "input_tokens": 12796,
-      "output_tokens": 5067,
-      "total_tokens": 17863,
+      "input_tokens": 13536,
+      "output_tokens": 4712,
+      "total_tokens": 18248,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.086396
+      "cost_usd": 0.083616
     }
   }
 }
