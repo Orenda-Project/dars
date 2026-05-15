@@ -34,6 +34,7 @@ from dars.teachers.router import router as teachers_router
 from dars.lookup.router import router as lookup_router
 from dars.v2_api.router_tenancy import router as v2_tenancy_router
 from dars.v2_api.router_curriculum import router as v2_curriculum_router
+from dars.v2_api.router_book import router as v2_book_router
 
 
 @asynccontextmanager
@@ -73,6 +74,7 @@ app.include_router(teachers_router)
 app.include_router(lookup_router)
 app.include_router(v2_tenancy_router)
 app.include_router(v2_curriculum_router)
+app.include_router(v2_book_router)
 
 
 @app.get("/health")
