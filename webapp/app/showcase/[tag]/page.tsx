@@ -42,6 +42,10 @@ async function loadReview(
 async function loadShowcase(tag: string): Promise<LoadResult | null> {
   const dir = path.join(process.cwd(), "public", "showcase", tag);
   const indexPath = path.join(dir, "index.json");
+  // Reviews are gated behind an env flag so we can dark-launch the feature without
+  // touching the on-disk JSONs. When off, force every entry to MISSING so the
+  // drawer's existing null-render path takes over and no "AI Review" UI is emitted.
+  const reviewsEnabled = process.env.NEXT_PUBLIC_SHOWCASE_REVIEWS === "true";
   try {
     const [raw, stat] = await Promise.all([
       fs.readFile(indexPath, "utf-8"),
@@ -52,6 +56,9 @@ async function loadShowcase(tag: string): Promise<LoadResult | null> {
 
     const entries = await Promise.all(
       (parsed as ShowcaseEntry[]).map(async (e) => {
+        if (!reviewsEnabled) {
+          return { ...e, review_status: "MISSING" as const, review: null };
+        }
         const review =
           e.review_status === "OK"
             ? await loadReview(dir, e.review_file)
