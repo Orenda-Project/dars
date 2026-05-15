@@ -26,6 +26,7 @@ import sys
 
 import asyncpg
 
+from dars.seeds.book_dars_english_g1 import seed_dars_english_g1_book
 from dars.seeds.lookups import seed_lookups
 from dars.seeds.slos_dars_english_g1 import seed_dars_english_g1_slos
 
@@ -42,7 +43,8 @@ async def _run_all_steps(conn: asyncpg.Connection) -> None:
     await seed_lookups(conn)
     # F1.3 — SLOs + sub-SLOs for Dars Curriculum × Grade 1 × English
     await seed_dars_english_g1_slos(conn)
-    # F1.4 — book + chapters + topics (next feature)
+    # F1.4 — Book + chapters + topics + SLO/sub-SLO mappings
+    await seed_dars_english_g1_book(conn)
     # F1.5 — demo tenancy (next feature)
 
 
