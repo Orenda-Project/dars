@@ -284,12 +284,15 @@ class AssessmentSlotUpdate(BaseModel):
 class TodaySlotEntry(BaseModel):
     class_id: int
     class_name: str
+    subject: str
     subject_id: int
     cst_id: int
     teacher_id: int | None
     teacher_name: str | None
+    day_number: int | None
     next_planned_slot: ClassLessonSlotRead | None
     previous_taught_slot: ClassLessonSlotRead | None
+    assessment_slot: AssessmentSlotRead | None = None
 
 
 # ---------------------------------------------------------------------------

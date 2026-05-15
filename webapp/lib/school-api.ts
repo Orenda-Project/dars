@@ -210,11 +210,14 @@ export interface TodaySlotEntry {
   class_id: string;
   class_name: string;
   subject: string;
+  subject_id: number;
   cst_id: string;
   teacher_id: string | null;
   teacher_name: string | null;
+  day_number: number | null;
   next_planned_slot: ClassLessonSlotRead | null;
   previous_taught_slot: ClassLessonSlotRead | null;
+  assessment_slot: AssessmentSlotRead | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -60,7 +60,19 @@ const LP_TYPE_COLORS: Record<string, string> = {
   Introduction: "bg-blue-100 text-blue-800 border-blue-200",
 };
 
+function buildClassHref(period: CalendarPeriod): string {
+  if (period.period_type === "assessment" && period.assessment_slot_id) {
+    return `/teacher-app/classes/${period.cst_id}?tab=assessments&assessmentSlot=${period.assessment_slot_id}`;
+  }
+  if (period.period_type === "lesson" && period.slot_id) {
+    return `/teacher-app/classes/${period.cst_id}?tab=lessons&slot=${period.slot_id}`;
+  }
+  return `/teacher-app/classes/${period.cst_id}`;
+}
+
 function PeriodPill({ period }: { period: CalendarPeriod }) {
+  const href = buildClassHref(period);
+
   if (period.period_type === "assessment") {
     const isFa = period.assessment_type === "formative";
     const colorCls = isFa
@@ -68,7 +80,7 @@ function PeriodPill({ period }: { period: CalendarPeriod }) {
       : "bg-violet-100 text-violet-800 border-violet-200";
     return (
       <Link
-        href={`/teacher-app/classes/${period.cst_id}`}
+        href={href}
         className={`block px-2 py-1.5 rounded border text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity ${colorCls}`}
       >
         <div className="flex items-center gap-1 mb-0.5">
@@ -93,7 +105,7 @@ function PeriodPill({ period }: { period: CalendarPeriod }) {
       LP_TYPE_COLORS[period.lp_type ?? ""] ?? "bg-amber-100 text-amber-800 border-amber-200";
     return (
       <Link
-        href={`/teacher-app/classes/${period.cst_id}`}
+        href={href}
         className={`block px-2 py-1.5 rounded border text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity ${colorCls}`}
       >
         <div className="truncate font-semibold">{period.class_name}</div>
@@ -111,7 +123,7 @@ function PeriodPill({ period }: { period: CalendarPeriod }) {
   // no_breakdown — class is on timetable but no lesson planned yet
   return (
     <Link
-      href={`/teacher-app/classes/${period.cst_id}`}
+      href={href}
       className="block px-2 py-1.5 rounded border border-dashed border-gray-300 text-[10px] font-medium leading-tight no-underline hover:opacity-80 transition-opacity text-gray-500"
     >
       <div className="truncate font-semibold">{period.class_name}</div>

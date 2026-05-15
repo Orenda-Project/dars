@@ -7,7 +7,8 @@ import {
   type TodaySlotEntry,
   type ClassLessonSlotRead,
 } from "@/lib/school-api";
-import { getMockLP } from "@/lib/teacher-app-mocks";
+import { getMockLP, getMockExam } from "@/lib/teacher-app-mocks";
+import { ExamPaperView } from "../_components/exam-paper-view";
 
 // ---------------------------------------------------------------------------
 // LP slide-over
@@ -54,6 +55,45 @@ function LPSlideOver({
 }
 
 // ---------------------------------------------------------------------------
+// Exam slide-over (used when today is an assessment day)
+// ---------------------------------------------------------------------------
+
+function ExamSlideOver({
+  examId,
+  subject,
+  onClose,
+}: {
+  examId: string;
+  subject: string;
+  onClose: () => void;
+}) {
+  const exam = getMockExam(examId, subject);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white h-full shadow-xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h2 className="font-semibold text-gray-900 text-sm">Exam</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors bg-transparent border-none cursor-pointer p-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <ExamPaperView result={exam.result} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Slot card
 // ---------------------------------------------------------------------------
 
@@ -72,7 +112,9 @@ function SlotBadge({ slot }: { slot: ClassLessonSlotRead }) {
 function TodayCard({ entry, onTaught }: { entry: TodaySlotEntry; onTaught: (slotId: string) => void }) {
   const [marking, setMarking] = useState(false);
   const [viewLpId, setViewLpId] = useState<string | null>(null);
+  const [viewExamId, setViewExamId] = useState<string | null>(null);
   const slot = entry.next_planned_slot;
+  const assessment = entry.assessment_slot;
 
   async function handleMarkTaught() {
     if (!slot) return;
@@ -111,10 +153,45 @@ function TodayCard({ entry, onTaught }: { entry: TodaySlotEntry; onTaught: (slot
           <p className="text-xs text-gray-300 italic">No previous lessons</p>
         )}
 
-        {/* Current/next slot */}
-        {slot ? (
+        {/* Today's activity — assessment takes priority over lesson */}
+        {assessment ? (
+          (() => {
+            const isFa = assessment.assessment_type === "formative";
+            const accent = isFa
+              ? { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700", btn: "bg-rose-600 hover:bg-rose-700", chip: "bg-rose-100 text-rose-800" }
+              : { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-700", btn: "bg-violet-600 hover:bg-violet-700", chip: "bg-violet-100 text-violet-800" };
+            return (
+              <div className={`${accent.bg} border ${accent.border} rounded-lg p-4`}>
+                <p className={`text-[10px] uppercase tracking-widest ${accent.text} mb-2 font-semibold`}>Today — Assessment</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {assessment.title ?? (isFa ? "Formative Assessment" : "Summative Assessment")}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-xs ${accent.chip} px-2 py-0.5 rounded font-medium uppercase`}>
+                        {isFa ? "FA" : "SA"}
+                      </span>
+                      {entry.day_number != null && (
+                        <span className="text-xs text-gray-400">Day {entry.day_number}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    onClick={() => setViewExamId(assessment.exam_id ?? assessment.id)}
+                    className={`text-xs px-3 py-1.5 text-white rounded-md transition-colors cursor-pointer font-medium border-none ${accent.btn}`}
+                  >
+                    View Exam
+                  </button>
+                </div>
+              </div>
+            );
+          })()
+        ) : slot ? (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <p className="text-[10px] uppercase tracking-widest text-amber-600 mb-2 font-semibold">Up next</p>
+            <p className="text-[10px] uppercase tracking-widest text-amber-600 mb-2 font-semibold">Today&apos;s Lesson</p>
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{slot.title}</p>
@@ -125,14 +202,12 @@ function TodayCard({ entry, onTaught }: { entry: TodaySlotEntry; onTaught: (slot
               </div>
             </div>
             <div className="flex items-center gap-2 mt-3">
-              {slot.lesson_plan_id && (
-                <button
-                  onClick={() => setViewLpId(slot.lesson_plan_id)}
-                  className="text-xs px-3 py-1.5 border border-amber-300 text-amber-700 rounded-md hover:bg-amber-100 transition-colors bg-transparent cursor-pointer font-medium"
-                >
-                  View LP
-                </button>
-              )}
+              <button
+                onClick={() => setViewLpId(slot.lesson_plan_id ?? slot.id)}
+                className="text-xs px-3 py-1.5 border border-amber-300 text-amber-700 rounded-md hover:bg-amber-100 transition-colors bg-transparent cursor-pointer font-medium"
+              >
+                View LP
+              </button>
               <button
                 onClick={handleMarkTaught}
                 disabled={marking}
@@ -144,13 +219,16 @@ function TodayCard({ entry, onTaught }: { entry: TodaySlotEntry; onTaught: (slot
           </div>
         ) : (
           <div className="text-center py-4">
-            <p className="text-xs text-gray-400">No planned lessons remaining</p>
+            <p className="text-xs text-gray-400">No lesson planned for today</p>
           </div>
         )}
       </div>
 
       {viewLpId && (
         <LPSlideOver lpId={viewLpId} subject={entry.subject} onClose={() => setViewLpId(null)} />
+      )}
+      {viewExamId && (
+        <ExamSlideOver examId={viewExamId} subject={entry.subject} onClose={() => setViewExamId(null)} />
       )}
     </div>
   );
