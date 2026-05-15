@@ -1,0 +1,408 @@
+{
+  "status": "success",
+  "review": {
+    "grandTotal": "132 / 184",
+    "percentage": "72%",
+    "evaluation": [
+      {
+        "criterion": "Structural Completeness",
+        "totalScore": "19 / 24",
+        "subCriteria": [
+          {
+            "name": "SLO Present and Non-Empty",
+            "rating": "3"
+          },
+          {
+            "name": "Hook Present and Non-Empty",
+            "rating": "3"
+          },
+          {
+            "name": "Explanation Present and Non-Empty",
+            "rating": "3"
+          },
+          {
+            "name": "Practice Present and Non-Empty",
+            "rating": "3"
+          },
+          {
+            "name": "Conclusion Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Single-Lesson Scope (One 40-Minute Class)",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson plan contains all required structural components. The SLO, Hook, Explanation, Practice, and Conclusion are all present with actionable content. The scope is appropriate for a single lesson, though specific time allocations are missing.",
+        "strengths": [
+          "The Conclusion provides a specific, ready-to-use True/False game.",
+          "The Explanation section includes clear, step-by-step instructions for the teacher."
+        ],
+        "improvements": []
+      },
+      {
+        "criterion": "Curriculum Alignment",
+        "totalScore": "16 / 24",
+        "subCriteria": [
+          {
+            "name": "Clear, Specific, and Single-Focus SLO",
+            "rating": "3"
+          },
+          {
+            "name": "Measurable SLOs",
+            "rating": "3"
+          },
+          {
+            "name": "Scaffolded Activities",
+            "rating": "3"
+          },
+          {
+            "name": "Aligned with Textbook Content",
+            "rating": "3"
+          },
+          {
+            "name": "SLO\u2013Assessment Alignment",
+            "rating": "2"
+          },
+          {
+            "name": "Bloom's Level Accuracy",
+            "rating": "2"
+          }
+        ],
+        "rationale": "The lesson follows a logical sequence and aligns with the stated topic. However, the SLO targets identifying the 'main idea', but the Practice only asks students to read aloud, and the Conclusion only tests recall of minor details, failing to assess the main idea.",
+        "strengths": [
+          "The SLO uses clear, measurable action verbs (read, identify).",
+          "Activities are logically scaffolded from vocabulary introduction to reading and comprehension."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "SLO\u2013Assessment Alignment",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "MODIFY",
+            "location": "Practice",
+            "instruction": "Add a task where students explicitly identify or discuss the main idea of the paragraph they just read, ensuring the practice aligns with the second half of the SLO."
+          },
+          {
+            "subCriterion": "Bloom's Level Accuracy",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "MODIFY",
+            "location": "Conclusion",
+            "instruction": "Replace one of the True/False recall questions with a question that asks students to identify the main idea of the story, matching the 'Comprehension' level stated in the SLO."
+          }
+        ]
+      },
+      {
+        "criterion": "Instructional Flow",
+        "totalScore": "31 / 44",
+        "subCriteria": [
+          {
+            "name": "Opening Hook Relevant to SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Explicit Instructions in Explanation",
+            "rating": "3"
+          },
+          {
+            "name": "Modeling/Demonstration by Teacher",
+            "rating": "3"
+          },
+          {
+            "name": "Smooth Transitions Across Steps",
+            "rating": "3"
+          },
+          {
+            "name": "Practice Opportunities for Students",
+            "rating": "2"
+          },
+          {
+            "name": "Appropriately Placed and Spaced CFU Questions",
+            "rating": "3"
+          },
+          {
+            "name": "Grade-Appropriate Strategies Aligned with SLO",
+            "rating": "3"
+          },
+          {
+            "name": "Higher-Order Thinking Opportunities",
+            "rating": "2"
+          },
+          {
+            "name": "Visual Aid Effectiveness",
+            "rating": "3"
+          },
+          {
+            "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "rating": "2"
+          },
+          {
+            "name": "Prior Knowledge Activation",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson has a strong hook and clear teacher modeling. However, the practice phase is unstructured for a class of 30, lacking a 'We Do' guided practice phase. The lesson also relies entirely on recall and basic comprehension without higher-order thinking.",
+        "strengths": [
+          "The Hook effectively activates prior knowledge by asking students about a relatable personal experience.",
+          "The teacher explicitly models reading with expression and pointing to words."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Practice Opportunities for Students",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "MODIFY",
+            "location": "Practice",
+            "instruction": "Structure the reading practice so all 30 students are engaged simultaneously, such as using choral reading or pair reading, rather than having students read independently one by one."
+          },
+          {
+            "subCriterion": "Higher-Order Thinking Opportunities",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Add a question asking students to analyze or evaluate, such as: 'Why do you think it is important to memorize your parents' phone number?'"
+          },
+          {
+            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Practice",
+            "instruction": "Insert a 'We Do' phase before independent reading, where the teacher and students read a short paragraph aloud together chorally."
+          }
+        ]
+      },
+      {
+        "criterion": "Practicality & Teacher Support",
+        "totalScore": "13 / 20",
+        "subCriteria": [
+          {
+            "name": "Appropriately Timed Sections",
+            "rating": "1"
+          },
+          {
+            "name": "Adequate Time for Practice and Explanation",
+            "rating": "2"
+          },
+          {
+            "name": "Teacher Support Materials",
+            "rating": "3"
+          },
+          {
+            "name": "Resource Requirements",
+            "rating": "4"
+          },
+          {
+            "name": "Teacher Flexibility / No Over-Scripting",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson requires low-cost resources and provides good teacher support (vocab definitions, answer keys). However, it completely lacks time allocations, making it impossible to gauge pacing, especially for the independent reading practice.",
+        "strengths": [
+          "Resources required are minimal and perfectly suited for a standard Pakistani classroom.",
+          "Vocabulary definitions are provided directly in the plan, aiding teacher preparation."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Appropriately Timed Sections",
+            "currentScore": "1",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "All Sections",
+            "instruction": "Add specific minute allocations to the Hook, Explanation, Practice, and Conclusion headings so they total 35-45 minutes."
+          },
+          {
+            "subCriterion": "Adequate Time for Practice and Explanation",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "CLARIFY",
+            "location": "Practice",
+            "instruction": "Once times are added, ensure the Practice section explicitly states how the teacher will manage 30 students reading within the allotted time (e.g., 'Spend 10 minutes having students read in pairs')."
+          }
+        ]
+      },
+      {
+        "criterion": "Accessibility & Differentiation",
+        "totalScore": "12 / 16",
+        "subCriteria": [
+          {
+            "name": "Suggestions for Struggling or Advanced Students",
+            "rating": "2"
+          },
+          {
+            "name": "Named Differentiation Strategies with Instructions",
+            "rating": "3"
+          },
+          {
+            "name": "Instructional Language for Students (Easy to Understand)",
+            "rating": "3"
+          },
+          {
+            "name": "Instructional Language for Teachers (Easy to Understand)",
+            "rating": "4"
+          }
+        ],
+        "rationale": "The lesson uses clear language and provides a concrete strategy for struggling learners (choral repetition). However, it completely omits support or extension activities for advanced students.",
+        "strengths": [
+          "Teacher instructions are exceptionally clear and concise.",
+          "A specific, actionable strategy is provided for struggling readers."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Suggestions for Struggling or Advanced Students",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Practice",
+            "instruction": "Add an extension task for advanced students, such as asking them to summarize the paragraph they just read in one sentence."
+          }
+        ]
+      },
+      {
+        "criterion": "Deeper Learning & Student Engagement",
+        "totalScore": "9 / 16",
+        "subCriteria": [
+          {
+            "name": "Active Student Participation",
+            "rating": "3"
+          },
+          {
+            "name": "Peer Interaction Opportunities",
+            "rating": "1"
+          },
+          {
+            "name": "Real-World Application",
+            "rating": "3"
+          },
+          {
+            "name": "Closing Assessment / Lesson Consolidation",
+            "rating": "2"
+          }
+        ],
+        "rationale": "Students are actively participating through reading and answering questions, and the hook connects to real-world experiences. However, there is zero peer interaction, and the closing assessment does not check the 'main idea' component of the SLO.",
+        "strengths": [
+          "The hook effectively connects the lesson topic to a real-world scenario students can relate to.",
+          "Students are required to produce output (reading aloud, answering CFUs) rather than just listening."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Peer Interaction Opportunities",
+            "currentScore": "1",
+            "targetScore": "3",
+            "action": "MODIFY",
+            "location": "Practice",
+            "instruction": "Change the independent reading task to a 'Turn and Talk' or pair-reading activity where students read their paragraph to a partner."
+          },
+          {
+            "subCriterion": "Closing Assessment / Lesson Consolidation",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "MODIFY",
+            "location": "Conclusion",
+            "instruction": "Revise the closing activity to include a quick check where students must state the main idea of the story, directly assessing the stated SLO."
+          }
+        ]
+      },
+      {
+        "criterion": "Cultural Relevance & Representation",
+        "totalScore": "12 / 16",
+        "subCriteria": [
+          {
+            "name": "Contextually Relevant Content",
+            "rating": "3"
+          },
+          {
+            "name": "Inclusive & Diverse Representation",
+            "rating": "2"
+          },
+          {
+            "name": "Student Voice & Cultural Connection",
+            "rating": "3"
+          },
+          {
+            "name": "Language & Cultural Sensitivity",
+            "rating": "4"
+          }
+        ],
+        "rationale": "The context of getting lost in a market is highly relevant, and the language is culturally sensitive. However, representation is somewhat generic and lacks deliberate diversity.",
+        "strengths": [
+          "The scenario of a crowded market is familiar and relatable to Pakistani students.",
+          "The hook invites students to share their own personal experiences."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Inclusive & Diverse Representation",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Include a brief example or reference that highlights diverse Pakistani contexts (e.g., mentioning different types of local markets or diverse names when discussing the concept)."
+          }
+        ]
+      },
+      {
+        "criterion": "Factual Accuracy & Bias",
+        "totalScore": "11 / 12",
+        "subCriteria": [
+          {
+            "name": "Internal Consistency & Plausible Textbook References",
+            "rating": "3"
+          },
+          {
+            "name": "Academic Content Accuracy",
+            "rating": "4"
+          },
+          {
+            "name": "Bias and Balance",
+            "rating": "4"
+          }
+        ],
+        "rationale": "The lesson is factually accurate, unbiased, and internally consistent. The vocabulary definitions provided are correct and age-appropriate.",
+        "strengths": [
+          "Vocabulary definitions are accurate and simplified appropriately for Grade 2.",
+          "The lesson is free from bias and presents the topic objectively."
+        ],
+        "improvements": []
+      },
+      {
+        "criterion": "Subject Specific Review - English",
+        "totalScore": "9 / 12",
+        "subCriteria": [
+          {
+            "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
+            "rating": "3"
+          },
+          {
+            "name": "Named Teaching Strategies",
+            "rating": "3"
+          },
+          {
+            "name": "Evidence of Textbook Material Usage",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson maintains a clear focus on reading aloud and comprehension. It employs appropriate strategies like pre-teaching vocabulary and teacher modeling. It references a specific story text.",
+        "strengths": [
+          "Clear focus on reading comprehension and oral fluency.",
+          "Pre-teaching difficult vocabulary before reading is an effective ESL strategy."
+        ],
+        "improvements": []
+      }
+    ]
+  },
+  "metadata": {
+    "timings": {
+      "review_time": 43.784,
+      "total_time": 43.786
+    },
+    "tokens": {
+      "input_tokens": 12726,
+      "output_tokens": 5637,
+      "total_tokens": 18363,
+      "model": "google/gemini-3.1-pro-preview",
+      "cost_usd": 0.093096
+    }
+  }
+}

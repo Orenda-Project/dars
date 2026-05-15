@@ -1,0 +1,418 @@
+{
+  "status": "success",
+  "review": {
+    "grandTotal": "136 / 180",
+    "percentage": "75%",
+    "evaluation": [
+      {
+        "criterion": "Structural Completeness",
+        "totalScore": "21 / 24",
+        "subCriteria": [
+          {
+            "name": "SLO Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Hook Present and Non-Empty",
+            "rating": "3"
+          },
+          {
+            "name": "Explanation Present and Non-Empty",
+            "rating": "3"
+          },
+          {
+            "name": "Practice Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Conclusion Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Single-Lesson Scope (One 40-Minute Class)",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson plan contains all necessary sections with substantive content. It is clearly scoped for a single lesson, though it lacks explicit time allocations.",
+        "strengths": [
+          "The SLO is complete and immediately usable.",
+          "The Practice and Conclusion sections contain concrete tasks and questions with answers."
+        ],
+        "improvements": []
+      },
+      {
+        "criterion": "Curriculum Alignment",
+        "totalScore": "22 / 24",
+        "subCriteria": [
+          {
+            "name": "Clear, Specific, and Single-Focus SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Measurable SLOs",
+            "rating": "4"
+          },
+          {
+            "name": "Scaffolded Activities",
+            "rating": "3"
+          },
+          {
+            "name": "Aligned with Textbook Content",
+            "rating": "3"
+          },
+          {
+            "name": "SLO\u2013Assessment Alignment",
+            "rating": "4"
+          },
+          {
+            "name": "Bloom's Level Accuracy",
+            "rating": "4"
+          }
+        ],
+        "rationale": "The SLO is highly specific, measurable, and accurately aligned with the Application level of Bloom's taxonomy. The assessment tasks directly measure the stated SLO.",
+        "strengths": [
+          "The SLO focuses on a single, clear grammar skill.",
+          "The practice task directly aligns with the SLO's requirement to complete sentences."
+        ],
+        "improvements": []
+      },
+      {
+        "criterion": "Instructional Flow",
+        "totalScore": "31 / 44",
+        "subCriteria": [
+          {
+            "name": "Opening Hook Relevant to SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Explicit Instructions in Explanation",
+            "rating": "3"
+          },
+          {
+            "name": "Modeling/Demonstration by Teacher",
+            "rating": "3"
+          },
+          {
+            "name": "Smooth Transitions Across Steps",
+            "rating": "3"
+          },
+          {
+            "name": "Practice Opportunities for Students",
+            "rating": "3"
+          },
+          {
+            "name": "Appropriately Placed and Spaced CFU Questions",
+            "rating": "3"
+          },
+          {
+            "name": "Grade-Appropriate Strategies Aligned with SLO",
+            "rating": "3"
+          },
+          {
+            "name": "Higher-Order Thinking Opportunities",
+            "rating": "2"
+          },
+          {
+            "name": "Visual Aid Effectiveness",
+            "rating": "3"
+          },
+          {
+            "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "rating": "2"
+          },
+          {
+            "name": "Prior Knowledge Activation",
+            "rating": "2"
+          }
+        ],
+        "rationale": "The lesson flows logically from a relevant hook to explanation and practice. However, it lacks a guided practice (We Do) phase, higher-order thinking tasks, and explicit prior knowledge activation.",
+        "strengths": [
+          "The hook is engaging and directly introduces the target vocabulary.",
+          "CFU questions are placed logically during the explanation."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Higher-Order Thinking Opportunities",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Practice",
+            "instruction": "Include a task where students must create their own original sentence using a reciprocal pronoun, rather than just filling in blanks."
+          },
+          {
+            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Add a 'We Do' phase where the teacher and students work together to complete 1-2 example sentences on the board before students work independently in their notebooks."
+          },
+          {
+            "subCriterion": "Prior Knowledge Activation",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Hook",
+            "instruction": "Ask students to recall what a pronoun is (e.g., words like he, she, they) before introducing the new concept of reciprocal pronouns."
+          }
+        ]
+      },
+      {
+        "criterion": "Practicality & Teacher Support",
+        "totalScore": "12 / 20",
+        "subCriteria": [
+          {
+            "name": "Appropriately Timed Sections",
+            "rating": "1"
+          },
+          {
+            "name": "Adequate Time for Practice and Explanation",
+            "rating": "1"
+          },
+          {
+            "name": "Teacher Support Materials",
+            "rating": "3"
+          },
+          {
+            "name": "Resource Requirements",
+            "rating": "4"
+          },
+          {
+            "name": "Teacher Flexibility / No Over-Scripting",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson plan completely lacks time allocations for its sections, making it difficult for a teacher to pace the lesson. However, resource requirements are highly practical.",
+        "strengths": [
+          "Resources required (board, notebooks) are universally available.",
+          "Answer keys are provided for the practice questions."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Appropriately Timed Sections",
+            "currentScore": "1",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "All Sections",
+            "instruction": "Add specific time allocations in minutes to each section heading (e.g., Hook: 5 mins, Explanation: 15 mins) ensuring the total equals 35-45 minutes."
+          },
+          {
+            "subCriterion": "Adequate Time for Practice and Explanation",
+            "currentScore": "1",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "All Sections",
+            "instruction": "Allocate realistic times to the Explanation and Practice sections to ensure sufficient time is dedicated to both teaching and student application."
+          }
+        ]
+      },
+      {
+        "criterion": "Accessibility & Differentiation",
+        "totalScore": "11 / 16",
+        "subCriteria": [
+          {
+            "name": "Suggestions for Struggling or Advanced Students",
+            "rating": "2"
+          },
+          {
+            "name": "Named Differentiation Strategies with Instructions",
+            "rating": "3"
+          },
+          {
+            "name": "Instructional Language for Students",
+            "rating": "3"
+          },
+          {
+            "name": "Instructional Language for Teachers",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson provides a concrete strategy for struggling learners (translation and personal examples) but fails to provide any extension or support for advanced students.",
+        "strengths": [
+          "The differentiation note for struggling students provides a specific, actionable strategy.",
+          "The instructional language is clear and easy for teachers to follow."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Suggestions for Struggling or Advanced Students",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Practice",
+            "instruction": "Add an extension task for advanced students, such as asking them to write a short paragraph using both 'each other' and 'one another'."
+          }
+        ]
+      },
+      {
+        "criterion": "Deeper Learning & Student Engagement",
+        "totalScore": "10 / 16",
+        "subCriteria": [
+          {
+            "name": "Active Student Participation",
+            "rating": "3"
+          },
+          {
+            "name": "Peer Interaction Opportunities",
+            "rating": "2"
+          },
+          {
+            "name": "Real-World Application",
+            "rating": "2"
+          },
+          {
+            "name": "Closing Assessment / Lesson Consolidation",
+            "rating": "3"
+          }
+        ],
+        "rationale": "Students are actively participating through writing, but peer interaction is limited to the hook. Real-world application is mentioned conceptually but not applied in practice.",
+        "strengths": [
+          "The conclusion includes a specific True/False quiz to consolidate learning.",
+          "Students are required to produce written output during the practice phase."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Peer Interaction Opportunities",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Practice",
+            "instruction": "Instruct students to compare their completed sentences with a partner and discuss their answers before the teacher reviews them with the class."
+          },
+          {
+            "subCriterion": "Real-World Application",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Ask students to share an example of something they do with their siblings or friends at home to connect the concept of 'each other' to their daily lives."
+          }
+        ]
+      },
+      {
+        "criterion": "Cultural Relevance & Representation",
+        "totalScore": "10 / 16",
+        "subCriteria": [
+          {
+            "name": "Contextually Relevant Content",
+            "rating": "3"
+          },
+          {
+            "name": "Inclusive & Diverse Representation",
+            "rating": "2"
+          },
+          {
+            "name": "Student Voice & Cultural Connection",
+            "rating": "2"
+          },
+          {
+            "name": "Language & Cultural Sensitivity",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson uses local names (Ali, Asad) but lacks diverse representation (only male names used). There are limited opportunities for students to bring their own experiences into the lesson.",
+        "strengths": [
+          "The names used in the examples are contextually relevant to Pakistani students.",
+          "The language used is culturally sensitive and appropriate."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Inclusive & Diverse Representation",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "MODIFY",
+            "location": "Explanation",
+            "instruction": "Change the example or add a second example using female names (e.g., 'Sana and Fatima') to ensure gender diversity in the lesson content."
+          },
+          {
+            "subCriterion": "Student Voice & Cultural Connection",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Prompt students to give their own examples of teamwork from their community or school using reciprocal pronouns."
+          }
+        ]
+      },
+      {
+        "criterion": "Factual Accuracy & Bias",
+        "totalScore": "8 / 12",
+        "subCriteria": [
+          {
+            "name": "Internal Consistency",
+            "rating": "3"
+          },
+          {
+            "name": "Academic Content Accuracy",
+            "rating": "2"
+          },
+          {
+            "name": "Bias and Balance",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson is internally consistent, but it misses a crucial academic distinction: the difference in usage between 'each other' (usually for two people) and 'one another' (usually for more than two), which is required to answer the practice questions correctly.",
+        "strengths": [
+          "The lesson is free from bias and presents information objectively.",
+          "The instructions and answer keys align with the provided questions."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Academic Content Accuracy",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Explicitly explain the grammatical rule that 'each other' is typically used for two people/things, while 'one another' is used for more than two, so students can correctly complete the practice questions."
+          }
+        ]
+      },
+      {
+        "criterion": "Subject Specific Review - English",
+        "totalScore": "9 / 12",
+        "subCriteria": [
+          {
+            "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
+            "rating": "4"
+          },
+          {
+            "name": "Named Teaching Strategies",
+            "rating": "2"
+          },
+          {
+            "name": "Evidence of Textbook Material Usage",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson maintains a strong focus on grammar application. However, it does not explicitly name or utilize specific ESL teaching strategies (like concept checking questions or drilling).",
+        "strengths": [
+          "The lesson maintains a clear and consistent focus on the target grammar skill.",
+          "The lesson explicitly references and utilizes an activity from the textbook."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Named Teaching Strategies",
+            "currentScore": "2",
+            "targetScore": "3",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Incorporate and name a specific ESL strategy, such as 'Concept Checking Questions (CCQs)', to verify students understand the meaning of the pronouns before moving to practice."
+          }
+        ]
+      }
+    ]
+  },
+  "metadata": {
+    "timings": {
+      "review_time": 50.405,
+      "total_time": 50.405
+    },
+    "tokens": {
+      "input_tokens": 12767,
+      "output_tokens": 4562,
+      "total_tokens": 17329,
+      "model": "google/gemini-3.1-pro-preview",
+      "cost_usd": 0.0641122,
+      "cached_tokens": 8981
+    }
+  }
+}

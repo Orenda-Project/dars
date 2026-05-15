@@ -6,7 +6,9 @@
     "page": "111",
     "topic": "Journey through text",
     "status": "OK",
-    "html_file": "lp-01.html"
+    "html_file": "lp-01.html",
+    "review_file": "lp-01.review.json",
+    "review_status": "OK"
   },
   {
     "id": 2,
@@ -15,7 +17,9 @@
     "page": "15",
     "topic": "New words to know",
     "status": "OK",
-    "html_file": "lp-02.html"
+    "html_file": "lp-02.html",
+    "review_file": "lp-02.review.json",
+    "review_status": "OK"
   },
   {
     "id": 3,
@@ -24,7 +28,9 @@
     "page": "127-128",
     "topic": "Activity 2",
     "status": "OK",
-    "html_file": "lp-03.html"
+    "html_file": "lp-03.html",
+    "review_file": "lp-03.review.json",
+    "review_status": "OK"
   },
   {
     "id": 4,
@@ -33,7 +39,9 @@
     "page": "10",
     "topic": "Activity 3",
     "status": "OK",
-    "html_file": "lp-04.html"
+    "html_file": "lp-04.html",
+    "review_file": "lp-04.review.json",
+    "review_status": "OK"
   },
   {
     "id": 5,
@@ -42,7 +50,9 @@
     "page": "133",
     "topic": "",
     "status": "OK",
-    "html_file": "lp-05.html"
+    "html_file": "lp-05.html",
+    "review_file": "lp-05.review.json",
+    "review_status": "OK"
   },
   {
     "id": 6,
@@ -51,7 +61,9 @@
     "page": "32-33",
     "topic": "Journey through text",
     "status": "OK",
-    "html_file": "lp-06.html"
+    "html_file": "lp-06.html",
+    "review_file": "lp-06.review.json",
+    "review_status": "OK"
   },
   {
     "id": 7,
@@ -60,7 +72,9 @@
     "page": "44-45",
     "topic": "Memory lane",
     "status": "OK",
-    "html_file": "lp-07.html"
+    "html_file": "lp-07.html",
+    "review_file": "lp-07.review.json",
+    "review_status": "OK"
   },
   {
     "id": 8,
@@ -69,7 +83,9 @@
     "page": "49",
     "topic": "Activity 3",
     "status": "OK",
-    "html_file": "lp-08.html"
+    "html_file": "lp-08.html",
+    "review_file": "lp-08.review.json",
+    "review_status": "OK"
   },
   {
     "id": 9,
@@ -78,7 +94,9 @@
     "page": "39",
     "topic": "Activity 3",
     "status": "OK",
-    "html_file": "lp-09.html"
+    "html_file": "lp-09.html",
+    "review_file": "lp-09.review.json",
+    "review_status": "OK"
   },
   {
     "id": 10,
@@ -87,6 +105,8 @@
     "page": "15",
     "topic": "Activity 3",
     "status": "OK",
-    "html_file": "lp-10.html"
+    "html_file": "lp-10.html",
+    "review_file": "lp-10.review.json",
+    "review_status": "OK"
   }
 ]

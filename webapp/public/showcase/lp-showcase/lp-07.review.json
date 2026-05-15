@@ -1,0 +1,381 @@
+{
+  "status": "success",
+  "review": {
+    "grandTotal": "143 / 184",
+    "percentage": "78%",
+    "evaluation": [
+      {
+        "criterion": "Structural Completeness",
+        "totalScore": "23 / 24",
+        "subCriteria": [
+          {
+            "name": "SLO Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Hook Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Explanation Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Practice Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Conclusion Present and Non-Empty",
+            "rating": "4"
+          },
+          {
+            "name": "Single-Lesson Scope (One 40-Minute Class)",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson plan contains all required structural components with substantive content. It is scoped as a single lesson, though it lacks explicit time allocations (addressed in Practicality).",
+        "strengths": [
+          "All sections are fully populated with actionable content.",
+          "The SLO is clear, specific, and immediately usable."
+        ],
+        "improvements": []
+      },
+      {
+        "criterion": "Curriculum Alignment",
+        "totalScore": "22 / 24",
+        "subCriteria": [
+          {
+            "name": "Clear, Specific, and Single-Focus SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Measurable SLOs",
+            "rating": "4"
+          },
+          {
+            "name": "Scaffolded Activities",
+            "rating": "3"
+          },
+          {
+            "name": "Aligned with Textbook Content",
+            "rating": "3"
+          },
+          {
+            "name": "SLO\u2013Assessment Alignment",
+            "rating": "4"
+          },
+          {
+            "name": "Bloom's Level Accuracy",
+            "rating": "4"
+          }
+        ],
+        "rationale": "The lesson aligns perfectly with the stated SLO of guessing vocabulary meanings using context clues. The Bloom's level (Understand) is accurate, and the assessments directly measure the targeted skill. Textbook alignment is plausible, though the book text was not provided for verification.",
+        "strengths": [
+          "The SLO is highly focused on a single, measurable skill.",
+          "Assessments in the Practice and Conclusion sections directly measure the SLO."
+        ],
+        "improvements": []
+      },
+      {
+        "criterion": "Instructional Flow",
+        "totalScore": "34 / 44",
+        "subCriteria": [
+          {
+            "name": "Opening Hook Relevant to SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Explicit Instructions in Explanation",
+            "rating": "3"
+          },
+          {
+            "name": "Modeling/Demonstration by Teacher",
+            "rating": "4"
+          },
+          {
+            "name": "Smooth Transitions Across Steps",
+            "rating": "3"
+          },
+          {
+            "name": "Practice Opportunities for Students",
+            "rating": "3"
+          },
+          {
+            "name": "Appropriately Placed and Spaced CFU Questions",
+            "rating": "3"
+          },
+          {
+            "name": "Grade-Appropriate Strategies Aligned with SLO",
+            "rating": "3"
+          },
+          {
+            "name": "Higher-Order Thinking Opportunities",
+            "rating": "3"
+          },
+          {
+            "name": "Visual Aid Effectiveness",
+            "rating": "3"
+          },
+          {
+            "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "rating": "2"
+          },
+          {
+            "name": "Prior Knowledge Activation",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The instructional flow is generally logical, with a strong hook and excellent teacher modeling. However, the Gradual Release of Responsibility skips the 'We Do' phase, jumping straight from teacher modeling to independent practice.",
+        "strengths": [
+          "The hook effectively uses realia (a pencil box) to concretize the abstract concept of 'guessing from clues'.",
+          "The teacher explicitly models the cognitive process of finding context clues in the Explanation."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Add a 'We Do' phase after modeling Clue 1, where the teacher and students work together to read Clue 2 and guess its meaning collaboratively before students move to independent practice."
+          }
+        ]
+      },
+      {
+        "criterion": "Practicality & Teacher Support",
+        "totalScore": "13 / 20",
+        "subCriteria": [
+          {
+            "name": "Appropriately Timed Sections",
+            "rating": "1"
+          },
+          {
+            "name": "Adequate Time for Practice and Explanation",
+            "rating": "2"
+          },
+          {
+            "name": "Teacher Support Materials",
+            "rating": "3"
+          },
+          {
+            "name": "Resource Requirements",
+            "rating": "4"
+          },
+          {
+            "name": "Teacher Flexibility / No Over-Scripting",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson requires minimal, highly practical resources and provides good answer keys. However, it completely lacks time allocations for its sections, making it difficult for a teacher to pace the 40-minute class.",
+        "strengths": [
+          "Resources required are extremely low-cost and readily available.",
+          "Answer keys are provided for both the Practice and Conclusion sections."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Appropriately Timed Sections",
+            "currentScore": "1",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "All Sections",
+            "instruction": "Add specific time allocations in minutes next to each section heading (Hook, Explanation, Practice, Conclusion) ensuring they sum to 35-45 minutes."
+          },
+          {
+            "subCriterion": "Adequate Time for Practice and Explanation",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "All Sections",
+            "instruction": "When adding times, ensure the Practice section is allocated sufficient time (e.g., 15-20 minutes) for students to read multiple clues and write their answers."
+          }
+        ]
+      },
+      {
+        "criterion": "Accessibility & Differentiation",
+        "totalScore": "10 / 16",
+        "subCriteria": [
+          {
+            "name": "Suggestions for Struggling or Advanced Students",
+            "rating": "2"
+          },
+          {
+            "name": "Named Differentiation Strategies with Instructions",
+            "rating": "2"
+          },
+          {
+            "name": "Instructional Language for Students",
+            "rating": "3"
+          },
+          {
+            "name": "Instructional Language for Teachers",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson includes basic support for struggling students (reading slowly) but completely omits support for advanced learners. It also lacks specific, named differentiation strategies.",
+        "strengths": [
+          "Instructional language is simple, clear, and age-appropriate for Grade 5."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Suggestions for Struggling or Advanced Students",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Practice",
+            "instruction": "Add an extension task for advanced students, such as asking them to write their own original sentence using one of the new vocabulary words with a context clue."
+          },
+          {
+            "subCriterion": "Named Differentiation Strategies with Instructions",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Practice",
+            "instruction": "Include a named differentiation strategy, such as 'Tiered Tasks' for early finishers or 'Think-Alouds' for struggling readers, with brief instructions on how to execute it."
+          }
+        ]
+      },
+      {
+        "criterion": "Deeper Learning & Student Engagement",
+        "totalScore": "10 / 16",
+        "subCriteria": [
+          {
+            "name": "Active Student Participation",
+            "rating": "3"
+          },
+          {
+            "name": "Peer Interaction Opportunities",
+            "rating": "1"
+          },
+          {
+            "name": "Real-World Application",
+            "rating": "3"
+          },
+          {
+            "name": "Closing Assessment / Lesson Consolidation",
+            "rating": "3"
+          }
+        ],
+        "rationale": "Students are actively engaged in guessing and writing, and the lesson connects to real-world concepts well. However, despite the class context noting that group/pair work is feasible, there are zero opportunities for peer interaction.",
+        "strengths": [
+          "The closing True/False assessment effectively consolidates learning of the specific vocabulary words.",
+          "Real-world application is integrated naturally through the hook and vocabulary examples."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Peer Interaction Opportunities",
+            "currentScore": "1",
+            "targetScore": "4",
+            "action": "MODIFY",
+            "location": "Practice",
+            "instruction": "Incorporate a 'Think-Pair-Share' structure where students first discuss their guesses for the vocabulary meanings with a partner before writing them down."
+          }
+        ]
+      },
+      {
+        "criterion": "Cultural Relevance & Representation",
+        "totalScore": "10 / 16",
+        "subCriteria": [
+          {
+            "name": "Contextually Relevant Content",
+            "rating": "3"
+          },
+          {
+            "name": "Inclusive & Diverse Representation",
+            "rating": "2"
+          },
+          {
+            "name": "Student Voice & Cultural Connection",
+            "rating": "2"
+          },
+          {
+            "name": "Language & Cultural Sensitivity",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The content is contextually relevant and sensitive, but it lacks specific diverse representation (e.g., local names) and only superficially invites student voice.",
+        "strengths": [
+          "Examples used to explain vocabulary (e.g., exam nervousness, sharing a pencil) are highly relatable to students."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Inclusive & Diverse Representation",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "MODIFY",
+            "location": "Explanation",
+            "instruction": "Include diverse Pakistani names in the real-life examples (e.g., 'sacrifice is Ali giving his favorite pencil to Fatima')."
+          },
+          {
+            "subCriterion": "Student Voice & Cultural Connection",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "ADD",
+            "location": "Explanation",
+            "instruction": "Ask students to share a personal or community example of when they witnessed a 'sacrifice' or felt 'freedom' to deepen cultural and personal connection."
+          }
+        ]
+      },
+      {
+        "criterion": "Factual Accuracy & Bias",
+        "totalScore": "11 / 12",
+        "subCriteria": [
+          {
+            "name": "Internal Consistency",
+            "rating": "3"
+          },
+          {
+            "name": "Academic Content Accuracy",
+            "rating": "4"
+          },
+          {
+            "name": "Bias and Balance",
+            "rating": "4"
+          }
+        ],
+        "rationale": "The lesson is factually accurate, unbiased, and internally consistent. The strategy for teaching context clues is academically sound.",
+        "strengths": [
+          "Vocabulary definitions provided in the answer key are accurate and phrased in student-friendly language.",
+          "The lesson is free from bias and maintains a neutral, educational tone."
+        ],
+        "improvements": []
+      },
+      {
+        "criterion": "Subject Specific Review - English",
+        "totalScore": "10 / 12",
+        "subCriteria": [
+          {
+            "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
+            "rating": "4"
+          },
+          {
+            "name": "Named Teaching Strategies",
+            "rating": "3"
+          },
+          {
+            "name": "Evidence of Textbook Material Usage",
+            "rating": "3"
+          }
+        ],
+        "rationale": "The lesson maintains a strong focus on reading comprehension and vocabulary acquisition. It explicitly teaches the strategy of using context clues and references specific textbook pages and exercises.",
+        "strengths": [
+          "Clear and consistent focus on reading and vocabulary skills.",
+          "Explicitly teaches the 'context clues' strategy rather than just asking students to look up words."
+        ],
+        "improvements": []
+      }
+    ]
+  },
+  "metadata": {
+    "timings": {
+      "review_time": 41.145,
+      "total_time": 41.145
+    },
+    "tokens": {
+      "input_tokens": 12885,
+      "output_tokens": 5720,
+      "total_tokens": 18605,
+      "model": "google/gemini-3.1-pro-preview",
+      "cost_usd": 0.09441
+    }
+  }
+}
