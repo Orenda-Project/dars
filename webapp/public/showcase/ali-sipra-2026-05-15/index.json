@@ -1,0 +1,92 @@
+[
+  {
+    "id": 1,
+    "grade": 2,
+    "skill": "Reading",
+    "page": "111",
+    "topic": "Journey through text",
+    "status": "OK",
+    "html_file": "lp-01.html"
+  },
+  {
+    "id": 2,
+    "grade": 2,
+    "skill": "Comprehension w/ meanings",
+    "page": "15",
+    "topic": "New words to know",
+    "status": "OK",
+    "html_file": "lp-02.html"
+  },
+  {
+    "id": 3,
+    "grade": 2,
+    "skill": "Comprehension Q&A",
+    "page": "127-128",
+    "topic": "Activity 2",
+    "status": "OK",
+    "html_file": "lp-03.html"
+  },
+  {
+    "id": 4,
+    "grade": 2,
+    "skill": "Grammar",
+    "page": "10",
+    "topic": "Activity 3",
+    "status": "OK",
+    "html_file": "lp-04.html"
+  },
+  {
+    "id": 5,
+    "grade": 2,
+    "skill": "Creative writing",
+    "page": "133",
+    "topic": "",
+    "status": "OK",
+    "html_file": "lp-05.html"
+  },
+  {
+    "id": 6,
+    "grade": 5,
+    "skill": "Reading",
+    "page": "32-33",
+    "topic": "Journey through text",
+    "status": "OK",
+    "html_file": "lp-06.html"
+  },
+  {
+    "id": 7,
+    "grade": 5,
+    "skill": "Comprehension w/ meanings",
+    "page": "44-45",
+    "topic": "Memory lane",
+    "status": "OK",
+    "html_file": "lp-07.html"
+  },
+  {
+    "id": 8,
+    "grade": 5,
+    "skill": "Comprehension Q&A",
+    "page": "49",
+    "topic": "Activity 3",
+    "status": "OK",
+    "html_file": "lp-08.html"
+  },
+  {
+    "id": 9,
+    "grade": 5,
+    "skill": "Grammar",
+    "page": "39",
+    "topic": "Activity 3",
+    "status": "OK",
+    "html_file": "lp-09.html"
+  },
+  {
+    "id": 10,
+    "grade": 5,
+    "skill": "Creative writing",
+    "page": "15",
+    "topic": "Activity 3",
+    "status": "OK",
+    "html_file": "lp-10.html"
+  }
+]
