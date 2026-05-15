@@ -896,10 +896,24 @@ async def generate_lesson_sequence(
     subject_key = subject_str.lower()
     cycle = _LP_CYCLES.get(subject_key, _DEFAULT_CYCLE)
 
+    # Build a sequence of exactly n total periods: FA every 5th period (4 lessons + 1 FA).
+    # teaching_days is the total period budget — lessons + FAs combined.
+    _FA_INTERVAL = 5  # one FA per block of 5 periods
     n = plan.teaching_days
-    lp_types: list[str] = []
+
+    # Pre-compute which period indices (0-based) are FAs vs lessons
+    period_types: list[str] = []  # "lesson" or "fa"
     for i in range(n):
-        if i == n - 1:
+        if (i + 1) % _FA_INTERVAL == 0:
+            period_types.append("fa")
+        else:
+            period_types.append("lesson")
+
+    # Count actual lesson slots to assign LP types
+    lesson_count = period_types.count("lesson")
+    lp_types: list[str] = []
+    for i in range(lesson_count):
+        if i == lesson_count - 1:
             lp_types.append("Revision")
         else:
             lp_types.append(cycle[i % len(cycle)])
@@ -915,30 +929,29 @@ async def generate_lesson_sequence(
         )
     )
 
-    # Build interleaved sequence: lesson slots + one FA after every 4 lessons
-    _FA_INTERVAL = 4
     new_lesson_slots: list[ClassLessonSlot] = []
     new_assessment_slots: list[AssessmentSlot] = []
     current_day = global_day_offset
+    lesson_idx = 0
     fa_counter = 1
 
-    for lesson_idx, lp_type in enumerate(lp_types, start=1):
+    for ptype in period_types:
         current_day += 1
-        slot = ClassLessonSlot(
-            client_id=cst.client_id,
-            class_subject_teacher_id=cst.id,
-            chapter_plan_id=chapter_plan_id,
-            day_number=current_day,
-            lp_type=lp_type,
-            title=f"Day {current_day}: {lp_type}",
-            status="planned",
-        )
-        db.add(slot)
-        new_lesson_slots.append(slot)
-
-        # Insert FA after every _FA_INTERVAL lessons (but not after the last lesson)
-        if lesson_idx % _FA_INTERVAL == 0 and lesson_idx < n:
-            current_day += 1
+        if ptype == "lesson":
+            lp_type = lp_types[lesson_idx]
+            slot = ClassLessonSlot(
+                client_id=cst.client_id,
+                class_subject_teacher_id=cst.id,
+                chapter_plan_id=chapter_plan_id,
+                day_number=current_day,
+                lp_type=lp_type,
+                title=f"Day {current_day}: {lp_type}",
+                status="planned",
+            )
+            db.add(slot)
+            new_lesson_slots.append(slot)
+            lesson_idx += 1
+        else:
             aslot = AssessmentSlot(
                 client_id=cst.client_id,
                 class_subject_teacher_id=cst.id,
