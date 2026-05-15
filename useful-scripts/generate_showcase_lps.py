@@ -51,11 +51,7 @@ class LPSpec:
     skill: str
     page: str
     topic: str
-
-    @property
-    def custom_prompt(self) -> str:
-        topic_clause = f" Topic: {self.topic}." if self.topic else ""
-        return f"Focus this lesson on the {self.skill} skill.{topic_clause}"
+    lp_type: str
 
     @property
     def html_file(self) -> str:
@@ -63,16 +59,16 @@ class LPSpec:
 
 
 SPECS: list[LPSpec] = [
-    LPSpec(1, 2, "Reading", "111", "Journey through text"),
-    LPSpec(2, 2, "Comprehension w/ meanings", "15", "New words to know"),
-    LPSpec(3, 2, "Comprehension Q&A", "127-128", "Activity 2"),
-    LPSpec(4, 2, "Grammar", "10", "Activity 3"),
-    LPSpec(5, 2, "Creative writing", "133", ""),
-    LPSpec(6, 5, "Reading", "32-33", "Journey through text"),
-    LPSpec(7, 5, "Comprehension w/ meanings", "44-45", "Memory lane"),
-    LPSpec(8, 5, "Comprehension Q&A", "49", "Activity 3"),
-    LPSpec(9, 5, "Grammar", "39", "Activity 3"),
-    LPSpec(10, 5, "Creative writing", "15", "Activity 3"),
+    LPSpec(1, 2, "Reading", "111", "Journey through text", "reading"),
+    LPSpec(2, 2, "Comprehension w/ meanings", "15", "New words to know", "comprehension_word_meanings"),
+    LPSpec(3, 2, "Comprehension Q&A", "127-128", "Activity 2", "comprehension_qa"),
+    LPSpec(4, 2, "Grammar", "10", "Activity 3", "grammar"),
+    LPSpec(5, 2, "Creative writing", "133", "", "creative_writing"),
+    LPSpec(6, 5, "Reading", "32-33", "Journey through text", "reading"),
+    LPSpec(7, 5, "Comprehension w/ meanings", "44-45", "Memory lane", "comprehension_word_meanings"),
+    LPSpec(8, 5, "Comprehension Q&A", "49", "Activity 3", "comprehension_qa"),
+    LPSpec(9, 5, "Grammar", "39", "Activity 3", "grammar"),
+    LPSpec(10, 5, "Creative writing", "15", "Activity 3", "creative_writing"),
 ]
 
 
@@ -168,11 +164,11 @@ def generate_one(
         "class_strength": 30,
         "generate_bilingual": False,
         "reasoning_enabled": True,
-        "custom_prompt": spec.custom_prompt,
+        "lp_type": spec.lp_type,
     }
     logger.info(
-        "generate_one: enter id=%s grade=%s page=%s skill=%s curriculum=%s",
-        spec.id, spec.grade, spec.page, spec.skill, curriculum,
+        "generate_one: enter id=%s grade=%s page=%s skill=%s lp_type=%s curriculum=%s",
+        spec.id, spec.grade, spec.page, spec.skill, spec.lp_type, curriculum,
     )
     try:
         with httpx.Client(timeout=REQUEST_TIMEOUT) as http:
@@ -272,6 +268,7 @@ def _spec_by_id(entry: dict[str, Any]) -> LPSpec | None:
             skill=str(entry["skill"]),
             page=str(entry["page"]),
             topic=str(entry.get("topic") or ""),
+            lp_type=str(entry.get("lp_type") or ""),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -384,6 +381,7 @@ def write_results(out_dir: Path, results: list[LPResult]) -> None:
             "skill": r.spec.skill,
             "page": r.spec.page,
             "topic": r.spec.topic,
+            "lp_type": r.spec.lp_type,
             "status": r.status,
             "html_file": r.spec.html_file,
             "review_file": f"lp-{r.spec.id:02d}.review.json",
