@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { getExam, type GeneratedExamResponse } from "@/lib/school-api";
+import { useState, useEffect } from "react";
+import { getMockExam } from "@/lib/teacher-app-mocks";
+import { ExamPaperView } from "../_components/exam-paper-view";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -16,64 +17,33 @@ function getApiKey(): string {
 // Exam result + polling
 // ---------------------------------------------------------------------------
 
-function ExamResult({ examId }: { examId: string }) {
-  const [exam, setExam] = useState<GeneratedExamResponse | null>(null);
+function ExamResult({ examId, subject }: { examId: string; subject: string }) {
   const [slideOpen, setSlideOpen] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
-
-  const fetchExam = useCallback(async () => {
-    try {
-      const data = await getExam(examId);
-      setExam(data);
-      if (data.status === "READY" || data.status === "ERROR") stopPolling();
-    } catch { /* silent */ }
-  }, [examId, stopPolling]);
-
-  useEffect(() => {
-    fetchExam();
-    intervalRef.current = setInterval(fetchExam, 3000);
-    return stopPolling;
-  }, [fetchExam, stopPolling]);
-
-  if (!exam) return <p className="text-sm text-gray-400 animate-pulse">Waiting for result…</p>;
+  const exam = getMockExam(examId, subject);
 
   const statusColors: Record<string, string> = {
     READY: "bg-green-100 text-green-700 border-green-200",
-    ERROR: "bg-red-100 text-red-700 border-red-200",
-    PENDING: "bg-amber-50 text-amber-700 border-amber-200",
   };
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
       <div className="flex items-center gap-3 mb-3">
         <h3 className="font-semibold text-gray-900 text-sm">Result</h3>
-        <span className={`text-xs font-semibold uppercase tracking-wide border rounded px-2 py-0.5 ${statusColors[exam.status] ?? statusColors.PENDING}`}>
-          {exam.status}
+        <span className={`text-xs font-semibold uppercase tracking-wide border rounded px-2 py-0.5 ${statusColors.READY}`}>
+          READY
         </span>
       </div>
       <p className="text-xs text-gray-400 mb-3 font-mono">{exam.id}</p>
 
-      {exam.status === "PENDING" && (
-        <p className="text-sm text-amber-600 animate-pulse">Generating exam…</p>
-      )}
-      {exam.status === "ERROR" && (
-        <p className="text-sm text-red-600">{exam.error_message ?? "Generation failed."}</p>
-      )}
-      {exam.status === "READY" && (
-        <button
-          onClick={() => setSlideOpen(true)}
-          className="text-sm px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors border-none cursor-pointer font-medium"
-        >
-          View Exam
-        </button>
-      )}
+      <button
+        onClick={() => setSlideOpen(true)}
+        className="text-sm px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors border-none cursor-pointer font-medium"
+      >
+        View Exam
+      </button>
 
       {/* Slide-over */}
-      {slideOpen && exam.status === "READY" && (
+      {slideOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/30" onClick={() => setSlideOpen(false)} />
           <div className="relative w-full max-w-2xl bg-white h-full shadow-xl flex flex-col">
@@ -86,9 +56,7 @@ function ExamResult({ examId }: { examId: string }) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5">
-              <pre className="text-xs bg-gray-50 p-4 rounded overflow-auto whitespace-pre-wrap">
-                {JSON.stringify(exam.result, null, 2)}
-              </pre>
+              <ExamPaperView result={exam.result} />
             </div>
           </div>
         </div>
@@ -211,7 +179,7 @@ export default function QuickExamPage() {
         </form>
       </div>
 
-      {resultId && <ExamResult key={resultKey} examId={resultId} />}
+      {resultId && <ExamResult key={resultKey} examId={resultId} subject={subject} />}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { getLessonPlan, type GeneratedLPResponse } from "@/lib/school-api";
+import { useState, useEffect } from "react";
+import { getMockLP } from "@/lib/teacher-app-mocks";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -16,64 +16,33 @@ function getApiKey(): string {
 // LP result + polling
 // ---------------------------------------------------------------------------
 
-function LPResult({ lpId }: { lpId: string }) {
-  const [lp, setLp] = useState<GeneratedLPResponse | null>(null);
+function LPResult({ lpId, subject }: { lpId: string; subject: string }) {
   const [slideOpen, setSlideOpen] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
-
-  const fetchLP = useCallback(async () => {
-    try {
-      const data = await getLessonPlan(lpId);
-      setLp(data);
-      if (data.status === "READY" || data.status === "ERROR") stopPolling();
-    } catch { /* silent */ }
-  }, [lpId, stopPolling]);
-
-  useEffect(() => {
-    fetchLP();
-    intervalRef.current = setInterval(fetchLP, 3000);
-    return stopPolling;
-  }, [fetchLP, stopPolling]);
-
-  if (!lp) return <p className="text-sm text-gray-400 animate-pulse">Waiting for result…</p>;
+  const lp = getMockLP(lpId, subject);
 
   const statusColors: Record<string, string> = {
     READY: "bg-green-100 text-green-700 border-green-200",
-    ERROR: "bg-red-100 text-red-700 border-red-200",
-    PENDING: "bg-amber-50 text-amber-700 border-amber-200",
   };
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
       <div className="flex items-center gap-3 mb-3">
         <h3 className="font-semibold text-gray-900 text-sm">Result</h3>
-        <span className={`text-xs font-semibold uppercase tracking-wide border rounded px-2 py-0.5 ${statusColors[lp.status] ?? statusColors.PENDING}`}>
-          {lp.status}
+        <span className={`text-xs font-semibold uppercase tracking-wide border rounded px-2 py-0.5 ${statusColors.READY}`}>
+          READY
         </span>
       </div>
       <p className="text-xs text-gray-400 mb-3 font-mono">{lp.id}</p>
 
-      {lp.status === "PENDING" && (
-        <p className="text-sm text-amber-600 animate-pulse">Generating lesson plan…</p>
-      )}
-      {lp.status === "ERROR" && (
-        <p className="text-sm text-red-600">{lp.error_message ?? "Generation failed."}</p>
-      )}
-      {lp.status === "READY" && (
-        <button
-          onClick={() => setSlideOpen(true)}
-          className="text-sm px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors border-none cursor-pointer font-medium"
-        >
-          View Lesson Plan
-        </button>
-      )}
+      <button
+        onClick={() => setSlideOpen(true)}
+        className="text-sm px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors border-none cursor-pointer font-medium"
+      >
+        View Lesson Plan
+      </button>
 
       {/* Slide-over */}
-      {slideOpen && lp.status === "READY" && (
+      {slideOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/30" onClick={() => setSlideOpen(false)} />
           <div className="relative w-full max-w-2xl bg-white h-full shadow-xl flex flex-col">
@@ -86,10 +55,8 @@ function LPResult({ lpId }: { lpId: string }) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5">
-              {lp.content ? (
+              {lp.content && (
                 <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: lp.content }} />
-              ) : (
-                <p className="text-sm text-gray-500">No content returned.</p>
               )}
             </div>
           </div>
@@ -222,7 +189,7 @@ export default function QuickLPPage() {
         </form>
       </div>
 
-      {resultId && <LPResult key={resultKey} lpId={resultId} />}
+      {resultId && <LPResult key={resultKey} lpId={resultId} subject={subject} />}
     </div>
   );
 }
