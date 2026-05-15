@@ -1,6 +1,13 @@
 -- v2 cutover migration: drop everything, recreate under v2 schema.
 -- Plan: docs/plans/2026-05-15-dars-v2-rebuild/02-data-model.md
--- All PKs are UUID (D-decision from 2026-05-15 Phase 1 kickoff; supersedes earlier BIGSERIAL+UUID pattern).
+-- All PKs are UUID (D-62; supersedes earlier BIGSERIAL+UUID pattern).
+--
+-- Originally landed as 20260516000000_v2_cutover.sql in PR #37. Renamed to
+-- 20260517000000_ in PR #39 after the first deploy revealed a migration-order
+-- bug: the old 0513/0514 migrations re-ran after the cutover (because the
+-- cutover wiped schema_migrations) and corrupted the v2 schema. Those old
+-- migration files were deleted in PR #39; this file was renamed so the
+-- runner sees it as pending and re-applies the clean cutover.
 
 -- ---------------------------------------------------------------------------
 -- Clean slate
