@@ -10,9 +10,15 @@ export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: Promise<{ tag: string }>;
+  searchParams: Promise<{ lp?: string | string[] }>;
 };
 
-async function loadEntries(tag: string): Promise<ShowcaseEntry[] | null> {
+type LoadResult = {
+  entries: ShowcaseEntry[];
+  generatedAt: string | null;
+};
+
+async function loadShowcase(tag: string): Promise<LoadResult | null> {
   const indexPath = path.join(
     process.cwd(),
     "public",
@@ -21,10 +27,18 @@ async function loadEntries(tag: string): Promise<ShowcaseEntry[] | null> {
     "index.json",
   );
   try {
-    const raw = await fs.readFile(indexPath, "utf-8");
+    const [raw, stat] = await Promise.all([
+      fs.readFile(indexPath, "utf-8"),
+      fs.stat(indexPath),
+    ]);
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    return parsed as ShowcaseEntry[];
+    const generatedAt = stat.mtime.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    return { entries: parsed as ShowcaseEntry[], generatedAt };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return null;
@@ -32,11 +46,19 @@ async function loadEntries(tag: string): Promise<ShowcaseEntry[] | null> {
   }
 }
 
-export default async function ShowcasePage({ params }: PageProps) {
-  const { tag } = await params;
-  const entries = await loadEntries(tag);
+function parseLpId(raw: string | string[] | undefined): number | null {
+  if (raw === undefined) return null;
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
 
-  if (entries === null) {
+export default async function ShowcasePage({ params, searchParams }: PageProps) {
+  const { tag } = await params;
+  const { lp } = await searchParams;
+  const loaded = await loadShowcase(tag);
+
+  if (loaded === null) {
     return (
       <main className="min-h-screen bg-dars-parchment text-dars-ink flex items-center justify-center p-10">
         <div className="max-w-md text-center">
@@ -57,5 +79,12 @@ export default async function ShowcasePage({ params }: PageProps) {
     );
   }
 
-  return <ShowcaseTemplate tag={tag} entries={entries} />;
+  return (
+    <ShowcaseTemplate
+      tag={tag}
+      entries={loaded.entries}
+      generatedAt={loaded.generatedAt}
+      initialLpId={parseLpId(lp)}
+    />
+  );
 }
