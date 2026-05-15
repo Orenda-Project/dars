@@ -10,43 +10,22 @@ import {
   markTaught,
   generateLPForSlot,
   generateAllLPs,
-  getLessonPlan,
   generateExamForSlot,
-  getExam,
   getCst,
   getTimetable,
   type ChapterPlanWithDates,
   type ClassLessonSlotRead,
   type AssessmentSlotRead,
-  type GeneratedLPResponse,
-  type GeneratedExamResponse,
 } from "@/lib/school-api";
+import { getMockLP, getMockExam } from "@/lib/teacher-app-mocks";
+import { ExamPaperView } from "../../_components/exam-paper-view";
 
 // ---------------------------------------------------------------------------
 // LP slide-over
 // ---------------------------------------------------------------------------
 
-function LPSlideOver({ lpId, onClose }: { lpId: string; onClose: () => void }) {
-  const [lp, setLp] = useState<GeneratedLPResponse | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
-
-  const fetchLP = useCallback(async () => {
-    try {
-      const data = await getLessonPlan(lpId);
-      setLp(data);
-      if (data.status === "READY" || data.status === "ERROR") stopPolling();
-    } catch { /* silent */ }
-  }, [lpId, stopPolling]);
-
-  useEffect(() => {
-    fetchLP();
-    intervalRef.current = setInterval(fetchLP, 3000);
-    return stopPolling;
-  }, [fetchLP, stopPolling]);
+function LPSlideOver({ lpId, subject, onClose }: { lpId: string; subject: string; onClose: () => void }) {
+  const lp = getMockLP(lpId, subject);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -61,13 +40,9 @@ function LPSlideOver({ lpId, onClose }: { lpId: string; onClose: () => void }) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          {!lp && <p className="text-sm text-gray-400 animate-pulse">Loading…</p>}
-          {lp?.status === "PENDING" && <p className="text-sm text-amber-600 animate-pulse">Generating lesson plan…</p>}
-          {lp?.status === "ERROR" && <p className="text-sm text-red-600">Generation failed.</p>}
-          {lp?.status === "READY" && lp.content && (
+          {lp.content && (
             <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: lp.content }} />
           )}
-          {lp?.status === "READY" && !lp.content && <p className="text-sm text-gray-500">No content returned.</p>}
         </div>
       </div>
     </div>
@@ -78,27 +53,8 @@ function LPSlideOver({ lpId, onClose }: { lpId: string; onClose: () => void }) {
 // Exam slide-over
 // ---------------------------------------------------------------------------
 
-function ExamSlideOver({ examId, onClose }: { examId: string; onClose: () => void }) {
-  const [exam, setExam] = useState<GeneratedExamResponse | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
-
-  const fetchExam = useCallback(async () => {
-    try {
-      const data = await getExam(examId);
-      setExam(data);
-      if (data.status === "READY" || data.status === "ERROR") stopPolling();
-    } catch { /* silent */ }
-  }, [examId, stopPolling]);
-
-  useEffect(() => {
-    fetchExam();
-    intervalRef.current = setInterval(fetchExam, 3000);
-    return stopPolling;
-  }, [fetchExam, stopPolling]);
+function ExamSlideOver({ examId, subject, onClose }: { examId: string; subject: string; onClose: () => void }) {
+  const exam = getMockExam(examId, subject);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -113,14 +69,7 @@ function ExamSlideOver({ examId, onClose }: { examId: string; onClose: () => voi
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          {!exam && <p className="text-sm text-gray-400 animate-pulse">Loading…</p>}
-          {exam?.status === "PENDING" && <p className="text-sm text-amber-600 animate-pulse">Generating exam…</p>}
-          {exam?.status === "ERROR" && <p className="text-sm text-red-600">Generation failed.</p>}
-          {exam?.status === "READY" && (
-            <pre className="text-xs bg-gray-50 p-4 rounded overflow-auto whitespace-pre-wrap">
-              {JSON.stringify(exam.result, null, 2)}
-            </pre>
-          )}
+          <ExamPaperView result={exam.result} />
         </div>
       </div>
     </div>
@@ -158,7 +107,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function LessonsTab({ cstId }: { cstId: string }) {
+function LessonsTab({ cstId, subject }: { cstId: string; subject: string }) {
   const [chapters, setChapters] = useState<ChapterPlanWithDates[]>([]);
   const [selectedChapter, setSelectedChapter] = useState<ChapterPlanWithDates | null>(null);
   const [slots, setSlots] = useState<ClassLessonSlotRead[]>([]);
@@ -360,7 +309,7 @@ function LessonsTab({ cstId }: { cstId: string }) {
         </div>
       )}
 
-      {viewLpId && <LPSlideOver lpId={viewLpId} onClose={() => setViewLpId(null)} />}
+      {viewLpId && <LPSlideOver lpId={viewLpId} subject={subject} onClose={() => setViewLpId(null)} />}
     </div>
   );
 }
@@ -369,7 +318,7 @@ function LessonsTab({ cstId }: { cstId: string }) {
 // Assessments tab
 // ---------------------------------------------------------------------------
 
-function AssessmentsTab({ cstId }: { cstId: string }) {
+function AssessmentsTab({ cstId, subject }: { cstId: string; subject: string }) {
   const [slots, setSlots] = useState<AssessmentSlotRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
@@ -449,7 +398,7 @@ function AssessmentsTab({ cstId }: { cstId: string }) {
         </div>
       ))}
 
-      {viewExamId && <ExamSlideOver examId={viewExamId} onClose={() => setViewExamId(null)} />}
+      {viewExamId && <ExamSlideOver examId={viewExamId} subject={subject} onClose={() => setViewExamId(null)} />}
     </div>
   );
 }
@@ -529,6 +478,13 @@ export default function ClassDetailPage({
 }) {
   const { cst_id } = use(params);
   const [tab, setTab] = useState<"lessons" | "assessments" | "timetable">("lessons");
+  const [subject, setSubject] = useState<string>("");
+
+  useEffect(() => {
+    getCst(cst_id)
+      .then((cst) => setSubject(cst.subject ?? ""))
+      .catch(() => setSubject(""));
+  }, [cst_id]);
 
   const TAB_LABELS: Record<"lessons" | "assessments" | "timetable", string> = {
     lessons: "Lessons",
@@ -564,8 +520,8 @@ export default function ClassDetailPage({
         ))}
       </div>
 
-      {tab === "lessons" && <LessonsTab cstId={cst_id} />}
-      {tab === "assessments" && <AssessmentsTab cstId={cst_id} />}
+      {tab === "lessons" && <LessonsTab cstId={cst_id} subject={subject} />}
+      {tab === "assessments" && <AssessmentsTab cstId={cst_id} subject={subject} />}
       {tab === "timetable" && <TimetableTab cstId={cst_id} />}
     </div>
   );

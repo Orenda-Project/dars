@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   getToday,
   markTaught,
-  getLessonPlan,
   type TodaySlotEntry,
   type ClassLessonSlotRead,
-  type GeneratedLPResponse,
 } from "@/lib/school-api";
+import { getMockLP } from "@/lib/teacher-app-mocks";
 
 // ---------------------------------------------------------------------------
 // LP slide-over
@@ -16,38 +15,14 @@ import {
 
 function LPSlideOver({
   lpId,
+  subject,
   onClose,
 }: {
   lpId: string;
+  subject: string;
   onClose: () => void;
 }) {
-  const [lp, setLp] = useState<GeneratedLPResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  const fetchLP = useCallback(async () => {
-    try {
-      const data = await getLessonPlan(lpId);
-      setLp(data);
-      setLoading(false);
-      if (data.status === "READY" || data.status === "ERROR") stopPolling();
-    } catch {
-      setLoading(false);
-    }
-  }, [lpId, stopPolling]);
-
-  useEffect(() => {
-    fetchLP();
-    intervalRef.current = setInterval(fetchLP, 3000);
-    return stopPolling;
-  }, [fetchLP, stopPolling]);
+  const lp = getMockLP(lpId, subject);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -66,23 +41,11 @@ function LPSlideOver({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          {loading && (
-            <p className="text-sm text-gray-400 animate-pulse">Loading…</p>
-          )}
-          {!loading && lp && lp.status === "PENDING" && (
-            <p className="text-sm text-amber-600 animate-pulse">Generating lesson plan…</p>
-          )}
-          {!loading && lp && lp.status === "ERROR" && (
-            <p className="text-sm text-red-600">Generation failed. Please try again.</p>
-          )}
-          {!loading && lp && lp.status === "READY" && lp.content && (
+          {lp.content && (
             <div
               className="prose prose-sm max-w-none"
               dangerouslySetInnerHTML={{ __html: lp.content }}
             />
-          )}
-          {!loading && lp && lp.status === "READY" && !lp.content && (
-            <p className="text-sm text-gray-500">No content returned.</p>
           )}
         </div>
       </div>
@@ -187,7 +150,7 @@ function TodayCard({ entry, onTaught }: { entry: TodaySlotEntry; onTaught: (slot
       </div>
 
       {viewLpId && (
-        <LPSlideOver lpId={viewLpId} onClose={() => setViewLpId(null)} />
+        <LPSlideOver lpId={viewLpId} subject={entry.subject} onClose={() => setViewLpId(null)} />
       )}
     </div>
   );
