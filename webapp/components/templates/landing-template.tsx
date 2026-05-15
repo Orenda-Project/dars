@@ -88,7 +88,7 @@ export function LandingTemplate() {
               Log in →
             </a>
             <a
-              href="/showcase/ali-sipra-2026-05-15"
+              href="/showcase/lp-showcase"
               className="text-dars-parchment text-sm font-medium no-underline border border-dars-rule-dark px-6 py-3 rounded-md hover:border-dars-parchment transition-colors"
             >
               View sample lesson plans →
