@@ -27,6 +27,7 @@ import sys
 import asyncpg
 
 from dars.seeds.lookups import seed_lookups
+from dars.seeds.slos_dars_english_g1 import seed_dars_english_g1_slos
 
 log = logging.getLogger("v2_seed")
 
@@ -39,7 +40,8 @@ async def _run_all_steps(conn: asyncpg.Connection) -> None:
     """Run every Phase 1 seed step in order. Each step is idempotent."""
     # F1.2 — lookups
     await seed_lookups(conn)
-    # F1.3 — SLOs + sub-SLOs (next feature, will append here)
+    # F1.3 — SLOs + sub-SLOs for Dars Curriculum × Grade 1 × English
+    await seed_dars_english_g1_slos(conn)
     # F1.4 — book + chapters + topics (next feature)
     # F1.5 — demo tenancy (next feature)
 
