@@ -8,6 +8,7 @@
 
 | Looking for... | Go to... |
 |----------------|----------|
+| **🔥 ACTIVE: v2 rebuild — single-pointer onramp** | **[REBUILD.md](REBUILD.md)** |
 | Current phase, what's next | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Dev commands, env setup | [docs/commands.md](docs/commands.md) |
 | Code conventions, gotchas | [docs/conventions.md](docs/conventions.md) |
