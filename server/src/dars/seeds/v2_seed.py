@@ -29,6 +29,7 @@ import asyncpg
 from dars.seeds.book_dars_english_g1 import seed_dars_english_g1_book
 from dars.seeds.lookups import seed_lookups
 from dars.seeds.slos_dars_english_g1 import seed_dars_english_g1_slos
+from dars.seeds.tenancy_demo import seed_demo_tenancy
 
 log = logging.getLogger("v2_seed")
 
@@ -45,7 +46,8 @@ async def _run_all_steps(conn: asyncpg.Connection) -> None:
     await seed_dars_english_g1_slos(conn)
     # F1.4 — Book + chapters + topics + SLO/sub-SLO mappings
     await seed_dars_english_g1_book(conn)
-    # F1.5 — demo tenancy (next feature)
+    # F1.5 — Demo tenancy: org, school, AY, class, teacher, CST, timetable
+    await seed_demo_tenancy(conn)
 
 
 async def main() -> None:
