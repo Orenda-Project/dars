@@ -4,6 +4,7 @@ import path from "path";
 import {
   ShowcaseTemplate,
   type ShowcaseEntry,
+  type ReviewPayload,
 } from "@/components/templates/showcase-template";
 
 export const dynamic = "force-dynamic";
@@ -18,14 +19,29 @@ type LoadResult = {
   generatedAt: string | null;
 };
 
+async function loadReview(
+  dir: string,
+  reviewFile: string | undefined,
+): Promise<ReviewPayload | null> {
+  if (!reviewFile) return null;
+  const reviewPath = path.join(dir, reviewFile);
+  try {
+    const raw = await fs.readFile(reviewPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed as ReviewPayload;
+    }
+    return null;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    return null;
+  }
+}
+
 async function loadShowcase(tag: string): Promise<LoadResult | null> {
-  const indexPath = path.join(
-    process.cwd(),
-    "public",
-    "showcase",
-    tag,
-    "index.json",
-  );
+  const dir = path.join(process.cwd(), "public", "showcase", tag);
+  const indexPath = path.join(dir, "index.json");
   try {
     const [raw, stat] = await Promise.all([
       fs.readFile(indexPath, "utf-8"),
@@ -33,12 +49,23 @@ async function loadShowcase(tag: string): Promise<LoadResult | null> {
     ]);
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
+
+    const entries = await Promise.all(
+      (parsed as ShowcaseEntry[]).map(async (e) => {
+        const review =
+          e.review_status === "OK"
+            ? await loadReview(dir, e.review_file)
+            : null;
+        return { ...e, review };
+      }),
+    );
+
     const generatedAt = stat.mtime.toLocaleDateString("en-GB", {
       day: "numeric",
       month: "long",
       year: "numeric",
     });
-    return { entries: parsed as ShowcaseEntry[], generatedAt };
+    return { entries, generatedAt };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return null;

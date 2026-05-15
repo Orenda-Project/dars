@@ -1,6 +1,44 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+export type ReviewImprovement = {
+  subCriterion: string;
+  currentScore: number | string;
+  targetScore: number | string;
+  action: string;
+  location: string;
+  instruction: string;
+};
+
+export type ReviewSubCriterion = {
+  name: string;
+  rating: number | string;
+};
+
+export type ReviewCriterion = {
+  criterion: string;
+  totalScore: string;
+  subCriteria?: ReviewSubCriterion[];
+  rationale?: string;
+  strengths?: string[];
+  improvements?: ReviewImprovement[];
+};
+
+export type ReviewPayload =
+  | {
+      status: "success";
+      review: {
+        grandTotal: string;
+        percentage: string;
+        evaluation: ReviewCriterion[];
+      };
+      metadata?: unknown;
+    }
+  | {
+      status: "error";
+      error: string;
+    };
 
 export type ShowcaseEntry = {
   id: number;
@@ -11,6 +49,10 @@ export type ShowcaseEntry = {
   status: "OK" | "ERROR";
   html_file: string;
   error?: string;
+  review_file?: string;
+  review_status?: "OK" | "ERROR" | "MISSING";
+  review_error?: string;
+  review?: ReviewPayload | null;
 };
 
 type Props = {
@@ -38,6 +80,15 @@ export function ShowcaseTemplate({
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  useEffect(() => {
+    setReviewOpen(false);
+    setExpandedCriteria(new Set());
+  }, [selectedId]);
 
   const grouped = useMemo(() => {
     const map = new Map<number, ShowcaseEntry[]>();
@@ -248,6 +299,20 @@ export function ShowcaseTemplate({
               </div>
             )}
           </div>
+          <ReviewDrawer
+            entry={selected}
+            open={reviewOpen}
+            onToggle={() => setReviewOpen((v) => !v)}
+            expanded={expandedCriteria}
+            onToggleCriterion={(name) =>
+              setExpandedCriteria((prev) => {
+                const next = new Set(prev);
+                if (next.has(name)) next.delete(name);
+                else next.add(name);
+                return next;
+              })
+            }
+          />
         </section>
       </div>
 
@@ -280,6 +345,240 @@ function IframeSkeleton() {
         <div className="h-3 w-10/12 bg-dars-parchment-mid rounded" />
       </div>
     </div>
+  );
+}
+
+function parseScorePair(s: string | undefined): {
+  scored: number;
+  outOf: number;
+} | null {
+  if (!s) return null;
+  const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/);
+  if (!m) return null;
+  const scored = Number.parseFloat(m[1]);
+  const outOf = Number.parseFloat(m[2]);
+  if (!Number.isFinite(scored) || !Number.isFinite(outOf) || outOf <= 0) {
+    return null;
+  }
+  return { scored, outOf };
+}
+
+function ScoreBar({ totalScore }: { totalScore: string }) {
+  const parsed = parseScorePair(totalScore);
+  const pct = parsed ? Math.max(0, Math.min(100, (parsed.scored / parsed.outOf) * 100)) : 0;
+  return (
+    <div
+      className="h-1.5 w-full bg-dars-rule-light rounded-full overflow-hidden"
+      aria-hidden="true"
+    >
+      <div
+        className="h-full bg-dars-terra"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+function ReviewDrawer({
+  entry,
+  open,
+  onToggle,
+  expanded,
+  onToggleCriterion,
+}: {
+  entry: ShowcaseEntry;
+  open: boolean;
+  onToggle: () => void;
+  expanded: Set<string>;
+  onToggleCriterion: (name: string) => void;
+}) {
+  const status = entry.review_status;
+  if (status === "MISSING" || (!entry.review && status !== "ERROR")) {
+    return null;
+  }
+
+  const review = entry.review;
+  const isError =
+    status === "ERROR" || (review && review.status === "error");
+
+  if (isError) {
+    const errMsg =
+      (review && review.status === "error" ? review.error : undefined) ??
+      entry.review_error ??
+      "Review unavailable";
+    return (
+      <div className="border-t border-dars-rule-light bg-dars-parchment-mid">
+        <div className="px-6 py-3 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <span className="block text-[11px] font-bold tracking-[2px] uppercase text-dars-terra">
+              AI Review
+            </span>
+            <span className="block text-sm text-dars-muted mt-0.5 truncate">
+              unavailable — {errMsg}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!review || review.status !== "success") {
+    return null;
+  }
+
+  const { grandTotal, percentage, evaluation } = review.review;
+
+  return (
+    <div className="border-t border-dars-rule-light bg-dars-parchment-mid">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full px-6 py-3 flex items-center justify-between gap-4 hover:bg-dars-parchment transition-colors cursor-pointer text-left"
+      >
+        <div className="flex items-baseline gap-3 min-w-0">
+          <span className="text-[11px] font-bold tracking-[2px] uppercase text-dars-terra shrink-0">
+            AI Review
+          </span>
+          <span className="font-serif text-lg tracking-[-0.2px] text-dars-ink shrink-0">
+            {percentage}
+          </span>
+          <span className="text-xs text-dars-muted truncate">
+            {grandTotal}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] font-semibold tracking-[1px] uppercase text-dars-ink-soft">
+            {open ? "Hide review" : "Show review"}
+          </span>
+          <Chevron open={open} />
+        </div>
+      </button>
+
+      {open ? (
+        <div className="border-t border-dars-rule-light bg-dars-parchment">
+          <ul className="divide-y divide-dars-rule-light">
+            {evaluation.map((c) => {
+              const isOpen = expanded.has(c.criterion);
+              return (
+                <li key={c.criterion}>
+                  <button
+                    type="button"
+                    onClick={() => onToggleCriterion(c.criterion)}
+                    aria-expanded={isOpen}
+                    className="w-full px-6 py-3 text-left hover:bg-dars-parchment-mid transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-4 mb-1.5">
+                      <span className="text-sm font-semibold tracking-[-0.2px] text-dars-ink truncate">
+                        {c.criterion}
+                      </span>
+                      <span className="text-xs font-semibold text-dars-terra shrink-0 tabular-nums">
+                        {c.totalScore}
+                      </span>
+                    </div>
+                    <ScoreBar totalScore={c.totalScore} />
+                  </button>
+                  {isOpen ? (
+                    <CriterionDetail criterion={c} />
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CriterionDetail({ criterion }: { criterion: ReviewCriterion }) {
+  const { rationale, strengths, improvements } = criterion;
+  const hasStrengths = Array.isArray(strengths) && strengths.length > 0;
+  const hasImprovements = Array.isArray(improvements) && improvements.length > 0;
+  return (
+    <div className="px-6 pb-5 pt-1 space-y-4 bg-dars-parchment">
+      {rationale ? (
+        <p className="text-[13px] leading-relaxed text-dars-muted max-w-3xl">
+          {rationale}
+        </p>
+      ) : null}
+      {hasStrengths ? (
+        <div>
+          <span className="block text-[11px] font-bold tracking-[2px] uppercase text-dars-terra mb-2">
+            Strengths
+          </span>
+          <ul className="list-disc pl-5 space-y-1 max-w-3xl">
+            {strengths.map((s, i) => (
+              <li
+                key={i}
+                className="text-[13px] leading-relaxed text-dars-ink"
+              >
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {hasImprovements ? (
+        <div>
+          <span className="block text-[11px] font-bold tracking-[2px] uppercase text-dars-terra mb-2">
+            Improvements
+          </span>
+          <ul className="space-y-2 max-w-3xl">
+            {improvements.map((imp, i) => (
+              <li
+                key={i}
+                className="bg-dars-parchment-mid border border-dars-rule-light rounded-md p-3"
+              >
+                <div className="flex items-baseline justify-between gap-3 mb-1.5 flex-wrap">
+                  <span className="text-[13px] font-semibold text-dars-ink">
+                    {imp.subCriterion}
+                  </span>
+                  <span className="text-[11px] font-semibold tracking-[0.5px] uppercase text-dars-terra tabular-nums">
+                    {imp.currentScore} → {imp.targetScore}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mb-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold tracking-[1.5px] uppercase text-dars-muted">
+                    {imp.action}
+                  </span>
+                  {imp.location ? (
+                    <span className="text-[11px] text-dars-ink-soft">
+                      · {imp.location}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-[13px] leading-relaxed text-dars-ink">
+                  {imp.instruction}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={
+        "text-dars-ink-soft transition-transform " +
+        (open ? "rotate-180" : "")
+      }
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
   );
 }
 

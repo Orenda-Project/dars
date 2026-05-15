@@ -7,9 +7,14 @@ Usage:
         [--tag ali-sipra-2026-05-15] \
         [--concurrency 3]
 
+    # Re-run only the AI reviewer against existing LP HTML (no LP regeneration):
+    LP_ASSISTANT_API_KEY=... python3 useful-scripts/generate_showcase_lps.py --reviews-only
+
 Output:
-    webapp/public/showcase/<tag>/lp-NN.html       raw lesson_plan HTML
-    webapp/public/showcase/<tag>/index.json       {id,grade,skill,page,topic,status,html_file,error?}[]
+    webapp/public/showcase/<tag>/lp-NN.html         raw lesson_plan HTML
+    webapp/public/showcase/<tag>/lp-NN.review.json  rubric-based AI review for that LP
+    webapp/public/showcase/<tag>/index.json         {id,grade,skill,page,topic,status,html_file,
+                                                     review_file,review_status,error?,review_error?}[]
 """
 
 from __future__ import annotations
@@ -193,6 +198,172 @@ def generate_one(
         return LPResult(spec=spec, status="ERROR", error=f"{type(e).__name__}: {e}")
 
 
+@dataclass
+class ReviewResult:
+    spec: LPSpec
+    status: str  # "OK" | "ERROR"
+    error: str | None = None
+    payload: dict[str, Any] | None = field(default=None, repr=False)
+
+    @property
+    def review_file(self) -> str:
+        return f"lp-{self.spec.id:02d}.review.json"
+
+
+def review_one(
+    spec: LPSpec,
+    html_path: Path,
+    base_url: str,
+    api_key: str,
+) -> ReviewResult:
+    """Call LP Assistant /api/review-lp for a single LP. Never raises."""
+    logger.info(
+        "review_one: enter id=%s grade=%s page=%s skill=%s html=%s",
+        spec.id, spec.grade, spec.page, spec.skill, html_path.name,
+    )
+    try:
+        html_text = html_path.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error("review_one: cannot read html id=%s path=%s", spec.id, html_path, exc_info=True)
+        return ReviewResult(spec=spec, status="ERROR", error=f"read_html: {type(e).__name__}: {e}")
+
+    payload: dict[str, Any] = {
+        "lesson_plan_html": html_text,
+        "subject": "Eng",
+        "grade": spec.grade,
+        "class_strength": 30,
+    }
+    try:
+        with httpx.Client(timeout=REQUEST_TIMEOUT) as http:
+            resp = http.post(
+                f"{base_url.rstrip('/')}/api/review-lp",
+                json=payload,
+                headers={"api-key": api_key},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        if not isinstance(data, dict) or data.get("status") != "success":
+            raise ValueError(f"unexpected response shape: keys={list(data) if isinstance(data, dict) else type(data).__name__}")
+        review = data.get("review")
+        if not isinstance(review, dict) or "evaluation" not in review:
+            raise ValueError("response missing review.evaluation")
+        crit_count = len(review.get("evaluation") or [])
+        logger.info(
+            "review_one: ok id=%s percentage=%s grandTotal=%s criteria=%d",
+            spec.id, review.get("percentage"), review.get("grandTotal"), crit_count,
+        )
+        return ReviewResult(spec=spec, status="OK", payload=data)
+    except httpx.HTTPStatusError as e:
+        body = (e.response.text or "")[:500]
+        msg = f"HTTP {e.response.status_code}: {body}"
+        logger.error("review_one: http error id=%s %s", spec.id, msg, exc_info=True)
+        return ReviewResult(spec=spec, status="ERROR", error=msg)
+    except Exception as e:
+        logger.error("review_one: error id=%s", spec.id, exc_info=True)
+        return ReviewResult(spec=spec, status="ERROR", error=f"{type(e).__name__}: {e}")
+
+
+def _spec_by_id(entry: dict[str, Any]) -> LPSpec | None:
+    """Reconstruct an LPSpec from an index.json entry."""
+    try:
+        return LPSpec(
+            id=int(entry["id"]),
+            grade=int(entry["grade"]),
+            skill=str(entry["skill"]),
+            page=str(entry["page"]),
+            topic=str(entry.get("topic") or ""),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def run_reviews(
+    out_dir: Path,
+    base_url: str,
+    api_key: str,
+    concurrency: int,
+) -> int:
+    """Read existing index.json + lp-NN.html, call /api/review-lp per LP, write
+    review JSONs alongside, and update index.json in place with review fields.
+
+    Returns 0 on success (even if individual reviews errored).
+    """
+    index_path = out_dir / "index.json"
+    logger.info("run_reviews: enter out_dir=%s index=%s concurrency=%d", out_dir, index_path, concurrency)
+    if not index_path.exists():
+        logger.error("run_reviews: missing index.json at %s — generate LPs first", index_path)
+        return 3
+    try:
+        raw_index = json.loads(index_path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.error("run_reviews: cannot parse index.json", exc_info=True)
+        return 4
+    if not isinstance(raw_index, list):
+        logger.error("run_reviews: index.json is not a list")
+        return 5
+
+    tasks: list[tuple[LPSpec, Path, dict[str, Any]]] = []
+    for entry in raw_index:
+        if not isinstance(entry, dict):
+            continue
+        spec = _spec_by_id(entry)
+        if spec is None:
+            logger.error("run_reviews: skipping malformed entry %r", entry)
+            continue
+        if entry.get("status") != "OK":
+            logger.info("run_reviews: skipping non-OK lp id=%s status=%s", spec.id, entry.get("status"))
+            entry["review_file"] = f"lp-{spec.id:02d}.review.json"
+            entry["review_status"] = "MISSING"
+            entry["review_error"] = "lp generation failed; no html to review"
+            continue
+        html_path = out_dir / spec.html_file
+        if not html_path.exists():
+            logger.error("run_reviews: html missing for id=%s path=%s", spec.id, html_path)
+            entry["review_file"] = f"lp-{spec.id:02d}.review.json"
+            entry["review_status"] = "MISSING"
+            entry["review_error"] = f"html file not found: {html_path.name}"
+            continue
+        tasks.append((spec, html_path, entry))
+
+    results: list[ReviewResult] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = {
+            pool.submit(review_one, spec, html_path, base_url, api_key): (spec, entry)
+            for (spec, html_path, entry) in tasks
+        }
+        for fut in concurrent.futures.as_completed(futures):
+            spec, entry = futures[fut]
+            try:
+                r = fut.result()
+            except Exception as e:
+                logger.error("run_reviews: future failed id=%s", spec.id, exc_info=True)
+                r = ReviewResult(spec=spec, status="ERROR", error=f"{type(e).__name__}: {e}")
+            results.append(r)
+
+            review_path = out_dir / r.review_file
+            if r.status == "OK" and r.payload is not None:
+                review_path.write_text(json.dumps(r.payload, indent=2), encoding="utf-8")
+                entry["review_file"] = r.review_file
+                entry["review_status"] = "OK"
+                entry.pop("review_error", None)
+            else:
+                err_doc = {"status": "error", "error": r.error or "unknown error"}
+                review_path.write_text(json.dumps(err_doc, indent=2), encoding="utf-8")
+                entry["review_file"] = r.review_file
+                entry["review_status"] = "ERROR"
+                entry["review_error"] = r.error or "unknown error"
+
+    index_path.write_text(json.dumps(raw_index, indent=2), encoding="utf-8")
+
+    ok = sum(1 for r in results if r.status == "OK")
+    err = sum(1 for r in results if r.status == "ERROR")
+    logger.info(
+        "run_reviews: exit ok=%d err=%d skipped=%d total_index=%d",
+        ok, err, len(raw_index) - len(results), len(raw_index),
+    )
+    return 0
+
+
 def reset_output_dir(tag: str) -> Path:
     out = OUTPUT_ROOT / tag
     if out.exists():
@@ -215,6 +386,8 @@ def write_results(out_dir: Path, results: list[LPResult]) -> None:
             "topic": r.spec.topic,
             "status": r.status,
             "html_file": r.spec.html_file,
+            "review_file": f"lp-{r.spec.id:02d}.review.json",
+            "review_status": "MISSING",
         }
         if r.status == "OK" and r.html is not None:
             wrapped = wrap_html(r.spec, r.html)
@@ -246,6 +419,11 @@ def main(argv: list[str] | None = None) -> int:
         "--lp-assistant-url",
         default=os.environ.get("LP_ASSISTANT_URL", DEFAULT_LP_ASSISTANT_URL),
     )
+    parser.add_argument(
+        "--reviews-only",
+        action="store_true",
+        help="Skip LP generation; only run /api/review-lp against existing HTML",
+    )
     args = parser.parse_args(argv)
 
     api_key = os.environ.get("LP_ASSISTANT_API_KEY", "").strip()
@@ -254,9 +432,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     logger.info(
-        "main: enter tag=%s curriculum=%s concurrency=%d url=%s count=%d",
-        args.tag, args.curriculum, args.concurrency, args.lp_assistant_url, len(SPECS),
+        "main: enter tag=%s curriculum=%s concurrency=%d url=%s count=%d reviews_only=%s",
+        args.tag, args.curriculum, args.concurrency, args.lp_assistant_url,
+        len(SPECS), args.reviews_only,
     )
+
+    if args.reviews_only:
+        out_dir = OUTPUT_ROOT / args.tag
+        if not out_dir.exists():
+            logger.error("main: tag dir does not exist: %s", out_dir)
+            return 3
+        rc = run_reviews(out_dir, args.lp_assistant_url, api_key, args.concurrency)
+        logger.info("main: exit (reviews-only) rc=%d out=%s", rc, out_dir)
+        return rc
 
     out_dir = reset_output_dir(args.tag)
 
