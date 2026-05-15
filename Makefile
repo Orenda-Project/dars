@@ -1,13 +1,16 @@
 -include .env
 export
 
-.PHONY: dev test db-new bruno-sync webapp up
+.PHONY: dev test db-new bruno-sync webapp up seed
 
 dev:
 	cd server && uv run uvicorn dars.main:app --reload
 
 test:
 	cd server && uv run pytest
+
+seed:
+	cd server && uv run python -m dars.seeds.v2_seed
 
 db-new:
 	@read -p "Migration name: " name; \

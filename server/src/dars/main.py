@@ -23,6 +23,7 @@ from dars.auth.router import auth_router
 from dars.clients.router import admin_router, client_router
 from dars.config import settings
 from dars.migrations import run_migrations
+from dars.seeds.v2_seed import run_seed_on_startup
 from dars.generated_lps.router import router as generated_lps_router
 from dars.generated_exams.router import router as generated_exams_router
 from dars.curriculum.router import admin_router as curriculum_admin_router
@@ -36,6 +37,7 @@ from dars.lookup.router import router as lookup_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await run_migrations(settings.database_url)
+    await run_seed_on_startup(settings.database_url)
     yield
 
 
