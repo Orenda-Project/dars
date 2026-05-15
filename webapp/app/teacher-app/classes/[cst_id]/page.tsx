@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { use } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   getChapterPlansByCst,
   getLessonSlotsByChapter,
@@ -137,6 +138,16 @@ function LessonsTab({ cstId, subject }: { cstId: string; subject: string }) {
       setLoadingSlots(false);
     }
   }, []);
+
+  // Auto-select the first chapter once chapters load and none is selected yet.
+  // Why: arriving from Calendar drops the user here cold; "Choose a chapter…" feels broken.
+  useEffect(() => {
+    if (!selectedChapter && chapters.length > 0) {
+      const first = chapters[0];
+      setSelectedChapter(first);
+      void loadSlots(first);
+    }
+  }, [chapters, selectedChapter, loadSlots]);
 
   // Poll for pending LPs every 3s
   useEffect(() => {
@@ -277,22 +288,12 @@ function LessonsTab({ cstId, subject }: { cstId: string; subject: string }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {slot.lesson_plan_id ? (
-                      <button
-                        onClick={() => setViewLpId(slot.lesson_plan_id)}
-                        className="text-xs px-2.5 py-1 border border-amber-300 text-amber-700 rounded hover:bg-amber-50 transition-colors bg-transparent cursor-pointer"
-                      >
-                        View LP
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleGenerateLP(slot)}
-                        disabled={generatingSlot === slot.id}
-                        className="text-xs px-2.5 py-1 border border-gray-200 text-gray-600 rounded hover:bg-gray-50 transition-colors bg-transparent cursor-pointer disabled:opacity-50"
-                      >
-                        {generatingSlot === slot.id ? "…" : "Generate LP"}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setViewLpId(slot.lesson_plan_id ?? slot.id)}
+                      className="text-xs px-2.5 py-1 border border-amber-300 text-amber-700 rounded hover:bg-amber-50 transition-colors bg-transparent cursor-pointer"
+                    >
+                      View LP
+                    </button>
                     {slot.status === "planned" && (
                       <button
                         onClick={() => handleMarkTaught(slot)}
@@ -378,22 +379,12 @@ function AssessmentsTab({ cstId, subject }: { cstId: string; subject: string }) 
             <p className="text-xs text-gray-400 mt-0.5">{slot.scheduled_date}</p>
           </div>
           <div className="shrink-0">
-            {slot.exam_id ? (
-              <button
-                onClick={() => setViewExamId(slot.exam_id)}
-                className="text-xs px-2.5 py-1 border border-violet-300 text-violet-700 rounded hover:bg-violet-50 transition-colors bg-transparent cursor-pointer"
-              >
-                View Exam
-              </button>
-            ) : (
-              <button
-                onClick={() => handleGenerateExam(slot)}
-                disabled={generatingSlot === slot.id}
-                className="text-xs px-2.5 py-1 border border-gray-200 text-gray-600 rounded hover:bg-gray-50 transition-colors bg-transparent cursor-pointer disabled:opacity-50"
-              >
-                {generatingSlot === slot.id ? "…" : "Generate Exam"}
-              </button>
-            )}
+            <button
+              onClick={() => setViewExamId(slot.exam_id ?? slot.id)}
+              className="text-xs px-2.5 py-1 border border-violet-300 text-violet-700 rounded hover:bg-violet-50 transition-colors bg-transparent cursor-pointer"
+            >
+              View Exam
+            </button>
           </div>
         </div>
       ))}
@@ -477,7 +468,13 @@ export default function ClassDetailPage({
   params: Promise<{ cst_id: string }>;
 }) {
   const { cst_id } = use(params);
-  const [tab, setTab] = useState<"lessons" | "assessments" | "timetable">("lessons");
+  const searchParams = useSearchParams();
+  const initialTab = ((): "lessons" | "assessments" | "timetable" => {
+    const t = searchParams.get("tab");
+    if (t === "assessments" || t === "timetable") return t;
+    return "lessons";
+  })();
+  const [tab, setTab] = useState<"lessons" | "assessments" | "timetable">(initialTab);
   const [subject, setSubject] = useState<string>("");
 
   useEffect(() => {

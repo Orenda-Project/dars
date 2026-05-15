@@ -70,6 +70,7 @@ from dars.school.service import (
     ai_breakdown_chapter,
     auto_schedule_formative_assessments,
     compute_chapter_date_ranges,
+    compute_teaching_days,
     compute_teaching_days_for_year,
     generate_all_lps_for_chapter,
     generate_exam_for_slot,
@@ -1035,68 +1036,67 @@ async def get_today_schedule(
     db: AsyncSession = Depends(get_db),
 ) -> list[TodaySlotEntry]:
     today = date.today()
-    today_weekday = today.weekday()
-    logger.info(
-        "get_today_schedule: client_id=%s today=%s weekday=%d", current_client.id, today, today_weekday
-    )
+    logger.info("get_today_schedule: client_id=%s today=%s", current_client.id, today)
 
-    # Get all timetable rows for today's weekday for this client
-    tt_result = await db.execute(
-        select(Timetable).where(
-            Timetable.client_id == current_client.id,
-            Timetable.day_of_week == today_weekday,
-        )
+    # All CSTs owned by this client. Today's lesson/assessment is whichever slot
+    # is at the day_number that today maps to via compute_teaching_days() — this
+    # mirrors the calendar endpoint exactly (see commit 867da2d).
+    cst_result = await db.execute(
+        select(ClassSubjectTeacher).where(ClassSubjectTeacher.client_id == current_client.id)
     )
-    tt_rows = list(tt_result.scalars().all())
-    logger.info("get_today_schedule: timetable rows for today=%d", len(tt_rows))
+    csts = list(cst_result.scalars().all())
+    logger.info("get_today_schedule: csts=%d", len(csts))
 
     entries: list[TodaySlotEntry] = []
-    for tt in tt_rows:
-        cst_id = tt.class_subject_teacher_id
-
-        # Load CST
-        cst_result = await db.execute(
-            select(ClassSubjectTeacher).where(
-                ClassSubjectTeacher.id == cst_id,
-                ClassSubjectTeacher.client_id == current_client.id,
-            )
-        )
-        cst = cst_result.scalar_one_or_none()
-        if cst is None:
+    for cst in csts:
+        teaching_days = await compute_teaching_days(cst.id, db)
+        if today not in teaching_days:
             continue
+        day_number = teaching_days.index(today) + 1
 
-        # Load class
         sc = await db.get(SchoolClass, cst.class_id)
         if sc is None:
             continue
 
-        # Load teacher name if available
+        subject_obj = await db.get(Subject, cst.subject_id)
+        subject_display = subject_obj.display_name if subject_obj else str(cst.subject_id)
+
         teacher_name: str | None = None
         if cst.teacher_id:
             teacher = await db.get(Teacher, cst.teacher_id)
             if teacher:
                 teacher_name = teacher.name
 
-        # Next planned slot
-        next_planned_result = await db.execute(
-            select(ClassLessonSlot)
-            .where(
-                ClassLessonSlot.class_subject_teacher_id == cst_id,
-                ClassLessonSlot.client_id == current_client.id,
-                ClassLessonSlot.status == "planned",
+        # Assessment slot for today's day_number (takes priority over lesson)
+        assess_result = await db.execute(
+            select(AssessmentSlot).where(
+                AssessmentSlot.class_subject_teacher_id == cst.id,
+                AssessmentSlot.client_id == current_client.id,
+                AssessmentSlot.day_number == day_number,
             )
-            .order_by(ClassLessonSlot.day_number)
-            .limit(1)
         )
-        next_planned = next_planned_result.scalar_one_or_none()
+        assessment_today = assess_result.scalar_one_or_none()
 
-        # Previous taught slot
+        # Lesson slot for today's day_number — shown when no assessment is scheduled
+        lesson_today = None
+        if assessment_today is None:
+            lesson_result = await db.execute(
+                select(ClassLessonSlot).where(
+                    ClassLessonSlot.class_subject_teacher_id == cst.id,
+                    ClassLessonSlot.client_id == current_client.id,
+                    ClassLessonSlot.day_number == day_number,
+                )
+            )
+            lesson_today = lesson_result.scalar_one_or_none()
+
+        # Previous taught lesson (for "Previously taught" context)
         prev_taught_result = await db.execute(
             select(ClassLessonSlot)
             .where(
-                ClassLessonSlot.class_subject_teacher_id == cst_id,
+                ClassLessonSlot.class_subject_teacher_id == cst.id,
                 ClassLessonSlot.client_id == current_client.id,
                 ClassLessonSlot.status == "taught",
+                ClassLessonSlot.day_number < day_number,
             )
             .order_by(ClassLessonSlot.day_number.desc())
             .limit(1)
@@ -1107,15 +1107,20 @@ async def get_today_schedule(
             TodaySlotEntry(
                 class_id=cst.class_id,
                 class_name=sc.name,
+                subject=subject_display,
                 subject_id=cst.subject_id,
-                cst_id=cst_id,
+                cst_id=cst.id,
                 teacher_id=cst.teacher_id,
                 teacher_name=teacher_name,
+                day_number=day_number,
                 next_planned_slot=(
-                    ClassLessonSlotRead.model_validate(next_planned) if next_planned else None
+                    ClassLessonSlotRead.model_validate(lesson_today) if lesson_today else None
                 ),
                 previous_taught_slot=(
                     ClassLessonSlotRead.model_validate(prev_taught) if prev_taught else None
+                ),
+                assessment_slot=(
+                    AssessmentSlotRead.model_validate(assessment_today) if assessment_today else None
                 ),
             )
         )
