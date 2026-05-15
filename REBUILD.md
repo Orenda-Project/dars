@@ -8,14 +8,14 @@
 
 ## Step 1 — Read these files, in this exact order
 
-1. **`dars/CLAUDE.md`** — project rules (critical: rules 1–15). You should already have this loaded by the harness; re-skim for the autonomous-mode + no-narration rules.
-2. **`docs/plans/2026-05-15-dars-v2-rebuild/README.md`** — plan index and scope.
-3. **`docs/plans/2026-05-15-dars-v2-rebuild/00-glossary.md`** — terminology. Every Term-Capitalised-Word in later docs maps to a definition here. Do NOT proceed past the glossary until you understand: Org, School, CST, Curriculum, SLO, SubSLO, Topic, Breakdown (scope), BreakdownSlot, anchor, sequence position, lp_type.
-4. **`docs/plans/2026-05-15-dars-v2-rebuild/01-decision-log.md`** — 60+ decisions with rationale. Indexed D-1..D-61. Phase docs reference these.
-5. **`docs/plans/2026-05-15-dars-v2-rebuild/02-data-model.md`** — final schema. Every table, column, FK, index.
-6. **The phase file for the currently-active phase** (see "Current state" below).
-7. **`docs/plans/2026-05-15-dars-v2-rebuild/08-reference-lp-assistant-api.md`** — frozen API spec. Read only when starting Phase 3 features or earlier work that touches LP generation.
-8. **`docs/plans/2026-05-15-dars-v2-rebuild/09-reference-ug-eg-api.md`** — same for the exam generator.
+1. **[CLAUDE.md](CLAUDE.md)** — project rules (critical: rules 1–15). You should already have this loaded by the harness; re-skim for the autonomous-mode + no-narration rules.
+2. **[docs/plans/2026-05-15-dars-v2-rebuild/README.md](docs/plans/2026-05-15-dars-v2-rebuild/README.md)** — plan index and scope.
+3. **[docs/plans/2026-05-15-dars-v2-rebuild/00-glossary.md](docs/plans/2026-05-15-dars-v2-rebuild/00-glossary.md)** — terminology. Every Term-Capitalised-Word in later docs maps to a definition here. Do NOT proceed past the glossary until you understand: Org, School, CST, Curriculum, SLO, SubSLO, Topic, Breakdown (scope), BreakdownSlot, anchor, sequence position, lp_type.
+4. **[docs/plans/2026-05-15-dars-v2-rebuild/01-decision-log.md](docs/plans/2026-05-15-dars-v2-rebuild/01-decision-log.md)** — 60+ decisions with rationale. Indexed D-1..D-61. Phase docs reference these.
+5. **[docs/plans/2026-05-15-dars-v2-rebuild/02-data-model.md](docs/plans/2026-05-15-dars-v2-rebuild/02-data-model.md)** — final schema. Every table, column, FK, index.
+6. **The phase file for the currently-active phase** (see "Current state" below). Phase files: [03](docs/plans/2026-05-15-dars-v2-rebuild/03-phase-1-foundation.md) · [04](docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md) · [05](docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md) · [06](docs/plans/2026-05-15-dars-v2-rebuild/06-phase-4-teacher-app.md) · [07](docs/plans/2026-05-15-dars-v2-rebuild/07-phase-5-dashboard.md).
+7. **[docs/plans/2026-05-15-dars-v2-rebuild/08-reference-lp-assistant-api.md](docs/plans/2026-05-15-dars-v2-rebuild/08-reference-lp-assistant-api.md)** — frozen API spec. Read only when starting Phase 3 features or earlier work that touches LP generation.
+8. **[docs/plans/2026-05-15-dars-v2-rebuild/09-reference-ug-eg-api.md](docs/plans/2026-05-15-dars-v2-rebuild/09-reference-ug-eg-api.md)** — same for the exam generator.
 
 Skim, don't memorize. The plan exists for you to come back to.
 
@@ -42,7 +42,7 @@ If you find a real conflict, surface it to the user; don't silently pick a side.
 You are the agent driving the Dars v2 rebuild from plan to staging. Your responsibilities:
 
 - **Implement phases sequentially.** One bead per phase (D-54). Open a bead when starting; close when staging is green.
-- **PRs target `staging`.** NEVER `main`. NEVER touch production. This is a hard rule (see `dars/CLAUDE.md` rule #2 + memory `feedback_never_touch_main_prod`).
+- **PRs target `staging`.** NEVER `main`. NEVER touch production. This is a hard rule (see [CLAUDE.md](CLAUDE.md) rule #2 + memory `feedback_never_touch_main_prod`).
 - **After every merge to staging**, watch BOTH Railway services (server: `dars`; webapp: `truthful-renewal`). See memory `feedback_deployment_watch_both`.
 - **Treat the decision log as frozen.** If you think a decision is wrong, raise it with the user before acting. Do not silently revise.
 
@@ -103,9 +103,9 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 | Staging DB | Still on v1 schema; v2 cutover will run in F1.1 |
 
 **Next thing to do unless the user says otherwise:**
-Confirm with the user that they want execution to begin, then open bead `feat-v2-phase-1-foundation` and start with feature F1.1 (the cutover migration) per `03-phase-1-foundation.md`.
+Confirm with the user that they want execution to begin, then open bead `feat-v2-phase-1-foundation` and start with feature F1.1 (the cutover migration) per [03-phase-1-foundation.md](docs/plans/2026-05-15-dars-v2-rebuild/03-phase-1-foundation.md).
 
-**State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with `.beads/status.jsonl` (the source of truth for what's in flight).
+**State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with [.beads/status.jsonl](.beads/status.jsonl) (the source of truth for what's in flight).
 
 See **Step 9** below for the full discipline on keeping plan files alive.
 
@@ -117,15 +117,15 @@ Things you might want during execution but aren't in the plan:
 
 | If you need… | Look here |
 |---|---|
-| Schema's prompts (to port) | `/home/hataf/taleemabad/Schema/prompts/` (sibling repo) |
-| Schema's services (to port) | `/home/hataf/taleemabad/Schema/services/` |
-| LP Assistant code | `/home/hataf/taleemabad/UG_LessonPlan/` (sibling repo) |
-| Exam Generator code | `/home/hataf/taleemabad/UG_EG/` (page_content support is on `origin/Staging` branch as of 2026-05-15) |
-| taleemabad-core SLO models (for reference, not import in v1) | `/home/hataf/taleemabad/taleemabad-core/taleemabad_core/apps/slo/models.py` |
-| Active beads | `.beads/status.jsonl` |
-| Open improvement notes | `.claude/improvements.md` |
-| User preferences and journal | `~/.claude/projects/-home-hataf-taleemabad-dars/memory/` |
-| Architecture graph (out of date until graphify update runs) | `graphify-out/GRAPH_REPORT.md` |
+| Schema's prompts (to port) | [../Schema/prompts/](../Schema/prompts/) (sibling repo) |
+| Schema's services (to port) | [../Schema/services/](../Schema/services/) |
+| LP Assistant code | [../UG_LessonPlan/](../UG_LessonPlan/) (sibling repo) |
+| Exam Generator code | [../UG_EG/](../UG_EG/) (page_content support is on `origin/Staging` branch as of 2026-05-15) |
+| taleemabad-core SLO models (for reference, not import in v1) | [../taleemabad-core/taleemabad_core/apps/slo/models.py](../taleemabad-core/taleemabad_core/apps/slo/models.py) |
+| Active beads | [.beads/status.jsonl](.beads/status.jsonl) |
+| Open improvement notes | [.claude/improvements.md](.claude/improvements.md) |
+| User preferences and journal | `~/.claude/projects/-home-hataf-taleemabad-dars/memory/` (outside repo) |
+| Architecture graph (out of date until graphify update runs) | [graphify-out/GRAPH_REPORT.md](graphify-out/GRAPH_REPORT.md) |
 
 If you find that any of these have moved since this file was written, ask the user before guessing.
 
@@ -136,10 +136,10 @@ If you find that any of these have moved since this file was written, ask the us
 Most decisions are settled. But if any of these come up and the answer isn't obvious from the plan:
 
 - **Production deployment of anything.** Default answer is "no." Ask before assuming.
-- **Schema/data-model changes not in `02-data-model.md`.** The data model is final; deviations need explicit approval.
+- **Schema/data-model changes not in [02-data-model.md](docs/plans/2026-05-15-dars-v2-rebuild/02-data-model.md).** The data model is final; deviations need explicit approval.
 - **Adding a new external service dependency.** Costs / ops surface area.
 - **Anything that would invalidate the seed once frozen.** Don't re-seed without explicit user approval.
-- **A decision in 01-decision-log.md that feels wrong.** Surface it, propose a fix to the log, don't act unilaterally.
+- **A decision in [01-decision-log.md](docs/plans/2026-05-15-dars-v2-rebuild/01-decision-log.md) that feels wrong.** Surface it, propose a fix to the log, don't act unilaterally.
 
 For everything else: act autonomously and report results.
 
@@ -150,7 +150,7 @@ For everything else: act autonomously and report results.
 When the user says "let's start Phase N" (or you arrive at this state):
 
 1. Read this file end to end (you should have already — re-skim if it's been a while).
-2. Read `0N-phase-N-*.md` end to end. Note feature order; features are numbered F-N.M and depend strictly on earlier ones.
+2. Read the phase file end to end ([03](docs/plans/2026-05-15-dars-v2-rebuild/03-phase-1-foundation.md) · [04](docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md) · [05](docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md) · [06](docs/plans/2026-05-15-dars-v2-rebuild/06-phase-4-teacher-app.md) · [07](docs/plans/2026-05-15-dars-v2-rebuild/07-phase-5-dashboard.md)). Note feature order; features are numbered F-N.M and depend strictly on earlier ones.
 3. Open the phase's bead: `feat-v2-phase-N-{slug}`. Use `bd open ...` per the dars beads workflow.
 4. Branch from `staging` (NEVER main): `git fetch origin staging && git checkout -b feat/v2-phase-N-{slug} origin/staging`.
 5. Implement features in order. Each feature is one PR (or one logical change if very small). PR target: `staging`.
@@ -177,15 +177,15 @@ You are not just a consumer of these files. You are a **co-author**. As you exec
 - If there's a follow-up or known limitation, append it to the phase doc under a new "## Notes from execution" section at the bottom (do NOT alter the original spec sections — append notes only).
 
 **When you make a decision the plan didn't anticipate:**
-- Add a new entry to `01-decision-log.md` with the next `D-N` number. Include rationale, who decided, when.
+- Add a new entry to [01-decision-log.md](docs/plans/2026-05-15-dars-v2-rebuild/01-decision-log.md) with the next `D-N` number. Include rationale, who decided, when.
 - If the decision conflicts with an existing decision, do not just override. Surface to the user first. Once approved, update both decisions: amend the old one with "Superseded by D-N+1 on YYYY-MM-DD"; the new one references the supersession.
 
 **When the data model changes:**
-- Update `02-data-model.md`. Tables, columns, indexes, migration order — keep the file in sync with reality.
-- The migration SQL in `02-data-model.md` is the source of truth for what exists in DB. If you run a migration that adds a column, the data model doc must reflect it.
+- Update [02-data-model.md](docs/plans/2026-05-15-dars-v2-rebuild/02-data-model.md). Tables, columns, indexes, migration order — keep the file in sync with reality.
+- The migration SQL in [02-data-model.md](docs/plans/2026-05-15-dars-v2-rebuild/02-data-model.md) is the source of truth for what exists in DB. If you run a migration that adds a column, the data model doc must reflect it.
 
 **When a new term emerges:**
-- Add it to `00-glossary.md`. Don't let undefined terms accumulate.
+- Add it to [00-glossary.md](docs/plans/2026-05-15-dars-v2-rebuild/00-glossary.md). Don't let undefined terms accumulate.
 
 **When you find a mistake in any plan file:**
 - Fix it immediately. Don't carry forward known wrongness "until later."

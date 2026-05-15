@@ -24,7 +24,7 @@ Every decision from the Q&A session of 2026-05-15. Reference these by **D-N** in
 
 **D-1: Survey UG_EG before plan-writing.** Done; the survey produced a precise spec that informed Decisions 39, 47.
 
-**D-2: UG_EG accepts `page_content` on `origin/Staging` branch.** Plan assumes both LP Assistant and UG_EG accept caller-supplied content. *Verified:* commit on `Staging` of `/home/hataf/taleemabad/UG_EG` shows `page_content` field added in the same shape as LP Assistant.
+**D-2: UG_EG accepts `page_content` on `origin/Staging` branch.** Plan assumes both LP Assistant and UG_EG accept caller-supplied content. *Verified:* commit on `Staging` of [../../../UG_EG](../../../UG_EG) shows `page_content` field added in the same shape as LP Assistant.
 
 **D-3: Eager sub-SLO breakdown during seed/import + manual trigger for ad-hoc.** *Rationale:* avoids surprise latency mid-flow; cacheable.
 

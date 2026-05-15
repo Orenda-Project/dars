@@ -48,7 +48,7 @@
 **Motivation:** Schema's `run_breakdown(grade, subject)` generates sub-SLOs from SLOs using GPT-4o/Claude. We need this in dars to support the eager + on-demand sub-SLO generation per D-3.
 
 **Spec:**
-- Source: `/home/hataf/taleemabad/Schema/services/slo_breakdown.py` lines 138–203
+- Source: [../../../../Schema/services/slo_breakdown.py](../../../../Schema/services/slo_breakdown.py) lines 138–203
 - Destination: `server/src/dars/breakdown/slo_breakdown_service.py`
 - Port from sync Flask to async FastAPI:
   - Convert sync `_call_llm()` to async using `httpx.AsyncClient`
@@ -74,7 +74,7 @@
 **Motivation:** Schema's chapter-plan generates topic boundaries + day-wise plan. We need it for: (a) drafting topics from OCR'd chapters (D-4 hybrid), (b) generating the slot sequence for a breakdown.
 
 **Spec:**
-- Source: `Schema/services/chapter_plan.py` (especially `_breakdown_chapter_topics()` and `map_topics_to_ncp_slos()`)
+- Source: [../../../../Schema/services/chapter_plan.py](../../../../Schema/services/chapter_plan.py) (especially `_breakdown_chapter_topics()` and `map_topics_to_ncp_slos()`)
 - Destination: `server/src/dars/breakdown/chapter_breakdown_service.py`
 - Two functions:
   - `extract_topics_from_chapter(book_chapter_id) -> list[TopicDraft]`: reads `chapter_text`, calls LLM with `topic_breakdown_prompt`, parses output, returns drafts (does NOT insert until admin publishes)
@@ -94,7 +94,7 @@
 **Motivation:** Schema's prompts are LLM-agnostic text files; clone them verbatim.
 
 **Spec:**
-- Source: `Schema/prompts/*.txt`
+- Source: [../../../../Schema/prompts/](../../../../Schema/prompts/) (all `*.txt`)
 - Destination: `server/src/dars/breakdown/prompts/`
 - Files to copy:
   - `topic_breakdown_prompt.txt` (chapter → topic extraction)

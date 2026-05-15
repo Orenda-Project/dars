@@ -2,7 +2,7 @@
 
 **Authored:** 2026-05-15  
 **Status:** Draft (pending kickoff)  
-**Target environment:** staging only — production stays untouched (see Decision 34)
+**Target environment:** staging only — production stays untouched (see [Decision 34](01-decision-log.md))
 
 ## Why this plan exists
 
@@ -34,7 +34,7 @@ docs/plans/2026-05-15-dars-v2-rebuild/
 └── 09-reference-ug-eg-api.md           ← frozen UG_EG API spec
 ```
 
-**Project onramp lives at `../../REBUILD.md` (repo root).** A new agent should be pointed at REBUILD.md, not directly at this README.
+**Project onramp lives at [../../REBUILD.md](../../REBUILD.md) (repo root).** A new agent should be pointed at REBUILD.md, not directly at this README.
 
 ## Document precedence
 
@@ -77,7 +77,7 @@ Phase 4 (teacher app)
 Phase 5 (dashboard)
 ```
 
-Each phase ends with a staging deploy. Don't start phase N+1 until phase N is on staging and verified (Decision 51). Each phase opens one bead (Decision 54) and closes when staging is green.
+Each phase ends with a staging deploy. Don't start phase N+1 until phase N is on staging and verified ([Decision 51](01-decision-log.md)). Each phase opens one bead ([Decision 54](01-decision-log.md)) and closes when staging is green.
 
 ## Conventions inside phase documents
 
@@ -94,9 +94,9 @@ Features within a phase are ordered. A feature can depend only on earlier featur
 
 When the user says "start phase N" (or you arrive at this state with everything else covered):
 
-1. Read `REBUILD.md` (repo root) end to end if you haven't already — that's the operating manual.
-2. Read this plan's `00-glossary.md`, `01-decision-log.md`, `02-data-model.md`.
-3. Read the phase file `0N-phase-N-{slug}.md` end to end.
+1. Read [REBUILD.md](../../REBUILD.md) (repo root) end to end if you haven't already — that's the operating manual.
+2. Read this plan's [00-glossary.md](00-glossary.md), [01-decision-log.md](01-decision-log.md), [02-data-model.md](02-data-model.md).
+3. Read the phase file end to end: [03-phase-1-foundation.md](03-phase-1-foundation.md) · [04-phase-2-breakdown-engine.md](04-phase-2-breakdown-engine.md) · [05-phase-3-generation-pipeline.md](05-phase-3-generation-pipeline.md) · [06-phase-4-teacher-app.md](06-phase-4-teacher-app.md) · [07-phase-5-dashboard.md](07-phase-5-dashboard.md).
 4. Open the phase's bead (`feat-v2-phase-N-{slug}`) per the dars beads workflow.
 5. Branch from `staging` (NEVER main): `git fetch origin staging && git checkout -b feat/v2-phase-N-{slug} origin/staging`.
 6. Implement features in the order the phase doc lists them. One PR per feature (or per logical change). PR target: `staging`.
@@ -105,12 +105,12 @@ When the user says "start phase N" (or you arrive at this state with everything 
 
 ## What's NOT in this plan
 
-- Production migration (Decision 34 — separate effort)
-- Multi-curriculum org support (Decision 25 — one curriculum per org for v1)
-- Per-student mastery (Decision 31 — class-level only)
-- Teacher authentication (Decision Q9 — teacher app is auth-free sample)
-- Real i18n (Decision 37 — English UI, RTL content only)
-- Real time tracing/Sentry (Decision 44 — structured logs only)
-- Rate limiting (Decision 45 — observe, don't throttle in v1)
-- Breakdown versioning beyond immutable records (Decision 18 — no "pull updates" UI)
-- LP regeneration on demand (Decision 48 — teachers get cached LPs only)
+- Production migration ([Decision 34](01-decision-log.md) — separate effort)
+- Multi-curriculum org support ([Decision 25](01-decision-log.md) — one curriculum per org for v1)
+- Per-student mastery ([Decision 31](01-decision-log.md) — class-level only)
+- Teacher authentication (see Q9 in [01-decision-log.md](01-decision-log.md) — teacher app is auth-free sample)
+- Real i18n ([Decision 37](01-decision-log.md) — English UI, RTL content only)
+- Real time tracing/Sentry ([Decision 44](01-decision-log.md) — structured logs only)
+- Rate limiting ([Decision 45](01-decision-log.md) — observe, don't throttle in v1)
+- Breakdown versioning beyond immutable records ([Decision 18](01-decision-log.md) — no "pull updates" UI)
+- LP regeneration on demand ([Decision 48](01-decision-log.md) — teachers get cached LPs only)

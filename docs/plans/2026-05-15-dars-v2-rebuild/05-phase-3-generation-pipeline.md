@@ -45,7 +45,7 @@
 **Motivation:** Used in F3.8 to post-process every generated LP.
 
 **Spec:**
-- Source: `Schema/services/lp_tagging.py`, `prompts/lp_tagging_prompt.txt`, `schema-tags.json`
+- Source: [../../../../Schema/services/lp_tagging.py](../../../../Schema/services/lp_tagging.py), [../../../../Schema/prompts/lp_tagging_prompt.txt](../../../../Schema/prompts/lp_tagging_prompt.txt), [../../../../Schema/schema-tags.json](../../../../Schema/schema-tags.json)
 - Destination: `dars/breakdown/lp_tagging_service.py`, prompt copied to `dars/breakdown/prompts/`, tag taxonomy copied to `dars/breakdown/schema-tags.json`
 - Convert sync to async
 - Function: `async def tag_lp(lp_html: str, sub_slo_candidates: list[SubSLO]) -> TaggingResult`

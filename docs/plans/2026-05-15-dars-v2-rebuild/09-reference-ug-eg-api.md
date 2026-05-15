@@ -1,6 +1,6 @@
 # Reference: UG_EG (Exam Generator) API
 
-**Source:** `/home/hataf/taleemabad/UG_EG`  
+**Source:** [../../../../UG_EG](../../../../UG_EG)  
 **Verified against SHAs:**
 - `main`: `f46e671c598912a320130660738c4466d3967688`
 - `origin/Staging`: `5454164cb175b892c3de1707325b05db80dd4129`

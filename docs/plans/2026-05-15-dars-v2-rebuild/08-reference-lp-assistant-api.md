@@ -1,6 +1,6 @@
 # Reference: LP Assistant API
 
-**Source:** `/home/hataf/taleemabad/UG_LessonPlan`  
+**Source:** [../../../../UG_LessonPlan](../../../../UG_LessonPlan)  
 **Verified against SHA:** `8ab979df488ecd1d0377b0f5051695fe48833fa2` (branch: `main` at 2026-05-15)  
 **Re-verify before quoting line numbers** — repo may have rebased.
 

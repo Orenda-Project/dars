@@ -40,13 +40,13 @@
 - Contents:
   1. `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` (clean slate; preserves Supabase extensions in `extensions` schema)
   2. `CREATE EXTENSION IF NOT EXISTS pgcrypto;` (for `gen_random_uuid()`)
-  3. CREATE TABLE statements for every table in `02-data-model.md` Section 1-8, in the order listed in Section 10
+  3. CREATE TABLE statements for every table in [02-data-model.md](02-data-model.md) Section 1-8, in the order listed in Section 10
 - Migrations run automatically on Railway deploy (Critical Rule #7) — do not run manually.
 - For local dev: `make migrate` runs them via Supabase CLI against local Postgres.
 
 **Test plan:**
 - Migration file is valid SQL (no syntax errors); `psql --set ON_ERROR_STOP=on` against a fresh local DB applies cleanly.
-- All tables listed in 02-data-model.md exist after migration.
+- All tables listed in [02-data-model.md](02-data-model.md) exist after migration.
 - All indexes from Section 11 exist.
 
 **Acceptance:**
@@ -213,7 +213,7 @@ W1-01: Student can write all 26 letters of the alphabet with correct formation
 
 All endpoints require API key auth (existing pattern). All filter by `org_id` (Critical Rule #3).
 
-Pydantic response schemas per `02-data-model.md`. UUIDs serialized as strings.
+Pydantic response schemas per [02-data-model.md](02-data-model.md). UUIDs serialized as strings.
 
 **Test plan:**
 - One integration test per endpoint: hit it with the seed's API key, assert response shape and content matches the seed

@@ -2,7 +2,7 @@
 
 Final schema for Dars v2. All tables, columns, indexes, FKs, plus migration SQL.
 
-**Important conventions** (from `dars/docs/conventions.md` + Critical Rule #6):
+**Important conventions** (from [../../conventions.md](../../conventions.md) + Critical Rule #6):
 - UUID primary keys via `sqlalchemy.types.Uuid` (NOT `dialects.postgresql.UUID` — breaks SQLite tests)
 - `created_at`, `updated_at` on every table
 - All multi-tenant tables filter by `org_id` in queries
