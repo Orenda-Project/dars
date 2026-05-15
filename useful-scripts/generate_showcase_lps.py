@@ -58,11 +58,11 @@ class LPSpec:
 SPECS: list[LPSpec] = [
     LPSpec(1, 2, "Reading", "111", "Journey through text"),
     LPSpec(2, 2, "Comprehension w/ meanings", "15", "New words to know"),
-    LPSpec(3, 2, "Comprehension Q&A", "127,128", "Activity 2"),
+    LPSpec(3, 2, "Comprehension Q&A", "127-128", "Activity 2"),
     LPSpec(4, 2, "Grammar", "10", "Activity 3"),
     LPSpec(5, 2, "Creative writing", "133", ""),
-    LPSpec(6, 5, "Reading", "32,33", "Journey through text"),
-    LPSpec(7, 5, "Comprehension w/ meanings", "44,45", "Memory lane"),
+    LPSpec(6, 5, "Reading", "32-33", "Journey through text"),
+    LPSpec(7, 5, "Comprehension w/ meanings", "44-45", "Memory lane"),
     LPSpec(8, 5, "Comprehension Q&A", "49", "Activity 3"),
     LPSpec(9, 5, "Grammar", "39", "Activity 3"),
     LPSpec(10, 5, "Creative writing", "15", "Activity 3"),
@@ -84,7 +84,7 @@ def generate_one(
     payload: dict[str, Any] = {
         "curriculum": curriculum,
         "grade": spec.grade,
-        "subject": "English",
+        "subject": "Eng",
         "page_number": spec.page,
         "class_strength": 30,
         "generate_bilingual": False,
