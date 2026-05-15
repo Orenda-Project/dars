@@ -490,8 +490,8 @@ async def ai_breakdown_chapter(
     )
 
     try:
-        if not settings.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is not configured")
+        # AI breakdown disabled — using deterministic fallback to avoid API cost
+        raise ValueError("AI breakdown disabled")
 
         logger.info(
             "ai_breakdown_chapter: calling Claude — chapter=%r subject=%r days=%d",
@@ -595,9 +595,8 @@ async def ai_breakdown_chapter(
             chapter_plan_id,
             exc_info=True,
         )
-        fallback_slots = await generate_lesson_sequence(chapter_plan_id, db, global_day_offset=global_day_offset)
-        days_used = max((s.day_number - global_day_offset for s in fallback_slots), default=0)
-        return {"lesson_slots": fallback_slots, "assessment_slots": [], "days_used": days_used}
+        fallback = await generate_lesson_sequence(chapter_plan_id, db, global_day_offset=global_day_offset)
+        return fallback
 
 
 async def ai_breakdown_all(
@@ -863,13 +862,14 @@ async def generate_lesson_sequence(
     chapter_plan_id: int,
     db: AsyncSession,
     global_day_offset: int = 0,
-) -> list[ClassLessonSlot]:
+) -> dict:
     """
-    Generate ClassLessonSlot rows for a chapter plan using subject-aware LP type cycling.
-    Deletes any existing rows for this chapter plan, then inserts fresh ones.
-    Last slot is always "Revision".
+    Deterministic breakdown: subject-aware LP type cycling for lessons, plus one FA after
+    every 4 lessons. Last lesson slot is always "Revision". FA occupies the next global day.
 
-    global_day_offset: added to each local day_number so slots are globally unique.
+    global_day_offset: running day count before this chapter so day_number is globally unique.
+
+    Returns {"lesson_slots": [...], "assessment_slots": [...], "days_used": N}.
     """
     logger.info("generate_lesson_sequence: chapter_plan_id=%s", chapter_plan_id)
 
@@ -879,7 +879,7 @@ async def generate_lesson_sequence(
     plan = plan_result.scalar_one_or_none()
     if plan is None:
         logger.error("generate_lesson_sequence: chapter_plan_id=%s not found", chapter_plan_id)
-        return []
+        return {"lesson_slots": [], "assessment_slots": [], "days_used": 0}
 
     cst_result = await db.execute(
         select(ClassSubjectTeacher).where(ClassSubjectTeacher.id == plan.class_subject_teacher_id)
@@ -889,17 +889,31 @@ async def generate_lesson_sequence(
         logger.error(
             "generate_lesson_sequence: CST not found for chapter_plan_id=%s", chapter_plan_id
         )
-        return []
+        return {"lesson_slots": [], "assessment_slots": [], "days_used": 0}
 
     from dars.lookup.service import get_subject_code as _gsc4
     subject_str = (await _gsc4(db, cst.subject_id) if cst.subject_id else None) or "General"
     subject_key = subject_str.lower()
     cycle = _LP_CYCLES.get(subject_key, _DEFAULT_CYCLE)
 
+    # Build a sequence of exactly n total periods: FA every 5th period (4 lessons + 1 FA).
+    # teaching_days is the total period budget — lessons + FAs combined.
+    _FA_INTERVAL = 5  # one FA per block of 5 periods
     n = plan.teaching_days
-    lp_types: list[str] = []
+
+    # Pre-compute which period indices (0-based) are FAs vs lessons
+    period_types: list[str] = []  # "lesson" or "fa"
     for i in range(n):
-        if i == n - 1:
+        if (i + 1) % _FA_INTERVAL == 0:
+            period_types.append("fa")
+        else:
+            period_types.append("lesson")
+
+    # Count actual lesson slots to assign LP types
+    lesson_count = period_types.count("lesson")
+    lp_types: list[str] = []
+    for i in range(lesson_count):
+        if i == lesson_count - 1:
             lp_types.append("Revision")
         else:
             lp_types.append(cycle[i % len(cycle)])
@@ -908,31 +922,63 @@ async def generate_lesson_sequence(
     await db.execute(
         delete(ClassLessonSlot).where(ClassLessonSlot.chapter_plan_id == chapter_plan_id)
     )
-
-    new_slots: list[ClassLessonSlot] = []
-    for local_day, lp_type in enumerate(lp_types, start=1):
-        global_day = global_day_offset + local_day
-        slot = ClassLessonSlot(
-            client_id=cst.client_id,
-            class_subject_teacher_id=cst.id,
-            chapter_plan_id=chapter_plan_id,
-            day_number=global_day,
-            lp_type=lp_type,
-            title=f"Day {global_day}: {lp_type}",
-            status="planned",
+    await db.execute(
+        delete(AssessmentSlot).where(
+            AssessmentSlot.chapter_plan_id == chapter_plan_id,
+            AssessmentSlot.assessment_type.in_(["FA", "formative"]),
         )
-        db.add(slot)
-        new_slots.append(slot)
+    )
+
+    new_lesson_slots: list[ClassLessonSlot] = []
+    new_assessment_slots: list[AssessmentSlot] = []
+    current_day = global_day_offset
+    lesson_idx = 0
+    fa_counter = 1
+
+    for ptype in period_types:
+        current_day += 1
+        if ptype == "lesson":
+            lp_type = lp_types[lesson_idx]
+            slot = ClassLessonSlot(
+                client_id=cst.client_id,
+                class_subject_teacher_id=cst.id,
+                chapter_plan_id=chapter_plan_id,
+                day_number=current_day,
+                lp_type=lp_type,
+                title=f"Day {current_day}: {lp_type}",
+                status="planned",
+            )
+            db.add(slot)
+            new_lesson_slots.append(slot)
+            lesson_idx += 1
+        else:
+            aslot = AssessmentSlot(
+                client_id=cst.client_id,
+                class_subject_teacher_id=cst.id,
+                chapter_plan_id=chapter_plan_id,
+                assessment_type="formative",
+                day_number=current_day,
+                scheduled_date=None,
+                title=f"Formative Assessment {fa_counter}",
+                status="scheduled",
+            )
+            db.add(aslot)
+            new_assessment_slots.append(aslot)
+            fa_counter += 1
 
     await db.flush()
-    for slot in new_slots:
+    for slot in new_lesson_slots:
         await db.refresh(slot)
+    for aslot in new_assessment_slots:
+        await db.refresh(aslot)
 
     await db.commit()
+    days_used = current_day - global_day_offset
     logger.info(
-        "generate_lesson_sequence: chapter_plan_id=%s created=%d slots", chapter_plan_id, len(new_slots)
+        "generate_lesson_sequence: chapter_plan_id=%s lessons=%d assessments=%d days_used=%d",
+        chapter_plan_id, len(new_lesson_slots), len(new_assessment_slots), days_used,
     )
-    return new_slots
+    return {"lesson_slots": new_lesson_slots, "assessment_slots": new_assessment_slots, "days_used": days_used}
 
 
 # ---------------------------------------------------------------------------
