@@ -68,17 +68,15 @@ async def run_seed_on_startup(database_url: str) -> None:
     """
     Server-boot entrypoint, called from main.py lifespan after migrations.
 
-    Gated by env var DARS_V2_SEED_ON_STARTUP=true so we don't seed on every
-    server boot in environments where it's not wanted. Idempotent — safe
-    to run repeatedly.
+    Runs unconditionally on every boot. Every seed step is idempotent
+    (INSERT ON CONFLICT DO NOTHING with deterministic UUID v5 IDs), so
+    subsequent boots are a near-instant no-op — just three sub-queries
+    that all collide on unique constraints and skip.
 
     Never raises: if the seed fails for any reason, we log and continue so
-    the server still boots. The seed can be re-run manually via `make seed`.
+    the server still boots. The seed can also be re-run manually via
+    `make seed`.
     """
-    if os.environ.get("DARS_V2_SEED_ON_STARTUP", "").lower() not in ("1", "true", "yes"):
-        log.info("v2_seed: skipped (DARS_V2_SEED_ON_STARTUP not set)")
-        return
-
     log.info("v2_seed: starting on-startup run")
     try:
         url = _asyncpg_url(database_url)
