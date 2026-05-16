@@ -45,6 +45,7 @@ from dars.v2_api.schemas_breakdown import (
     BreakdownSlotTopicRead,
     BreakdownSlotUpdate,
     BreakdownUpdate,
+    AnchorUpdate,
     ForkClassBody,
     ForkOrgBody,
     ForkResponse,
@@ -668,6 +669,66 @@ async def delete_slot(
     await _validate_slot_belongs_to_breakdown(conn, breakdown_id, slot_id)
     await conn.execute("DELETE FROM breakdown_slots WHERE id = $1", slot_id)
     log.info("delete_slot: breakdown=%s slot=%s removed", breakdown_id, slot_id)
+
+
+# ---------------------------------------------------------------------------
+# Anchor placement (F2.11)
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/breakdowns/{breakdown_id}/slots/{slot_id}/anchor",
+    response_model=BreakdownSlotRead,
+)
+async def set_slot_anchor(
+    breakdown_id: UUID,
+    slot_id: UUID,
+    payload: AnchorUpdate,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> BreakdownSlotRead:
+    """
+    Set or clear a slot's `anchor_date`.
+
+    Per D-7, only admin scopes (global, org) can place anchors. Class
+    scope is teachers' surface — we forbid anchor placement there to
+    keep authoritative scheduling at org level. Published breakdowns
+    are immutable (409) consistent with the rest of slot mutation.
+    """
+    bd = await _load_breakdown_or_404(conn, breakdown_id)
+    if bd["scope"] not in ("global", "org"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="anchors can only be set on global or org-scope breakdowns",
+        )
+    if bd["status"] != "draft":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"breakdown is {bd['status']}; only drafts can be modified",
+        )
+    await _validate_slot_belongs_to_breakdown(conn, breakdown_id, slot_id)
+
+    row = await conn.fetchrow(
+        """
+        UPDATE breakdown_slots
+        SET anchor_date = $1, updated_at = now()
+        WHERE id = $2
+        RETURNING id, breakdown_id, breakdown_chapter_id, position, chapter_position,
+                  slot_type, lp_type, topic_id, anchor_date, created_at, updated_at
+        """,
+        payload.anchor_date, slot_id,
+    )
+    extras = await conn.fetch(
+        "SELECT topic_id, position FROM breakdown_slot_topics WHERE breakdown_slot_id = $1 ORDER BY position",
+        slot_id,
+    )
+    log.info(
+        "set_slot_anchor: breakdown=%s slot=%s anchor=%s",
+        breakdown_id, slot_id, payload.anchor_date,
+    )
+    return BreakdownSlotRead(
+        **dict(row),
+        extra_topics=[BreakdownSlotTopicRead(**dict(e)) for e in extras],
+    )
 
 
 # ---------------------------------------------------------------------------

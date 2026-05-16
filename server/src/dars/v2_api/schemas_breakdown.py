@@ -212,3 +212,13 @@ class RealizeResponse(BaseModel):
     assessment_slots_upserted: int
     assessment_topics_inserted: int
     skipped: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Anchor (F2.11)
+# ---------------------------------------------------------------------------
+
+
+class AnchorUpdate(BaseModel):
+    # null clears the anchor.
+    anchor_date: date | None = None

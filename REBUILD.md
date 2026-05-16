@@ -93,7 +93,7 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 | Plan written | ✅ all plan + reference files committed |
 | Plan reviewed by user | ✅ |
 | Phase 1 (Foundation) | ✅ shipped; bead `feat-v2-phase-1-foundation` closed |
-| Phase 2 (Breakdown Engine) | 🟡 bead `feat-v2-phase-2-breakdown` open; F2.1..F2.6 ✅ shipped; F2.7+F2.8+F2.9+F2.10 in flight as one PR |
+| Phase 2 (Breakdown Engine) | 🟡 bead `feat-v2-phase-2-breakdown` open; F2.1..F2.10 ✅ shipped; F2.11+F2.12+F2.13 in flight as one PR |
 | Phase 3 (Generation Pipeline) | ⏳ blocked by Phase 2 |
 | Phase 4 (Teacher App) | ⏳ blocked by Phase 3 |
 | Phase 5 (Dashboard) | ⏳ blocked by Phase 4 |
@@ -107,7 +107,7 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 PR #37 (F1.1 cutover) · PR #38 (F1.2 lookups) · PR #39 (migration-order fix) · PR #40 (F1.3 SLOs) · PR #41 (F1.4 book content) · PR #42 (F1.5 tenancy) · PR #43 (date encoding fix) · PR #44 (F1.6 tenancy API) · PR #45 (F1.7 curriculum API) · PR #46 (F1.8 book API) · PR #47 (F1.9 smoke + F1.10 legacy delete)
 
 **Next thing to do unless the user says otherwise:**
-F2.7+F2.8+F2.9+F2.10 are bundled in one PR pending review/merge. Once merged, proceed with F2.11 (Anchor placement + conflict detection — surfacing the projector's flags) per [docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md](docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md). Branch off `staging`. Bundle a few adjacent features per PR is fine; never skip ahead in numeric order.
+F2.11+F2.12+F2.13 bundled in one PR pending review/merge. Once merged, proceed with F2.14 (Run breakdown generation on seed; publish to staging) per [docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md](docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md). Branch off `staging`. Bundle a few adjacent features per PR is fine; never skip ahead in numeric order.
 
 **State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with [.beads/status.jsonl](.beads/status.jsonl). **The bead is the source of truth for what's currently in flight; REBUILD.md is the human-readable summary.** If they disagree, the bead wins and REBUILD.md is stale — fix REBUILD.md.
 
