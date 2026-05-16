@@ -119,27 +119,28 @@
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/v1/breakdowns` | Create a new breakdown (scope, curriculum, grade, subject, book, status='draft') |
-| GET | `/api/v1/breakdowns` | List breakdowns (filter by `?scope=`, `?curriculum_id=`, `?grade_id=`, `?subject_id=`, `?status=`) |
-| GET | `/api/v1/breakdowns/{id}` | Single breakdown (includes chapters + slots, deeply expanded) |
-| PATCH | `/api/v1/breakdowns/{id}` | Edit (only allowed on draft; creates a new version with `previous_version_id` per D-18) |
-| POST | `/api/v1/breakdowns/{id}/publish` | Publish: flips status to `published`, creates a new immutable record |
-| DELETE | `/api/v1/breakdowns/{id}` | Soft-delete a draft (cannot delete published) |
-| POST | `/api/v1/breakdowns/{id}/chapters` | Add a chapter to a draft breakdown |
-| PATCH | `/api/v1/breakdowns/{id}/chapters/{chapter_id}` | Edit teaching_days, position |
-| POST | `/api/v1/breakdowns/{id}/slots` | Add a slot (lesson/assessment/revision) |
-| PATCH | `/api/v1/breakdowns/{id}/slots/{slot_id}` | Edit a slot |
-| DELETE | `/api/v1/breakdowns/{id}/slots/{slot_id}` | Remove a slot from a draft |
+| POST | `/api/v2/breakdowns` | Create a new breakdown (scope, curriculum, grade, subject, book, status='draft') |
+| GET | `/api/v2/breakdowns` | List breakdowns (filter by `?scope=`, `?curriculum_id=`, `?grade_id=`, `?subject_id=`, `?status=`) |
+| GET | `/api/v2/breakdowns/{id}` | Single breakdown (includes chapters + slots, deeply expanded) |
+| PATCH | `/api/v2/breakdowns/{id}` | Edit (only allowed on draft; creates a new version with `previous_version_id` per D-18) |
+| POST | `/api/v2/breakdowns/{id}/publish` | Publish: flips status to `published`, creates a new immutable record |
+| DELETE | `/api/v2/breakdowns/{id}` | Soft-delete a draft (cannot delete published) |
+| POST | `/api/v2/breakdowns/{id}/chapters` | Add a chapter to a draft breakdown |
+| PATCH | `/api/v2/breakdowns/{id}/chapters/{chapter_id}` | Edit teaching_days, position |
+| POST | `/api/v2/breakdowns/{id}/slots` | Add a slot (lesson/assessment/revision) |
+| PATCH | `/api/v2/breakdowns/{id}/slots/{slot_id}` | Edit a slot |
+| DELETE | `/api/v2/breakdowns/{id}/slots/{slot_id}` | Remove a slot from a draft |
 
 For global breakdowns, only Dars-internal users author them (no org-scoped). For v1, the seed creates the global breakdown directly; the admin CRUD UI is for editing it later.
 
-**Auth model:** global breakdown CRUD is admin-only. Use a simple `?admin_token=` query param backed by env var for v1 (no proper admin user model yet); harden in v2.
+**Auth model (D-66):** global breakdown CRUD is admin-only. Use `X-Admin-Token` header backed by env var `DARS_ADMIN_TOKEN`; verify with `hmac.compare_digest` per Critical Rule #5. Missing or wrong value → 403. No `?admin_token=` query param (avoids leakage into logs).
 
 **Validation rules:**
 - `lp_type` MUST be in the valid set per subject (see glossary)
 - Published breakdowns are immutable; PATCH on published returns 409
 - `slot.topic_id` must exist and belong to a chapter in the breakdown
 - `slot.anchor_date` (if set) must fall within the academic year (only validated when realized to a CST; global breakdowns can have anchors that resolve later)
+- `breakdowns.book_id` is required for all scopes in v1 (**D-69**) — application-layer NOT NULL even though the column allows NULL
 
 **Test plan:**
 - Create draft → add chapters → add slots → publish; assert state transitions
@@ -155,13 +156,13 @@ For global breakdowns, only Dars-internal users author them (no org-scoped). For
 **Motivation:** Authoring a breakdown slot-by-slot is tedious. The breakdown engine should propose a draft from a book + day budget.
 
 **Spec:**
-- Endpoint: `POST /api/v1/breakdowns/auto-build`
+- Endpoint: `POST /api/v2/breakdowns/auto-build` (admin-only per **D-66**)
 - Body: `{ curriculum_id, grade_id, subject_id, book_id, total_teaching_days: 180, fa_cadence: 5, sa_per_chapter: 1 }`
 - Logic:
   1. Compute per-chapter day budget proportionally (or via LLM if `mode='ai'` query param)
   2. For each chapter, generate slot sequence:
      - For each topic in chapter, emit 1-2 lesson slots (based on topic length + sub-SLO count)
-     - Pick `lp_type` based on topic type heuristic (e.g. reading passage → `reading`, grammar topic → `grammar`)
+     - Pick `lp_type` from the heuristic table (per **D-68**): `dars/breakdown/lp_type_heuristics.py` maps known signals to lp_types — "comprehension" / "answer the questions" → `comprehension_qa`; "spelling" / "write" / "letters" → `creative_writing`; "grammar" / "noun" / "verb" / "pronoun" → `grammar`; "vocabulary" / "word meanings" / "synonyms" → `comprehension_word_meanings`; default → `reading`. LLM fallback only on no heuristic match AND ambiguity flag. The SLO's `recommended_lp_type` is the strongest signal — use it when present.
      - Every K slots, emit an FA slot covering the recent topics
      - At chapter end, emit an SA slot covering all topics in the chapter
      - Last slot in chapter = revision
@@ -181,8 +182,8 @@ For global breakdowns, only Dars-internal users author them (no org-scoped). For
 **Motivation:** Manual trigger per D-3 — admin clicks "break down SLOs" or it runs during seed.
 
 **Spec:**
-- Endpoint: `POST /api/v1/slos/{slo_id}/breakdown` → triggers `slo_breakdown_service.run_breakdown()` for that SLO
-- Endpoint: `POST /api/v1/breakdowns/sub-slos/bulk` body `{ slo_ids: [...] }` → batch trigger
+- Endpoint: `POST /api/v2/slos/{slo_id}/breakdown` → triggers `slo_breakdown_service.run_breakdown()` for that SLO
+- Endpoint: `POST /api/v2/breakdowns/sub-slos/bulk` body `{ slo_ids: [...] }` → batch trigger
 - Idempotent: if sub-SLOs already exist with `source='schema_breakdown'`, return existing unless `force=true`
 - Async (FastAPI BackgroundTasks per D-42) for bulk; sync for single SLO
 - During seed: F1.3 creates manual sub-SLOs. Later, admin can call this to add machine-generated sub-SLOs as additional ones.
@@ -203,8 +204,8 @@ For global breakdowns, only Dars-internal users author them (no org-scoped). For
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/v1/breakdowns/{global_id}/fork-org` | Org admin forks global → org-scope draft |
-| POST | `/api/v1/breakdowns/{org_id}/fork-class` | Org admin (acting for teacher) forks org → class-scope draft for a specific CST |
+| POST | `/api/v2/breakdowns/{global_id}/fork-org` | Org admin forks global → org-scope draft |
+| POST | `/api/v2/breakdowns/{org_id}/fork-class` | Org admin (acting for teacher) forks org → class-scope draft for a specific CST |
 
 Body for fork-org: `{ org_id }` (the calling org).  
 Body for fork-class: `{ cst_id }`.
@@ -262,10 +263,10 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
 **Motivation:** When a class breakdown is published, the planning rows in `breakdown_slots` must materialize as `class_lesson_slots` and `class_assessment_slots` for that CST.
 
 **Spec:**
-- Endpoint: `POST /api/v1/breakdowns/{class_breakdown_id}/realize` (called by publish flow internally; also exposed for re-realize)
+- Endpoint: `POST /api/v2/breakdowns/{class_breakdown_id}/realize` (called by publish flow internally; also exposed for re-realize; admin-only per **D-66**)
 - Logic:
   1. For each `breakdown_slot` in the class breakdown (ordered by position):
-     - If `slot_type='lesson'` or `'revision'`: insert `class_lesson_slots` row with copied fields, status='planned'
+     - If `slot_type='lesson'` or `'revision'`: insert `class_lesson_slots` row with copied fields, status='planned' (materialized per **D-67** — updated synchronously by F2.12)
      - If `slot_type='formative_assessment'` or `'summative_assessment'`: insert `class_assessment_slots` row with copied fields, status='scheduled', then insert `class_assessment_slot_topics` from `breakdown_slot_topics`
   2. Existing slots for the CST are not deleted — re-realize is idempotent on `(cst_id, position)` via UNIQUE; failed inserts mean position already exists and we update instead
 
@@ -292,12 +293,12 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
   4. Apply `cst_holiday_overrides`: same
   5. Return final set
 - Endpoints:
-  - `GET /api/v1/orgs/me/holidays?academic_year_id=...` → list org-level
-  - `GET /api/v1/schools/{id}/holidays` → list effective (org + school overrides)
-  - `GET /api/v1/csts/{id}/holidays` → list effective (full inheritance)
-  - `POST /api/v1/orgs/me/holidays` → add org-level holiday
-  - `POST /api/v1/schools/{id}/holiday-overrides` → add school override
-  - `POST /api/v1/csts/{id}/holiday-overrides` → add CST override (teacher sick day)
+  - `GET /api/v2/orgs/me/holidays?academic_year_id=...` → list org-level
+  - `GET /api/v2/schools/{id}/holidays` → list effective (org + school overrides)
+  - `GET /api/v2/csts/{id}/holidays` → list effective (full inheritance)
+  - `POST /api/v2/orgs/me/holidays` → add org-level holiday
+  - `POST /api/v2/schools/{id}/holiday-overrides` → add school override
+  - `POST /api/v2/csts/{id}/holiday-overrides` → add CST override (teacher sick day)
 
 **Test plan:**
 - Org has 3 holidays; school removes 1; CST adds 2 personal → effective set = (3 - 1) + 2 = 4
@@ -311,7 +312,7 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
 **Motivation:** D-7 — admins can anchor slots (e.g. "final exam on May 30").
 
 **Spec:**
-- Endpoint: `PATCH /api/v1/breakdowns/{id}/slots/{slot_id}/anchor` body `{ anchor_date: '2026-05-30' | null }`
+- Endpoint: `PATCH /api/v2/breakdowns/{id}/slots/{slot_id}/anchor` body `{ anchor_date: '2026-05-30' | null }`
 - Validation:
   - Only allowed on global or org scope (D-7: teachers cannot anchor)
   - Anchor must be in the future relative to publish-time? **No** — anchors are intentions; projector handles past-anchor by flagging
@@ -334,22 +335,23 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
 **Motivation:** Core teacher action. Triggers sub-SLO coverage updates.
 
 **Spec:**
-- Endpoint: `POST /api/v1/class-lesson-slots/{slot_id}/mark-taught` body `{ taught_on?: 'YYYY-MM-DD' (default today) }`
-- Endpoint: `POST /api/v1/class-lesson-slots/{slot_id}/skip` body `{ reason?: 'string' }`
-- Endpoint: `POST /api/v1/class-assessment-slots/{slot_id}/complete` body `{ taught_on?: 'YYYY-MM-DD' }`
-- All three:
-  1. Insert `slot_progress` row
-  2. Update slot's `status` column (denormalized for fast reads)
-  3. If `taught` on a lesson slot: for each sub-SLO linked to the slot's topic, upsert `cst_sub_slo_coverage` to `status='taught', marked_at=NOW()` (D-5)
-  4. Recompute `cst_state.current_sequence_position` = max(position of any slot with action='taught' or 'completed' or 'skipped') + 1
-- Out-of-order completion is allowed (D-11). Gaps are preserved.
+- Endpoint: `POST /api/v2/class-lesson-slots/{slot_id}/mark-taught` body `{ taught_on?: 'YYYY-MM-DD' (default today) }`
+- Endpoint: `POST /api/v2/class-lesson-slots/{slot_id}/skip` body `{ reason?: 'string' }`
+- Endpoint: `POST /api/v2/class-assessment-slots/{slot_id}/complete` body `{ taught_on?: 'YYYY-MM-DD' }`
+- All three (in one transaction per **D-70**):
+  1. Insert `slot_progress` row (append-only event log)
+  2. Update THAT specific slot's `status` column to `taught`/`skipped`/`completed` (materialized denorm per **D-67**; gaps in lower positions stay as `planned`)
+  3. If `taught` on a lesson slot: for each sub-SLO linked to the slot's topic, upsert `cst_sub_slo_coverage` to `status='taught', marked_at=NOW()` (**D-5**)
+  4. Recompute `cst_state.current_sequence_position` = max(position of any slot with `slot_progress` action in `taught|completed|skipped`) + 1 (**D-11**, **D-70**)
+- Out-of-order completion is allowed: marking Day 3 before Day 2 leaves Day 2's `slot.status='planned'` (a visible gap); only Day 3 flips to `taught`. Position advances to 4. Sub-SLO coverage flips only for Day 3's topic.
 
-**Endpoint:** `GET /api/v1/csts/{id}/sub-slo-coverage` → returns map sub_slo_id → status (taught/not_taught), used in reports.
+**Endpoint:** `GET /api/v2/csts/{id}/sub-slo-coverage` → returns map sub_slo_id → status (taught/not_taught), used in reports.
 
 **Test plan:**
-- Mark slot taught → sub-SLO coverage updated; sequence advanced
-- Skip Day 2 by marking Day 3 directly → Day 2 stays not-taught; position = 4
-- Mark Day 2 later → it taught; position recomputed (still 4, because Day 3 already taught)
+- Mark slot taught → `slot_progress` row inserted; slot.status='taught'; sub-SLO coverage updated; sequence advanced
+- Skip Day 2 by marking Day 3 directly → Day 2's `slot.status` stays `planned`; Day 3's `slot.status='taught'`; position = 4
+- Mark Day 2 later → Day 2.status='taught'; position recomputed to 4 (unchanged because Day 3 is the max taught position)
+- Both `slot_progress` insertion AND `slot.status` update happen inside one DB transaction (no half-states)
 
 **Acceptance:** event log accurate; coverage and position consistent.
 
@@ -360,7 +362,7 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
 **Motivation:** Teachers arrive mid-year and declare their position (D-12).
 
 **Spec:**
-- Endpoint: `POST /api/v1/csts/{id}/onboard` body `{ chapter_position: 3, chapter_day: 5 }` (where chapter_position is the breakdown's chapter position, chapter_day is the day within that chapter)
+- Endpoint: `POST /api/v2/csts/{id}/onboard` body `{ chapter_position: 3, chapter_day: 5 }` (where chapter_position is the breakdown's chapter position, chapter_day is the day within that chapter)
 - Logic:
   1. Resolve chapter_position to the breakdown's chapter
   2. Find slot in that chapter at chapter_day → its global `position`
@@ -382,7 +384,7 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
 
 **Spec:**
 - Extend `v2_seed.py`:
-  1. Call `POST /api/v1/breakdowns/auto-build` with Dars Curriculum, G1, Eng, the seed book → draft global
+  1. Call `POST /api/v2/breakdowns/auto-build` with Dars Curriculum, G1, Eng, the seed book → draft global
   2. Manually adjust slot count to ~180 days (configurable)
   3. Publish the global
   4. Fork into org-scope for Demo Org → draft
@@ -391,8 +393,8 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
   7. Publish the class breakdown → triggers realization → ClassLessonSlots + ClassAssessmentSlots created
 
 **Test plan:**
-- After seed: `GET /api/v1/csts/{demo_cst_id}/lesson-slots` returns ~160 lesson slots
-- `GET /api/v1/csts/{demo_cst_id}/assessment-slots` returns ~20 assessment slots (12 FA + 10 SA + revisions counted as lesson)
+- After seed: `GET /api/v2/csts/{demo_cst_id}/lesson-slots` returns ~160 lesson slots
+- `GET /api/v2/csts/{demo_cst_id}/assessment-slots` returns ~20 assessment slots (12 FA + 10 SA + revisions counted as lesson)
 - All slot positions are contiguous 1..N
 
 **Acceptance:** seed produces a fully-realized class with slots ready for generation in Phase 3.
@@ -404,7 +406,7 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
 **Motivation:** Replace the buggy /today (we already partially fixed it). Now use the breakdown projector.
 
 **Spec:**
-- Endpoint: `GET /api/v1/today` (replaces existing)
+- Endpoint: `GET /api/v2/today` (replaces existing)
 - Returns: list of `TodaySlotEntry` per CST owned by the org's default teacher
   - Resolved as: for each of the teacher's CSTs, project the schedule, find the slot whose `projected_date == today`
   - If today is an assessment slot: return assessment fields populated
@@ -427,7 +429,7 @@ Once forked, admin (for org) or teacher-via-org (for class) can edit through sta
 **Motivation:** Same projector backs the calendar.
 
 **Spec:**
-- Endpoint: `GET /api/v1/me/calendar?week_start=YYYY-MM-DD`
+- Endpoint: `GET /api/v2/me/calendar?week_start=YYYY-MM-DD`
 - Returns: list of days Mon-Fri with projected slots for each (mix of lessons and assessments)
 - Uses the same projector as today; consistency guaranteed by construction
 
