@@ -16,13 +16,17 @@ from datetime import date
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 
 from dars.breakdown.auto_build_service import (
     AutoBuildRequest,
     auto_build_breakdown,
 )
-from dars.v2_api.deps import get_db_conn, require_admin
+from dars.breakdown.slo_breakdown_service import (
+    SUBJECT_CODE_TO_KEY,
+    run_breakdown_for_slos,
+)
+from dars.v2_api.deps import get_db_conn, get_db_pool, require_admin
 from dars.v2_api.lp_types import VALID_SLOT_TYPES, is_valid_lp_type
 from dars.v2_api.schemas_breakdown import (
     AutoBuildBody,
@@ -39,6 +43,9 @@ from dars.v2_api.schemas_breakdown import (
     BreakdownSlotTopicRead,
     BreakdownSlotUpdate,
     BreakdownUpdate,
+    SubSLOBreakdownResponse,
+    SubSLOBulkAccepted,
+    SubSLOBulkRequest,
 )
 
 log = logging.getLogger("v2_api.breakdown")
@@ -709,4 +716,137 @@ async def auto_build(
         revision_slot_count=result.revision_slot_count,
         total_slot_count=result.total_slot_count,
         warnings=result.warnings,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sub-SLO breakdown trigger (F2.6 — D-3)
+# ---------------------------------------------------------------------------
+
+
+async def _subject_key_for_slo(
+    conn: asyncpg.Connection, slo_id: UUID
+) -> tuple[str, str]:
+    """Return (subject_code, subject_key) for an SLO. 404/422 on failure."""
+    row = await conn.fetchrow(
+        """
+        SELECT s.code AS subject_code, slos.subject_id
+        FROM slos
+        JOIN subjects s ON s.id = slos.subject_id
+        WHERE slos.id = $1
+        """,
+        slo_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SLO not found")
+    subject_code = row["subject_code"]
+    key = SUBJECT_CODE_TO_KEY.get(subject_code)
+    if key is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"subject {subject_code!r} has no breakdown prompt configured; "
+                f"known: {sorted(SUBJECT_CODE_TO_KEY)}"
+            ),
+        )
+    return subject_code, key
+
+
+@router.post(
+    "/slos/{slo_id}/breakdown",
+    response_model=SubSLOBreakdownResponse,
+)
+async def trigger_single_slo_breakdown(
+    slo_id: UUID,
+    force: bool = Query(default=False),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SubSLOBreakdownResponse:
+    """
+    Sync trigger: break down one SLO's sub-SLOs via the LLM.
+    Idempotent: already-broken-down SLOs are skipped unless force=true.
+    """
+    _, subject_key = await _subject_key_for_slo(conn, slo_id)
+    log.info("trigger_single_slo_breakdown: slo_id=%s subject=%s force=%s", slo_id, subject_key, force)
+    result = await run_breakdown_for_slos(
+        conn, [slo_id], subject_key=subject_key, force=force
+    )
+    return SubSLOBreakdownResponse(
+        slo_id=slo_id,
+        subject_key=subject_key,
+        inserted_sub_slo_count=result["inserted_sub_slo_count"],
+        skipped=slo_id in result["skipped_slo_ids"],
+        raw_response_chars=len(result["markdown"]),
+    )
+
+
+async def _run_bulk_breakdown(
+    grouped: dict[str, list[UUID]], force: bool
+) -> None:
+    """Background-task helper. Opens its own DB connection from the shared pool."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        for subject_key, slo_ids in grouped.items():
+            try:
+                await run_breakdown_for_slos(
+                    conn, slo_ids, subject_key=subject_key, force=force
+                )
+            except Exception:
+                log.exception(
+                    "bulk breakdown failed for subject_key=%s slos=%s",
+                    subject_key, [str(i) for i in slo_ids],
+                )
+
+
+@router.post(
+    "/breakdowns/sub-slos/bulk",
+    response_model=SubSLOBulkAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def trigger_bulk_sub_slo_breakdown(
+    payload: SubSLOBulkRequest,
+    background_tasks: BackgroundTasks,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SubSLOBulkAccepted:
+    """
+    Bulk trigger: queue per-subject breakdown runs in the background.
+    Returns 202 once enqueued; clients poll the SLO/sub-SLO read APIs
+    to observe completion. Per D-42 (FastAPI BackgroundTasks for short
+    schema-port jobs).
+    """
+    log.info("trigger_bulk_sub_slo_breakdown: count=%d force=%s", len(payload.slo_ids), payload.force)
+
+    rows = await conn.fetch(
+        """
+        SELECT slos.id, s.code AS subject_code
+        FROM slos
+        JOIN subjects s ON s.id = slos.subject_id
+        WHERE slos.id = ANY($1::uuid[])
+        """,
+        payload.slo_ids,
+    )
+    if len(rows) != len(payload.slo_ids):
+        missing = set(payload.slo_ids) - {r["id"] for r in rows}
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"slo_ids not found: {sorted(str(m) for m in missing)}",
+        )
+
+    grouped: dict[str, list[UUID]] = {}
+    skipped: list[UUID] = []
+    for r in rows:
+        key = SUBJECT_CODE_TO_KEY.get(r["subject_code"])
+        if key is None:
+            skipped.append(r["id"])
+            continue
+        grouped.setdefault(key, []).append(r["id"])
+
+    queued = [sid for sids in grouped.values() for sid in sids]
+    if grouped:
+        background_tasks.add_task(_run_bulk_breakdown, grouped, payload.force)
+
+    return SubSLOBulkAccepted(
+        accepted_slo_count=len(queued),
+        skipped_slo_count=len(skipped),
+        grouped_by_subject={k: len(v) for k, v in grouped.items()},
+        queued_slo_ids=queued,
     )

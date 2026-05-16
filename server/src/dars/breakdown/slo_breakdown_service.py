@@ -28,6 +28,14 @@ SUBJECT_PROMPT_KEY = {
     "urdu": "urdu_slo_breakdown",
 }
 
+# Map subjects.code (as stored in DB) → subject_key used by this service.
+# Subjects outside this map have no breakdown prompt yet (Science/GK).
+SUBJECT_CODE_TO_KEY = {
+    "Eng": "english",
+    "Maths": "math",
+    "Urdu": "urdu",
+}
+
 LLMCallable = Callable[[str, str], Awaitable[str]]
 
 
