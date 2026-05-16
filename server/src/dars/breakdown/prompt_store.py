@@ -10,8 +10,10 @@ _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 _PROMPT_FILES = {
     "english_slo_breakdown": "english_prompt.txt",
-    # F2.3 will add: math_slo_breakdown, urdu_slo_breakdown, topic_breakdown,
-    # chapter_plan, slo_mapping, lp_tagging
+    "topic_breakdown": "topic_breakdown_prompt.txt",
+    "slo_mapping": "mapping_prompt.txt",
+    # F2.3 will add: math_slo_breakdown, urdu_slo_breakdown, chapter_plan,
+    # lp_tagging
 }
 
 
