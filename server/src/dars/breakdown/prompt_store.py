@@ -9,11 +9,16 @@ from pathlib import Path
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 _PROMPT_FILES = {
+    # Subject-specific SLO → sub-SLO breakdown (used by slo_breakdown_service)
     "english_slo_breakdown": "english_prompt.txt",
+    "math_slo_breakdown": "math_prompt.txt",
+    "urdu_slo_breakdown": "urdu_prompt.txt",
+    # Chapter / topic flow (used by chapter_breakdown_service + future F2.5)
     "topic_breakdown": "topic_breakdown_prompt.txt",
+    "chapter_plan": "chapter_plan_prompt.txt",
     "slo_mapping": "mapping_prompt.txt",
-    # F2.3 will add: math_slo_breakdown, urdu_slo_breakdown, chapter_plan,
-    # lp_tagging
+    # LP tagging (used in Phase 3)
+    "lp_tagging": "lp_tagging_prompt.txt",
 }
 
 
