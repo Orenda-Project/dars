@@ -24,7 +24,8 @@ log = logging.getLogger("breakdown.slo")
 # Subject key → prompt key in prompt_store
 SUBJECT_PROMPT_KEY = {
     "english": "english_slo_breakdown",
-    # F2.3: "math": "math_slo_breakdown", "urdu": "urdu_slo_breakdown"
+    "math": "math_slo_breakdown",
+    "urdu": "urdu_slo_breakdown",
 }
 
 LLMCallable = Callable[[str, str], Awaitable[str]]

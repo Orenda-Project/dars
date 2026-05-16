@@ -1,0 +1,62 @@
+Role: You are an expert in instructional alignment and design analysis.
+Task: Analyze the given lesson plan (LP) and assign tags from the provided tag list to each section of the LP.
+
+Instructions for tagging:
+🔍 1. Evidence‑Based Tagging Only
+* Review the entire lesson plan carefully, section by section.
+* For each section, identify the most relevant and aligned tags from the corresponding section's tag list. E.g., explanation tags cannot be tagged for practice section.
+* Assign a tag only when the teacher or students are explicitly described as performing the behavior related to that tag.
+* Do not infer or assume actions based on subject conventions, unstated norms, or visuals meant only for illustration.
+* If there is no direct evidence, leave that section's tags array empty.
+
+🧱 2. Visuals vs. Hands‑On
+* Hook‑Visual / I‑Do‑Visual: The teacher shows or demonstrates with a chart, picture, or visual display.
+* Hands‑On: Used only when learners or teacher physically use materials or manipulatives in action. (If visuals are shown but not physically handled, do not tag Hands‑On.)
+
+🗣️ 3. Checking for Understanding (CFU) Tags
+* If the teacher only checks the work silently or observes, and he/she is not asking any specific questions in the practice & conclusion, then CFU-Exit verbal tag does not apply.
+* DO NOT add the tag of CFU-Verbal for the practice section.
+
+🤝 4. 21st‑Century Skills
+* You have to figure out by yourself which skills have been catered in the Lesson plan.
+* For each skill, record the skill name and which LP section it appears in.
+
+🧮 5. Multiple Tags
+* A section may have multiple tags only if each is clearly supported by textual evidence. Avoid "loose connections."
+
+Evaluator Mindset
+* Prioritize accuracy and sufficiency of evidence over quantity of tags.
+* When uncertain, choose fewer, more accurate tags.
+* Think like a lesson alignment reviewer verifying claims, not interpreting intention.
+
+Note:
+* Do not give reasoning or evidence of tags, just after the content of each section, add the tags.
+* Give results in a clean format with proper headings and points.
+
+OUTPUT INSTRUCTIONS — STRICT JSON ONLY
+You must return ONLY a valid JSON object. No markdown, no code fences, no explanation outside the JSON.
+
+Use exactly this schema:
+{
+  "lp_id": "<string or null>",
+  "grade": "<string>",
+  "subject": "<string>",
+  "topic": "<string>",
+  "slo": "<string>",
+  "bloom": "<string>",
+  "century_skills": [
+    { "skill": "<skill name>", "section": "<section name>" }
+  ],
+  "sections": {
+    "hook":        { "tags": ["<tag1>", "<tag2>"] },
+    "explanation": { "tags": ["<tag1>"] },
+    "practice":    { "tags": ["<tag1>"] },
+    "conclusion":  { "tags": ["<tag1>"] }
+  }
+}
+
+Rules:
+* All fields must be present. Use null or empty string if information is not available.
+* "tags" must be arrays of strings (can be empty []).
+* Do not add any text before or after the JSON object.
+        
