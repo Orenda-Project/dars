@@ -15,6 +15,7 @@ from dars.migrations import run_migrations
 from dars.seeds.v2_seed import run_seed_on_startup
 from dars.v2_api.router_book import router as v2_book_router
 from dars.v2_api.router_breakdown import router as v2_breakdown_router
+from dars.v2_api.router_class_actions import router as v2_class_actions_router
 from dars.v2_api.router_curriculum import router as v2_curriculum_router
 from dars.v2_api.router_holidays import router as v2_holidays_router
 from dars.v2_api.router_tenancy import router as v2_tenancy_router
@@ -49,6 +50,7 @@ app.include_router(v2_curriculum_router)
 app.include_router(v2_book_router)
 app.include_router(v2_breakdown_router)
 app.include_router(v2_holidays_router)
+app.include_router(v2_class_actions_router)
 
 
 @app.get("/health")
