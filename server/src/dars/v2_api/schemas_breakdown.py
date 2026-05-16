@@ -126,3 +126,31 @@ class BreakdownSlotUpdate(BaseModel):
     lp_type: str | None = None
     topic_id: UUID | None = None
     anchor_date: date | None = None
+
+
+# ---------------------------------------------------------------------------
+# Auto-build (F2.5)
+# ---------------------------------------------------------------------------
+
+
+class AutoBuildBody(BaseModel):
+    curriculum_id: UUID
+    grade_id: UUID
+    subject_id: UUID
+    book_id: UUID
+    total_teaching_days: int = 180
+    fa_cadence: int = Field(default=5, ge=1)
+    sa_per_chapter: int = Field(default=1, ge=0)
+    scope: str = "global"
+    scope_ref_id: UUID | None = None
+
+
+class AutoBuildResponse(BaseModel):
+    breakdown_id: UUID
+    chapter_count: int
+    lesson_slot_count: int
+    fa_slot_count: int
+    sa_slot_count: int
+    revision_slot_count: int
+    total_slot_count: int
+    warnings: list[str] = []
