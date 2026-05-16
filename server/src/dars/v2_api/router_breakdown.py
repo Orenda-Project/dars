@@ -18,9 +18,15 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from dars.breakdown.auto_build_service import (
+    AutoBuildRequest,
+    auto_build_breakdown,
+)
 from dars.v2_api.deps import get_db_conn, require_admin
 from dars.v2_api.lp_types import VALID_SLOT_TYPES, is_valid_lp_type
 from dars.v2_api.schemas_breakdown import (
+    AutoBuildBody,
+    AutoBuildResponse,
     BreakdownChapterCreate,
     BreakdownChapterRead,
     BreakdownChapterUpdate,
@@ -638,3 +644,69 @@ async def delete_slot(
     await _validate_slot_belongs_to_breakdown(conn, breakdown_id, slot_id)
     await conn.execute("DELETE FROM breakdown_slots WHERE id = $1", slot_id)
     log.info("delete_slot: breakdown=%s slot=%s removed", breakdown_id, slot_id)
+
+
+# ---------------------------------------------------------------------------
+# Auto-build (F2.5)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/breakdowns/auto-build",
+    response_model=AutoBuildResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def auto_build(
+    payload: AutoBuildBody,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> AutoBuildResponse:
+    """
+    Build a draft breakdown from a book + curriculum using D-68 heuristics.
+    Returns the new breakdown id + summary counts.
+    """
+    if payload.scope not in VALID_SCOPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"scope must be one of {sorted(VALID_SCOPES)}",
+        )
+    if payload.scope == "global" and payload.scope_ref_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="scope='global' must not have scope_ref_id",
+        )
+    if payload.scope != "global" and payload.scope_ref_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"scope='{payload.scope}' requires scope_ref_id",
+        )
+
+    try:
+        result = await auto_build_breakdown(
+            conn,
+            AutoBuildRequest(
+                curriculum_id=payload.curriculum_id,
+                grade_id=payload.grade_id,
+                subject_id=payload.subject_id,
+                book_id=payload.book_id,
+                total_teaching_days=payload.total_teaching_days,
+                fa_cadence=payload.fa_cadence,
+                sa_per_chapter=payload.sa_per_chapter,
+                scope=payload.scope,
+                scope_ref_id=payload.scope_ref_id,
+            ),
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+    return AutoBuildResponse(
+        breakdown_id=result.breakdown_id,
+        chapter_count=result.chapter_count,
+        lesson_slot_count=result.lesson_slot_count,
+        fa_slot_count=result.fa_slot_count,
+        sa_slot_count=result.sa_slot_count,
+        revision_slot_count=result.revision_slot_count,
+        total_slot_count=result.total_slot_count,
+        warnings=result.warnings,
+    )
