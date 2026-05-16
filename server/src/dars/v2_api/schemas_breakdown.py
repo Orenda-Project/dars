@@ -181,3 +181,34 @@ class SubSLOBulkAccepted(BaseModel):
     # When sync=False (default), the work runs in BackgroundTasks; this list
     # is the SLOs that were queued. With sync=true, this is just the input.
     queued_slo_ids: list[UUID]
+
+
+# ---------------------------------------------------------------------------
+# Fork + realize (F2.7, F2.9)
+# ---------------------------------------------------------------------------
+
+
+class ForkOrgBody(BaseModel):
+    org_id: UUID
+
+
+class ForkClassBody(BaseModel):
+    cst_id: UUID
+
+
+class ForkResponse(BaseModel):
+    new_breakdown_id: UUID
+    parent_breakdown_id: UUID
+    new_scope: str
+    scope_ref_id: UUID
+    copied_chapter_count: int
+    copied_slot_count: int
+
+
+class RealizeResponse(BaseModel):
+    breakdown_id: UUID
+    cst_id: UUID
+    lesson_slots_upserted: int
+    assessment_slots_upserted: int
+    assessment_topics_inserted: int
+    skipped: list[str] = []
