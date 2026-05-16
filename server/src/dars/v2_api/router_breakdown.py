@@ -22,6 +22,8 @@ from dars.breakdown.auto_build_service import (
     AutoBuildRequest,
     auto_build_breakdown,
 )
+from dars.breakdown.fork_service import fork_breakdown
+from dars.breakdown.realize_service import realize_class_breakdown
 from dars.breakdown.slo_breakdown_service import (
     SUBJECT_CODE_TO_KEY,
     run_breakdown_for_slos,
@@ -43,6 +45,10 @@ from dars.v2_api.schemas_breakdown import (
     BreakdownSlotTopicRead,
     BreakdownSlotUpdate,
     BreakdownUpdate,
+    ForkClassBody,
+    ForkOrgBody,
+    ForkResponse,
+    RealizeResponse,
     SubSLOBreakdownResponse,
     SubSLOBulkAccepted,
     SubSLOBulkRequest,
@@ -398,6 +404,17 @@ async def publish_breakdown(
         """,
         current["id"],
     )
+    # F2.9: publishing a class-scope breakdown triggers realization into
+    # class_lesson_slots + class_assessment_slots for the CST.
+    if row["scope"] == "class":
+        try:
+            await realize_class_breakdown(conn, row["id"])
+        except ValueError as e:
+            log.warning("publish_breakdown: realize failed id=%s: %s", row["id"], e)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"publish succeeded but realize failed: {e}",
+            )
     log.info("publish_breakdown: id=%s now published", breakdown_id)
     return await _hydrate_breakdown(conn, row)
 
@@ -849,4 +866,110 @@ async def trigger_bulk_sub_slo_breakdown(
         skipped_slo_count=len(skipped),
         grouped_by_subject={k: len(v) for k, v in grouped.items()},
         queued_slo_ids=queued,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fork endpoints (F2.7)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/breakdowns/{breakdown_id}/fork-org",
+    response_model=ForkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def fork_org(
+    breakdown_id: UUID,
+    payload: ForkOrgBody,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> ForkResponse:
+    """Org admin forks a published global breakdown → org-scope draft."""
+    try:
+        new_id, chapters, slots = await fork_breakdown(
+            conn,
+            source_id=breakdown_id,
+            new_scope="org",
+            scope_ref_id=payload.org_id,
+        )
+    except ValueError as e:
+        msg = str(e)
+        # "already exists" → 409; everything else → 422/404
+        if "already exists" in msg:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=msg)
+        if "not found" in msg:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=msg)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=msg)
+    return ForkResponse(
+        new_breakdown_id=new_id,
+        parent_breakdown_id=breakdown_id,
+        new_scope="org",
+        scope_ref_id=payload.org_id,
+        copied_chapter_count=chapters,
+        copied_slot_count=slots,
+    )
+
+
+@router.post(
+    "/breakdowns/{breakdown_id}/fork-class",
+    response_model=ForkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def fork_class(
+    breakdown_id: UUID,
+    payload: ForkClassBody,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> ForkResponse:
+    """Org admin forks a published org breakdown → class-scope draft for a CST."""
+    try:
+        new_id, chapters, slots = await fork_breakdown(
+            conn,
+            source_id=breakdown_id,
+            new_scope="class",
+            scope_ref_id=payload.cst_id,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "already exists" in msg:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=msg)
+        if "not found" in msg:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=msg)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=msg)
+    return ForkResponse(
+        new_breakdown_id=new_id,
+        parent_breakdown_id=breakdown_id,
+        new_scope="class",
+        scope_ref_id=payload.cst_id,
+        copied_chapter_count=chapters,
+        copied_slot_count=slots,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Realize (F2.9) — manual re-trigger; publish-class auto-runs this too.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/breakdowns/{breakdown_id}/realize",
+    response_model=RealizeResponse,
+)
+async def realize(
+    breakdown_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> RealizeResponse:
+    try:
+        res = await realize_class_breakdown(conn, breakdown_id)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=msg)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=msg)
+    return RealizeResponse(
+        breakdown_id=res.breakdown_id,
+        cst_id=res.cst_id,
+        lesson_slots_upserted=res.lesson_slots_upserted,
+        assessment_slots_upserted=res.assessment_slots_upserted,
+        assessment_topics_inserted=res.assessment_topics_inserted,
+        skipped=res.skipped,
     )
