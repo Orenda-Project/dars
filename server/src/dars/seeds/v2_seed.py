@@ -27,6 +27,7 @@ import sys
 import asyncpg
 
 from dars.seeds.book_dars_english_g1 import seed_dars_english_g1_book
+from dars.seeds.breakdown_demo import seed_demo_breakdown
 from dars.seeds.lookups import seed_lookups
 from dars.seeds.slos_dars_english_g1 import seed_dars_english_g1_slos
 from dars.seeds.tenancy_demo import seed_demo_tenancy
@@ -48,6 +49,8 @@ async def _run_all_steps(conn: asyncpg.Connection) -> None:
     await seed_dars_english_g1_book(conn)
     # F1.5 — Demo tenancy: org, school, AY, class, teacher, CST, timetable
     await seed_demo_tenancy(conn)
+    # F2.14 — Demo breakdown: published global → org → class with realized slots
+    await seed_demo_breakdown(conn)
 
 
 async def main() -> None:

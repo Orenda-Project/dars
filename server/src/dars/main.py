@@ -19,6 +19,7 @@ from dars.v2_api.router_class_actions import router as v2_class_actions_router
 from dars.v2_api.router_curriculum import router as v2_curriculum_router
 from dars.v2_api.router_holidays import router as v2_holidays_router
 from dars.v2_api.router_tenancy import router as v2_tenancy_router
+from dars.v2_api.router_today_calendar import router as v2_today_calendar_router
 
 
 @asynccontextmanager
@@ -51,6 +52,7 @@ app.include_router(v2_book_router)
 app.include_router(v2_breakdown_router)
 app.include_router(v2_holidays_router)
 app.include_router(v2_class_actions_router)
+app.include_router(v2_today_calendar_router)
 
 
 @app.get("/health")
