@@ -1,9 +1,13 @@
 """
-v2 API auth dependency.
+v2 API auth dependencies.
 
-Resolves an X-API-Key header against organizations.api_key_hash.
+- get_current_org: resolves X-API-Key against organizations.api_key_hash (per-org).
+- require_admin:   guards admin-only endpoints with X-Admin-Token vs settings.admin_secret
+                   (env var DARS_ADMIN_TOKEN → admin_secret); uses hmac.compare_digest
+                   per CLAUDE.md Critical Rule #5.
 """
 import hashlib
+import hmac
 import logging
 from dataclasses import dataclass
 from uuid import UUID
@@ -77,3 +81,30 @@ async def get_current_org(
         curriculum_id=row["curriculum_id"],
         default_teacher_id=row["default_teacher_id"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin auth (D-66): admin-only endpoints require X-Admin-Token header.
+# The configured value lives in settings.admin_secret (env: DARS_ADMIN_TOKEN
+# preferred; falls back to ADMIN_SECRET / admin_secret). Comparison uses
+# hmac.compare_digest per Critical Rule #5. Missing/wrong → 403.
+# ---------------------------------------------------------------------------
+
+
+def require_admin(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+) -> None:
+    expected = settings.admin_secret
+    if not expected or expected == "dev-secret":
+        # In production the env var must be set; refuse to authorize on the
+        # placeholder. (`dev-secret` is the default in config.py.)
+        log.warning("require_admin: admin_secret is unset or default; denying")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin auth is not configured on this server",
+        )
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin token required",
+        )

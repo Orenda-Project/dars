@@ -1,0 +1,128 @@
+"""Pydantic schemas for v2 breakdown CRUD (F2.4)."""
+from datetime import date, datetime
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# Read models
+# ---------------------------------------------------------------------------
+
+
+class BreakdownSlotTopicRead(BaseModel):
+    topic_id: UUID
+    position: int
+
+
+class BreakdownSlotRead(BaseModel):
+    id: UUID
+    breakdown_id: UUID
+    breakdown_chapter_id: UUID
+    position: int
+    chapter_position: int
+    slot_type: str
+    lp_type: str | None
+    topic_id: UUID | None
+    anchor_date: date | None
+    extra_topics: list[BreakdownSlotTopicRead] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class BreakdownChapterRead(BaseModel):
+    id: UUID
+    breakdown_id: UUID
+    book_chapter_id: UUID
+    position: int
+    teaching_days: int
+
+
+class BreakdownRead(BaseModel):
+    id: UUID
+    scope: str
+    scope_ref_id: UUID | None
+    curriculum_id: UUID
+    grade_id: UUID
+    subject_id: UUID
+    book_id: UUID | None
+    parent_breakdown_id: UUID | None
+    previous_version_id: UUID | None
+    status: str
+    total_teaching_days: int | None
+    created_at: datetime
+    updated_at: datetime
+    chapters: list[BreakdownChapterRead] = []
+    slots: list[BreakdownSlotRead] = []
+
+
+class BreakdownListItem(BaseModel):
+    id: UUID
+    scope: str
+    scope_ref_id: UUID | None
+    curriculum_id: UUID
+    grade_id: UUID
+    subject_id: UUID
+    book_id: UUID | None
+    status: str
+    total_teaching_days: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BreakdownListResponse(BaseModel):
+    items: list[BreakdownListItem]
+
+
+# ---------------------------------------------------------------------------
+# Write models
+# ---------------------------------------------------------------------------
+
+
+class BreakdownCreate(BaseModel):
+    scope: str = Field(description="'global' | 'org' | 'class'")
+    scope_ref_id: UUID | None = None
+    curriculum_id: UUID
+    grade_id: UUID
+    subject_id: UUID
+    book_id: UUID
+    total_teaching_days: int | None = None
+
+
+class BreakdownUpdate(BaseModel):
+    total_teaching_days: int | None = None
+    book_id: UUID | None = None
+
+
+class BreakdownChapterCreate(BaseModel):
+    book_chapter_id: UUID
+    position: int
+    teaching_days: int
+
+
+class BreakdownChapterUpdate(BaseModel):
+    position: int | None = None
+    teaching_days: int | None = None
+
+
+class BreakdownSlotCreate(BaseModel):
+    breakdown_chapter_id: UUID
+    position: int
+    chapter_position: int
+    slot_type: str
+    lp_type: str | None = None
+    topic_id: UUID | None = None
+    anchor_date: date | None = None
+    extra_topic_ids: list[UUID] = Field(
+        default_factory=list,
+        description="Additional topics covered (e.g. for assessment slots). The primary topic_id is recorded separately.",
+    )
+
+
+class BreakdownSlotUpdate(BaseModel):
+    position: int | None = None
+    chapter_position: int | None = None
+    slot_type: str | None = None
+    lp_type: str | None = None
+    topic_id: UUID | None = None
+    anchor_date: date | None = None

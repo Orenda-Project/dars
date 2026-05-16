@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV_FILE = Path(__file__).parents[3] / ".env"  # dars/.env, resolved relative to this file
@@ -11,11 +12,18 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        env_prefix="",
     )
 
     database_url: str = "sqlite+aiosqlite:///./test.db"
     debug: bool = False
-    admin_secret: str = "dev-secret"
+    # Admin token for v2 admin-only endpoints (F2.4+). Env: DARS_ADMIN_TOKEN
+    # (preferred) or ADMIN_SECRET. Default 'dev-secret' is treated as
+    # "unset" by require_admin() — must be overridden in any real env.
+    admin_secret: str = Field(
+        default="dev-secret",
+        validation_alias=AliasChoices("DARS_ADMIN_TOKEN", "ADMIN_SECRET", "admin_secret"),
+    )
     lp_assistant_url: str = "https://lp-assistant.taleemabad.com"
     lp_assistant_api_key: str = ""
     eg_assistant_url: str = "https://exam-generator.taleemabad.com"
