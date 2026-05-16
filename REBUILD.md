@@ -101,6 +101,7 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 | Staging DB | ✅ on v2 schema; legacy v1 code deleted in PR #47 |
 | Demo org API key | `dk_demo_dars_eng_g1_2dc7e0b8408142fa` (see `server/src/dars/seeds/tenancy_demo.py`) |
 | /api/v2/* read-only endpoints | ✅ 27 endpoints live (tenancy + curriculum + book) |
+| Webapp `/teacher-app/*` and `/dashboard/*` | ⚠️ 404 on staging (PR #47 deleted legacy v1 routes; Phase 4 rewrites against v2). This is expected, not a bug. See **D-72**. |
 
 **Phase 1 PR history (chronological):**
 PR #37 (F1.1 cutover) · PR #38 (F1.2 lookups) · PR #39 (migration-order fix) · PR #40 (F1.3 SLOs) · PR #41 (F1.4 book content) · PR #42 (F1.5 tenancy) · PR #43 (date encoding fix) · PR #44 (F1.6 tenancy API) · PR #45 (F1.7 curriculum API) · PR #46 (F1.8 book API) · PR #47 (F1.9 smoke + F1.10 legacy delete)
@@ -108,7 +109,7 @@ PR #37 (F1.1 cutover) · PR #38 (F1.2 lookups) · PR #39 (migration-order fix) �
 **Next thing to do unless the user says otherwise:**
 Start Phase 2 with F2.1 (port Schema's `slo_breakdown.py` into `dars/breakdown/slo_breakdown_service.py`) per [docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md](docs/plans/2026-05-15-dars-v2-rebuild/04-phase-2-breakdown-engine.md). Branch off `staging`. One PR per feature.
 
-**State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with `.beads/status.jsonl` (the source of truth for what's in flight).
+**State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with [.beads/status.jsonl](.beads/status.jsonl). **The bead is the source of truth for what's currently in flight; REBUILD.md is the human-readable summary.** If they disagree, the bead wins and REBUILD.md is stale — fix REBUILD.md.
 
 See **Step 9** below for the full discipline on keeping plan files alive.
 

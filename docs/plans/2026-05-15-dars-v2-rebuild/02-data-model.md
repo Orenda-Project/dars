@@ -3,10 +3,15 @@
 Final schema for Dars v2. All tables, columns, indexes, FKs, plus migration SQL.
 
 **Important conventions** (from `dars/docs/conventions.md` + Critical Rule #6):
-- UUID primary keys via `sqlalchemy.types.Uuid` (NOT `dialects.postgresql.UUID` — breaks SQLite tests)
+- UUID primary keys via `sqlalchemy.types.Uuid` (NOT `dialects.postgresql.UUID` — breaks SQLite tests). All v2 PKs are UUID; no legacy BIGSERIAL+UUID dual pattern (**D-62**).
 - `created_at`, `updated_at` on every table
 - All multi-tenant tables filter by `org_id` in queries
 - Migrations live in `server/src/dars/migrations/` as plain SQL (not Alembic)
+
+**Application-level invariants not enforced by the DB:**
+- `breakdowns.book_id` is required for every scope in v1 (**D-69**). The column is nullable in the schema (forward compat) but the service layer rejects inserts without it.
+- `class_lesson_slots.status` and `class_assessment_slots.status` are materialized columns updated synchronously by the mark-taught flow (**D-67**). Don't compute them at read time.
+- Mark-taught is one DB transaction that updates BOTH `slot_progress` (event log) AND `<slot>.status` (denorm) — never one without the other (**D-70**).
 
 ---
 
@@ -261,7 +266,7 @@ Many-to-many: topic ↔ sub-SLO.
 | `curriculum_id` | UUID FK | |
 | `grade_id` | UUID FK | |
 | `subject_id` | UUID FK | |
-| `book_id` | UUID FK NULL | required for org/class; optional for global if curriculum has multiple books |
+| `book_id` | UUID FK NULL | required for ALL scopes in v1 per **D-69** (column is nullable for forward compat; service layer enforces) |
 | `parent_breakdown_id` | UUID FK → `breakdowns.id` NULL | fork lineage |
 | `previous_version_id` | UUID FK → `breakdowns.id` NULL | edit lineage (D-18) |
 | `status` | TEXT DEFAULT 'draft' | `draft \| published` |
@@ -329,7 +334,7 @@ For assessment slots that cover multiple topics (D-58). Also used for revision s
 | `topic_id` | UUID FK NULL | copied |
 | `anchor_date` | DATE NULL | copied |
 | `generated_lp_id` | UUID FK → `generated_lps.id` NULL | resolved on finalize or on demand |
-| `status` | TEXT DEFAULT 'planned' | `planned \| taught \| skipped` (denormalized from progress; computed view OK too) |
+| `status` | TEXT DEFAULT 'planned' | `planned \| taught \| skipped` — materialized column synchronously updated by F2.12 inside the mark-taught transaction (**D-67**, **D-70**). Not a computed view. |
 | `created_at`, `updated_at` | TIMESTAMPTZ | |
 
 UNIQUE `(cst_id, position)`.

@@ -155,3 +155,33 @@ Every decision from the Q&A session of 2026-05-15. Reference these by **D-N** in
 | `SNC` | `Punjab` | `Punjab` |
 
 Stored as a static dict in `dars/breakdown/curriculum_mapping.py`. When new curricula are added (Palestine, Tanzania), Shujaan adds support upstream first; the mapping table is updated in lockstep. If a curriculum has no mapping defined, generation requests fail fast with a clear error (do not silently default to ICT for unknown curricula).
+
+---
+
+## Decisions made during Phase 1 execution
+
+**D-62: All v2 PKs are UUID (not BIGSERIAL+UUID dual pattern).** *Rationale:* legacy schema used `BIGSERIAL id PK + UUID uuid UNIQUE` which means two identity columns per row. The v2 plan specifies UUID PKs everywhere; we don't carry forward the dual pattern. CLAUDE.md rule #6 (use `sqlalchemy.types.Uuid` not `dialects.postgresql.UUID`) still applies. *Decided:* during PR #37 (F1.1 cutover); surfaced by Phase 2 eval that no D-N entry captured it.
+
+**D-63: v1 migration files (pre-20260516) were deleted, not kept.** *Rationale:* the v2 cutover supersedes them entirely; keeping them around caused the post-cutover re-run bug fixed in PR #39. *Decided:* PR #39. Going forward, when a future cutover-style migration is needed, follow the same pattern (delete + rename to force re-run).
+
+**D-64: Domain prefixes for Dars Curriculum × G1 × English SLOs are `R`/`V`/`C`/`G`/`W` only.** *Rationale:* listening (L) and speaking (S) domains were dropped in F1.3 because LP Assistant has no matching `lp_type` (D-61). Each remaining domain maps 1:1 to a valid LP Assistant `lp_type`. There is no `S1-*` or `L1-*` SLO code in v1. *Decided:* PR #40.
+
+**D-65: Demo org API key is deterministic and committed in repo.** Value: `dk_demo_dars_eng_g1_2dc7e0b8408142fa`. Stored hashed in `organizations.api_key_hash`. *Rationale:* staging only; production never sees this seed. Deterministic key means the seed is fully idempotent and repo-readable for test fixtures. *Decided:* PR #42.
+
+---
+
+## Decisions surfaced during Phase 2 eval (2026-05-15, pre-execution)
+
+**D-66: Phase 2 F2.4 admin auth uses `X-Admin-Token` header backed by env var `DARS_ADMIN_TOKEN`.** *Rationale:* F2.4 calls global breakdown CRUD "admin-only" but didn't specify the mechanism. Header (not query string) + env-var-backed secret is consistent with existing webhook secret pattern (D-41). Compared with `hmac.compare_digest` per Critical Rule #5. *Application:* missing header or wrong value → 403. *Apply:* F2.4 onward. If you have a stronger preference, raise it before implementing.
+
+**D-67: `class_lesson_slots.status` and `class_assessment_slots.status` are materialized columns updated by F2.12's mark-taught flow (not computed views).** *Rationale:* the data model description called it "denormalized; computed view OK too." We pick materialized to keep simple equality filters (`WHERE status='planned'`) fast across `class_lesson_slots` without join overhead. F2.12 must update both `slot_progress` (event log, append-only) AND the slot's `status` column (denorm) inside one transaction. *Apply:* F2.12 onward.
+
+**D-68: F2.5 auto-build picks lp_type from a topic-to-lp_type heuristic table, with LLM fallback only on ambiguity.** *Rationale:* "the LLM picks per topic" is too non-deterministic for a global breakdown that needs to be reviewable. Heuristic first: if a topic title or first 200 chars of `topic_text` contain known signals (e.g. "comprehension" / "answer the questions" → `comprehension_qa`; "spelling" / "write" / "letters" → `creative_writing`; "grammar" / "noun" / "verb" / "pronoun" → `grammar`; "vocabulary" / "word meanings" / "synonyms" → `comprehension_word_meanings`; default → `reading`), use that. Only fall back to LLM when no heuristic matches AND the topic looks ambiguous. *Application:* the heuristic table lives in `dars/breakdown/lp_type_heuristics.py`. *Apply:* F2.5 onward.
+
+**D-69: `breakdowns.book_id` is required for ALL scopes (global, org, class) in v1.** *Rationale:* D-13 says one book per CST. Allowing global breakdowns without a book opens an edge case (which book do the slots resolve topics against?) that doesn't pay for itself. Make `book_id NOT NULL` at the application level (DB allows NULL; v2 enforces via service-layer validation). *Apply:* F2.4 onward.
+
+**D-70: `class_lesson_slots.status` and `slot_progress` reconciliation rule on out-of-order taught.** *Rationale:* D-11 allows marking Day 3 before Day 2. The reconciliation: slot.status updates to `taught` ONLY for the specific slot the teacher marked. Day 2's `slot.status` remains `planned` (a gap, visible in reports). `cst_state.current_sequence_position` = `max(taught/skipped/completed position) + 1`. SubSLO coverage flips per D-5 only for the actually-marked slot's topic. *Apply:* F2.12 onward.
+
+**D-71: Generation webhook secret env var name is `LP_ASSISTANT_WEBHOOK_SECRET` and `UG_EG_WEBHOOK_SECRET`.** *Rationale:* the data model's `webhook_events.source` enum has values `lp_assistant` and `ug_eg`; the env vars follow the same naming for clarity. Used in Phase 3 (F3.6). *Apply:* Phase 3 onward.
+
+**D-72: When `/teacher-app/*` returns 404 on staging during Phases 1–3, that's expected, not a bug.** *Rationale:* PR #47 (F1.10) deleted the legacy v1 routes the webapp called. Phase 4 (D-35) rewrites the webapp against `/api/v2/*`. The intermediate 404 window is by design. *Apply:* anyone observing the webapp during the transition.
