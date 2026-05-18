@@ -17,6 +17,10 @@ from dars.breakdown.mark_taught_service import (
 from dars.breakdown.onboarding_service import onboard_cst
 from dars.v2_api.deps import OrgContext, get_current_org, get_db_conn
 from dars.v2_api.schemas_class_actions import (
+    ClassAssessmentSlotListItem,
+    ClassAssessmentSlotListResponse,
+    ClassLessonSlotListItem,
+    ClassLessonSlotListResponse,
     CompleteAssessmentBody,
     MarkActionResponse,
     MarkTaughtBody,
@@ -265,3 +269,131 @@ async def get_sub_slo_coverage(
         joined_at_position=joined_at,
         items=items,
     )
+
+
+# ---------------------------------------------------------------------------
+# F4.6/F4.7 — Class slot list endpoints
+#
+# Used by the teacher app's class-detail page to render the Lessons and
+# Assessments tabs in one call (grouped by breakdown chapter, with
+# topic titles and LP/exam status joined in so the UI doesn't N+1).
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/csts/{cst_id}/lesson-slots",
+    response_model=ClassLessonSlotListResponse,
+)
+async def list_lesson_slots(
+    cst_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> ClassLessonSlotListResponse:
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+
+    rows = await conn.fetch(
+        """
+        SELECT
+            cls.id, cls.cst_id, cls.position, cls.slot_type, cls.lp_type,
+            cls.topic_id, cls.anchor_date, cls.status, cls.generated_lp_id,
+            t.title              AS topic_title,
+            bc.id                AS breakdown_chapter_id,
+            bc.position          AS breakdown_chapter_position,
+            book_chapter.title   AS breakdown_chapter_title,
+            gl.status            AS lp_status
+        FROM class_lesson_slots cls
+        JOIN breakdown_slots bs       ON bs.id = cls.breakdown_slot_id
+        JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
+        JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+        LEFT JOIN topics t          ON t.id = cls.topic_id
+        LEFT JOIN generated_lps gl  ON gl.id = cls.generated_lp_id
+        WHERE cls.cst_id = $1
+        ORDER BY cls.position
+        """,
+        cst_id,
+    )
+
+    items = [
+        ClassLessonSlotListItem(
+            id=r["id"], cst_id=r["cst_id"],
+            position=r["position"], slot_type=r["slot_type"],
+            lp_type=r["lp_type"], topic_id=r["topic_id"],
+            topic_title=r["topic_title"], anchor_date=r["anchor_date"],
+            status=r["status"], generated_lp_id=r["generated_lp_id"],
+            lp_status=r["lp_status"] or "not_generated",
+            breakdown_chapter_id=r["breakdown_chapter_id"],
+            breakdown_chapter_position=r["breakdown_chapter_position"],
+            breakdown_chapter_title=r["breakdown_chapter_title"],
+        )
+        for r in rows
+    ]
+    log.info(
+        "list_lesson_slots: cst=%s returned %d slots", cst_id, len(items),
+    )
+    return ClassLessonSlotListResponse(cst_id=cst_id, items=items)
+
+
+@router.get(
+    "/csts/{cst_id}/assessment-slots",
+    response_model=ClassAssessmentSlotListResponse,
+)
+async def list_assessment_slots(
+    cst_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> ClassAssessmentSlotListResponse:
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+
+    rows = await conn.fetch(
+        """
+        SELECT
+            cas.id, cas.cst_id, cas.position, cas.assessment_type,
+            cas.anchor_date, cas.status, cas.generated_exam_id,
+            bc.id                AS breakdown_chapter_id,
+            bc.position          AS breakdown_chapter_position,
+            book_chapter.title   AS breakdown_chapter_title,
+            ge.status            AS exam_status,
+            COALESCE(
+                array_agg(cast2.topic_id ORDER BY cast2.position)
+                    FILTER (WHERE cast2.topic_id IS NOT NULL),
+                ARRAY[]::UUID[]
+            ) AS topic_ids,
+            COALESCE(
+                array_agg(t.title ORDER BY cast2.position)
+                    FILTER (WHERE t.title IS NOT NULL),
+                ARRAY[]::TEXT[]
+            ) AS topic_titles
+        FROM class_assessment_slots cas
+        JOIN breakdown_slots bs       ON bs.id = cas.breakdown_slot_id
+        JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
+        JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+        LEFT JOIN class_assessment_slot_topics cast2
+            ON cast2.class_assessment_slot_id = cas.id
+        LEFT JOIN topics t            ON t.id = cast2.topic_id
+        LEFT JOIN generated_exams ge  ON ge.id = cas.generated_exam_id
+        WHERE cas.cst_id = $1
+        GROUP BY cas.id, bc.id, book_chapter.id, ge.status
+        ORDER BY cas.position
+        """,
+        cst_id,
+    )
+
+    items = [
+        ClassAssessmentSlotListItem(
+            id=r["id"], cst_id=r["cst_id"], position=r["position"],
+            assessment_type=r["assessment_type"],
+            anchor_date=r["anchor_date"], status=r["status"],
+            generated_exam_id=r["generated_exam_id"],
+            exam_status=r["exam_status"] or "not_generated",
+            topic_ids=list(r["topic_ids"] or []),
+            topic_titles=list(r["topic_titles"] or []),
+            breakdown_chapter_id=r["breakdown_chapter_id"],
+            breakdown_chapter_position=r["breakdown_chapter_position"],
+            breakdown_chapter_title=r["breakdown_chapter_title"],
+        )
+        for r in rows
+    ]
+    log.info(
+        "list_assessment_slots: cst=%s returned %d slots", cst_id, len(items),
+    )
+    return ClassAssessmentSlotListResponse(cst_id=cst_id, items=items)
