@@ -543,6 +543,7 @@ export interface OnboardResponse {
 // ---------------------------------------------------------------------------
 
 const API_KEY_STORAGE_KEY = "dars_org_api_key";
+const ADMIN_SESSION_STORAGE_KEY = "dars_admin_session";
 
 export class DarsApiError extends Error {
   constructor(
@@ -585,16 +586,35 @@ export function clearApiKey(): void {
   window.localStorage.removeItem(API_KEY_STORAGE_KEY);
 }
 
+export function getAdminSession(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(ADMIN_SESSION_STORAGE_KEY) ?? "";
+}
+
+export function setAdminSession(token: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, token);
+}
+
+export function clearAdminSession(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+}
+
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   query?: Record<string, string | number | boolean | undefined>;
   body?: unknown;
-  /** Set to false if the endpoint is webhook/refresh and doesn't need X-API-Key. */
-  authed?: boolean;
+  /**
+   * - "org" (default): send X-API-Key. Used by the teacher app.
+   * - "admin": send X-Admin-Session. Used by the dashboard.
+   * - "none": send no auth. Used by signup/login.
+   */
+  auth?: "org" | "admin" | "none";
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = "GET", query, body, authed = true } = opts;
+  const { method = "GET", query, body, auth = "org" } = opts;
   const base = getBaseUrl();
 
   let url = base + path;
@@ -610,16 +630,35 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
-  if (authed) {
+  if (auth === "org") {
     const key = getApiKey();
-    if (!key) {
+    if (key) {
+      headers["X-API-Key"] = key;
+    } else {
+      // Fall through to admin session — server-side get_current_org
+      // accepts either header. Dashboard pages typically don't have an
+      // org API key (only the prefix is visible after signup), so they
+      // implicitly use the admin session for read endpoints.
+      const session = getAdminSession();
+      if (!session) {
+        throw new DarsApiError(
+          401,
+          "missing api key — set localStorage.dars_org_api_key or log in via /dashboard",
+          url,
+        );
+      }
+      headers["X-Admin-Session"] = session;
+    }
+  } else if (auth === "admin") {
+    const session = getAdminSession();
+    if (!session) {
       throw new DarsApiError(
         401,
-        "missing api key — set localStorage.dars_org_api_key first",
+        "missing admin session — log in via /dashboard/login",
         url,
       );
     }
-    headers["X-API-Key"] = key;
+    headers["X-Admin-Session"] = session;
   }
 
   const res = await fetch(url, {
@@ -723,14 +762,32 @@ export const books = {
 // Breakdowns (`/api/v2/*`)
 // ---------------------------------------------------------------------------
 
+export interface BreakdownChapter {
+  id: UUID;
+  breakdown_id: UUID;
+  book_chapter_id: UUID;
+  position: number;
+  teaching_days: number;
+}
+
+export interface BreakdownSlot {
+  id: UUID;
+  breakdown_id: UUID;
+  breakdown_chapter_id: UUID;
+  position: number;
+  chapter_position: number;
+  slot_type: "lesson" | "formative_assessment" | "summative_assessment" | "revision";
+  lp_type: string | null;
+  topic_id: UUID | null;
+  anchor_date: ISODate | null;
+}
+
 export interface BreakdownWithChapters extends Breakdown {
-  chapters: {
-    id: UUID;
-    breakdown_id: UUID;
-    book_chapter_id: UUID;
-    position: number;
-    teaching_days: number;
-  }[];
+  chapters: BreakdownChapter[];
+}
+
+export interface BreakdownDetail extends BreakdownWithChapters {
+  slots: BreakdownSlot[];
 }
 
 export const breakdowns = {
@@ -739,7 +796,7 @@ export const breakdowns = {
 
   /** Single breakdown read returns chapters + slots hydrated. */
   getBreakdown: (id: UUID) =>
-    request<BreakdownWithChapters>(`/api/v2/breakdowns/${id}`),
+    request<BreakdownDetail>(`/api/v2/breakdowns/${id}`),
 
   /** Convenience: most-recent published class-scope breakdown for the CST. */
   getMyClassBreakdown: async (cst_id: UUID): Promise<Breakdown | null> => {
@@ -747,6 +804,33 @@ export const breakdowns = {
     const published = res.items.find((b) => b.status === "published");
     return published ?? null;
   },
+
+  publish: (id: UUID) =>
+    request<Breakdown>(`/api/v2/breakdowns/${id}/publish`, { method: "POST" }),
+
+  forkOrg: (globalBreakdownId: UUID, body: { org_id: UUID }) =>
+    request<{ new_breakdown_id: UUID; chapter_count?: number; slot_count?: number }>(
+      `/api/v2/breakdowns/${globalBreakdownId}/fork-org`,
+      { method: "POST", body },
+    ),
+
+  forkClass: (orgBreakdownId: UUID, body: { cst_id: UUID }) =>
+    request<{ new_breakdown_id: UUID; chapter_count?: number; slot_count?: number }>(
+      `/api/v2/breakdowns/${orgBreakdownId}/fork-class`,
+      { method: "POST", body },
+    ),
+
+  patchChapter: (breakdownId: UUID, chapterId: UUID, body: { teaching_days?: number; position?: number }) =>
+    request<BreakdownChapter>(
+      `/api/v2/breakdowns/${breakdownId}/chapters/${chapterId}`,
+      { method: "PATCH", body },
+    ),
+
+  patchSlotAnchor: (breakdownId: UUID, slotId: UUID, body: { anchor_date: ISODate | null }) =>
+    request<BreakdownSlot>(
+      `/api/v2/breakdowns/${breakdownId}/slots/${slotId}/anchor`,
+      { method: "PATCH", body },
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -984,6 +1068,224 @@ export const quick = {
 };
 
 // ---------------------------------------------------------------------------
+// Admin auth + tenancy CRUD (F5)
+// ---------------------------------------------------------------------------
+
+export interface AdminSignupBody {
+  email: string;
+  password: string;
+  name: string;
+  org_name: string;
+  curriculum_code: string;
+}
+
+export interface AdminSignupResponse {
+  session_token: UUID;
+  expires_at: string;
+  org_id: UUID;
+  org_name: string;
+  admin_id: UUID;
+  api_key: string;
+  api_key_prefix: string;
+}
+
+export interface AdminLoginBody {
+  email: string;
+  password: string;
+}
+
+export interface AdminLoginResponse {
+  session_token: UUID;
+  expires_at: string;
+  admin_id: UUID;
+  org_id: UUID;
+}
+
+export interface AdminMeResponse {
+  admin_id: UUID;
+  org_id: UUID;
+  org_name: string;
+  email: string;
+  name: string;
+  curriculum_id: UUID;
+  curriculum_code: string;
+  default_teacher_id: UUID | null;
+  api_key_prefix: string;
+}
+
+export interface RotateKeyResponse {
+  api_key: string;
+  api_key_prefix: string;
+}
+
+export const admin = {
+  signup: (body: AdminSignupBody) =>
+    request<AdminSignupResponse>("/api/v1/admin/signup", {
+      method: "POST", body, auth: "none",
+    }),
+  login: (body: AdminLoginBody) =>
+    request<AdminLoginResponse>("/api/v1/admin/login", {
+      method: "POST", body, auth: "none",
+    }),
+  logout: () =>
+    request<void>("/api/v1/admin/logout", { method: "POST", auth: "admin" }),
+  me: () => request<AdminMeResponse>("/api/v1/admin/me", { auth: "admin" }),
+
+  patchOrg: (body: { name?: string; default_teacher_id?: UUID }) =>
+    request<AdminMeResponse>("/api/v1/orgs/me", {
+      method: "PATCH", body, auth: "admin",
+    }),
+  rotateApiKey: () =>
+    request<RotateKeyResponse>("/api/v1/orgs/me/rotate-api-key", {
+      method: "POST", auth: "admin",
+    }),
+
+  // Tenancy CRUD
+  createSchool: (body: { name: string }) =>
+    request<School>("/api/v1/schools", {
+      method: "POST", body, auth: "admin",
+    }),
+  updateSchool: (id: UUID, body: { name: string }) =>
+    request<School>(`/api/v1/schools/${id}`, {
+      method: "PATCH", body, auth: "admin",
+    }),
+
+  createTeacher: (body: { school_id: UUID; name: string; email?: string }) =>
+    request<Teacher>("/api/v1/teachers", {
+      method: "POST", body, auth: "admin",
+    }),
+  updateTeacher: (id: UUID, body: { name?: string; email?: string }) =>
+    request<Teacher>(`/api/v1/teachers/${id}`, {
+      method: "PATCH", body, auth: "admin",
+    }),
+
+  createAcademicYear: (body: {
+    school_id: UUID;
+    name: string;
+    start_date: ISODate;
+    end_date: ISODate;
+  }) =>
+    request<AcademicYear>("/api/v1/academic-years", {
+      method: "POST", body, auth: "admin",
+    }),
+  updateAcademicYear: (id: UUID, body: { name?: string; start_date?: ISODate; end_date?: ISODate }) =>
+    request<AcademicYear>(`/api/v1/academic-years/${id}`, {
+      method: "PATCH", body, auth: "admin",
+    }),
+
+  createClass: (body: {
+    school_id: UUID;
+    academic_year_id: UUID;
+    grade_id: UUID;
+    section: string;
+    name?: string;
+  }) =>
+    request<SchoolClass>("/api/v1/classes", {
+      method: "POST", body, auth: "admin",
+    }),
+
+  createCST: (body: {
+    school_class_id: UUID;
+    subject_id: UUID;
+    teacher_id: UUID;
+    book_id?: UUID;
+  }) =>
+    request<CST>("/api/v1/csts", {
+      method: "POST", body, auth: "admin",
+    }),
+  updateCST: (id: UUID, body: { teacher_id?: UUID; book_id?: UUID }) =>
+    request<CST>(`/api/v1/csts/${id}`, {
+      method: "PATCH", body, auth: "admin",
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Admin: generations (failures + retry) + coverage summary
+// ---------------------------------------------------------------------------
+
+export interface FailureLPListItem {
+  id: UUID;
+  cache_key: string | null;
+  scope: string;
+  scope_ref_id: UUID | null;
+  topic_id: UUID | null;
+  lp_type: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface FailureExamListItem {
+  id: UUID;
+  cache_key: string | null;
+  scope: string;
+  scope_ref_id: UUID | null;
+  generation_type: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface FailureListResponse {
+  lps: FailureLPListItem[];
+  exams: FailureExamListItem[];
+}
+
+export interface RetryResponse {
+  id: UUID;
+  status: GenerationStatus;
+  job_id: string | null;
+}
+
+export interface SLOCoverageBucket {
+  slo_id: UUID;
+  slo_code: string;
+  slo_statement: string;
+  sub_slo_count: number;
+  taught_count: number;
+  avg_mastery_percent: number | null;
+}
+
+export interface SLOCoverageSummaryResponse {
+  items: SLOCoverageBucket[];
+}
+
+export const adminGenerations = {
+  listFailures: () =>
+    request<FailureListResponse>("/api/v1/orgs/me/generation-failures"),
+  retryLP: (id: UUID) =>
+    request<RetryResponse>(`/api/v1/generated-lps/${id}/retry`, { method: "POST" }),
+  retryExam: (id: UUID) =>
+    request<RetryResponse>(`/api/v1/generated-exams/${id}/retry`, { method: "POST" }),
+  getCoverageSummary: (params: { grade_id?: UUID; subject_id?: UUID } = {}) =>
+    request<SLOCoverageSummaryResponse>("/api/v1/orgs/me/coverage-summary", {
+      query: params,
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Holidays — admin POST endpoints already supported by router_holidays.py
+// (path: POST /api/v2/orgs/{org_id}/holidays, schools/{id}/holiday-overrides)
+// ---------------------------------------------------------------------------
+
+export const adminHolidays = {
+  addOrgHoliday: (org_id: UUID, body: {
+    academic_year_id: UUID;
+    date: ISODate;
+    name: string;
+  }) =>
+    request<HolidayCreated>(`/api/v2/orgs/${org_id}/holidays`, {
+      method: "POST", body,
+    }),
+  addSchoolOverride: (school_id: UUID, body: {
+    date: ISODate;
+    name?: string;
+    action: "add" | "remove";
+  }) =>
+    request<HolidayCreated>(`/api/v2/schools/${school_id}/holiday-overrides`, {
+      method: "POST", body,
+    }),
+};
+
+// ---------------------------------------------------------------------------
 // Default export bundles every namespace for ergonomic imports
 // ---------------------------------------------------------------------------
 
@@ -1002,10 +1304,16 @@ export const darsApi = {
   usage,
   mastery,
   quick,
+  admin,
+  adminGenerations,
+  adminHolidays,
   // utilities
   getApiKey,
   setApiKey,
   clearApiKey,
+  getAdminSession,
+  setAdminSession,
+  clearAdminSession,
 };
 
 export default darsApi;

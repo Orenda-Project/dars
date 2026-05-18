@@ -13,6 +13,9 @@ logging.basicConfig(
 from dars.config import settings
 from dars.migrations import run_migrations
 from dars.seeds.v2_seed import run_seed_on_startup
+from dars.v2_api.router_admin import org_router as v1_admin_org_router
+from dars.v2_api.router_admin import router as v1_admin_router
+from dars.v2_api.router_admin_tenancy import router as v1_admin_tenancy_router
 from dars.v2_api.router_book import router as v2_book_router
 from dars.v2_api.router_breakdown import router as v2_breakdown_router
 from dars.v2_api.router_class_actions import router as v2_class_actions_router
@@ -59,6 +62,9 @@ app.include_router(v2_today_calendar_router)
 app.include_router(v1_webhooks_router)
 app.include_router(v1_generation_router)
 app.include_router(v1_quick_router)
+app.include_router(v1_admin_router)
+app.include_router(v1_admin_org_router)
+app.include_router(v1_admin_tenancy_router)
 
 
 @app.get("/health")
