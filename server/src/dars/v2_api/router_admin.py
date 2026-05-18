@@ -61,8 +61,13 @@ class SignupResponse(BaseModel):
 
 
 class LoginBody(BaseModel):
-    email: EmailStr
-    password: str
+    # Plain `str` (not EmailStr) on purpose: an admin can only log in if
+    # they're already in the DB, and EmailStr rejects valid-but-reserved
+    # TLDs like `.local` and `.test`. Refusing those at the login gate
+    # would lock such admins out forever even though they signed up
+    # fine — strictness belongs on signup, not on login.
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=200)
 
 
 class LoginResponse(BaseModel):
@@ -114,8 +119,11 @@ async def signup(
             detail=f"unknown curriculum_code={payload.curriculum_code!r}",
         )
 
+    # Normalize email to lowercase so login casing doesn't matter.
+    email_normalized = str(payload.email).strip().lower()
+
     existing = await conn.fetchval(
-        "SELECT id FROM org_admins WHERE email = $1", payload.email
+        "SELECT id FROM org_admins WHERE lower(email) = $1", email_normalized
     )
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email already in use")
@@ -137,7 +145,7 @@ async def signup(
             VALUES ($1, $2, $3, $4)
             RETURNING id
             """,
-            org_id, payload.email, hash_password(payload.password), payload.name,
+            org_id, email_normalized, hash_password(payload.password), payload.name,
         )
         session_id, expires_at = await create_session(conn, admin_id)
 
@@ -163,9 +171,12 @@ async def login(
     payload: LoginBody,
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> LoginResponse:
+    # Case-insensitive lookup so the user doesn't need to remember
+    # exactly how they entered their email at signup.
+    email_normalized = (payload.email or "").strip().lower()
     row = await conn.fetchrow(
-        "SELECT id, org_id, password_hash FROM org_admins WHERE email = $1",
-        payload.email,
+        "SELECT id, org_id, password_hash FROM org_admins WHERE lower(email) = $1",
+        email_normalized,
     )
     if row is None or not verify_password(payload.password, row["password_hash"]):
         # Constant-time-ish: always do a fake hash check if no row to slow
