@@ -21,7 +21,7 @@ import logging
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from dars.breakdown.curriculum_mapping import map_curriculum_for_lp_assistant
 from dars.config import settings
@@ -40,12 +40,18 @@ class LPRequest(BaseModel):
 
     `curriculum_code` is dars's internal code (DARS / NCP / SNC); it gets
     mapped to LP Assistant's enum value at send time.
+
+    Either `page_content` (raw text already extracted) OR `page_number`
+    (string like "5" or "5-7"; LP Assistant fetches from its own book DB)
+    must be provided. The batch breakdown path passes `page_content`; the
+    quick endpoint passes `page_number`.
     """
 
     curriculum_code: str
     grade: int = Field(ge=1, le=5)
     subject: str  # must match LP Assistant's enum (Eng/Urdu/Maths/Science/GK)
-    page_content: str
+    page_content: str | None = None
+    page_number: str | None = None
     lp_type: str
     callback_url: str
     class_strength: int = 30
@@ -71,26 +77,33 @@ class LPRequest(BaseModel):
             )
         return v
 
-    @field_validator("page_content")
-    @classmethod
-    def _page_content_nonempty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("page_content is empty — LP Assistant would fall back to DB lookup")
-        return v
+    @model_validator(mode="after")
+    def _exactly_one_source(self) -> "LPRequest":
+        has_content = bool(self.page_content and self.page_content.strip())
+        has_number = bool(self.page_number and self.page_number.strip())
+        if not has_content and not has_number:
+            raise ValueError(
+                "either page_content or page_number must be provided"
+            )
+        return self
 
 
 def _build_body(req: LPRequest) -> dict:
     """Build the v3 request body — ONLY the fields the reference doc lists."""
-    return {
+    body: dict = {
         "curriculum": map_curriculum_for_lp_assistant(req.curriculum_code),
         "grade": req.grade,
         "subject": req.subject,
-        "page_content": req.page_content,
         "lp_type": req.lp_type,
         "class_strength": req.class_strength,
         "generate_bilingual": req.generate_bilingual,
         "callback_url": req.callback_url,
     }
+    if req.page_content and req.page_content.strip():
+        body["page_content"] = req.page_content
+    elif req.page_number and req.page_number.strip():
+        body["page_number"] = req.page_number
+    return body
 
 
 async def request_lp_generation(

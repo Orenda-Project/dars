@@ -65,13 +65,23 @@ def test_lp_request_rejects_invalid_lp_type_for_subject():
         )
 
 
-def test_lp_request_rejects_empty_page_content():
-    with pytest.raises(ValueError, match="page_content is empty"):
+def test_lp_request_rejects_both_page_sources_missing():
+    with pytest.raises(ValueError, match="page_content or page_number"):
         LPRequest(
             curriculum_code="DARS", grade=1, subject="Eng",
             page_content="   ", lp_type="reading",
             callback_url="https://dars.example/cb",
         )
+
+
+def test_lp_request_accepts_page_number_alone():
+    req = LPRequest(
+        curriculum_code="DARS", grade=1, subject="Eng",
+        page_number="5", lp_type="reading",
+        callback_url="https://dars.example/cb",
+    )
+    assert req.page_number == "5"
+    assert req.page_content is None
 
 
 def test_lp_request_grade_bounds():
@@ -118,14 +128,17 @@ async def test_sends_only_v3_fields_and_returns_job_id():
     assert captured["body"]["generate_bilingual"] is False
     assert captured["body"]["callback_url"].endswith("/abc")
 
-    # Forbidden v1/v2 fields must NOT appear
+    # Forbidden v1/v2 fields must NOT appear. page_number is no longer
+    # forbidden — the quick-LP path uses it; but this test sets
+    # page_content so page_number should still be absent here.
     for forbidden in (
         "topic", "custom_prompt", "system_prompt",
-        "page_number", "exercise_page_number",
+        "exercise_page_number",
         "enable_review", "revision_lp", "is_objective", "is_subjective",
         "image_generation_enabled", "feedback", "selected_model", "sub_region",
     ):
         assert forbidden not in captured["body"], f"forbidden field leaked: {forbidden}"
+    assert "page_number" not in captured["body"], "page_content path should not also send page_number"
 
 
 async def test_curriculum_snc_maps_to_punjab():

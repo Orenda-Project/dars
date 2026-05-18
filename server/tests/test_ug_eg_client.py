@@ -117,12 +117,21 @@ def test_rejects_unknown_unseen_category():
         )
 
 
-def test_rejects_empty_page_content():
-    with pytest.raises(ValueError, match="page_content is empty"):
+def test_rejects_missing_page_source():
+    with pytest.raises(ValueError, match="page_content or page_ranges"):
         ExamRequest(
             curriculum_code="DARS", grade=1, subject="Eng",
             page_content="   ", callback_url="https://dars.example/cb",
         )
+
+
+def test_accepts_page_ranges_alone():
+    req = ExamRequest(
+        curriculum_code="DARS", grade=1, subject="Eng",
+        page_ranges="5-7", callback_url="https://dars.example/cb",
+    )
+    assert req.page_ranges == "5-7"
+    assert req.page_content is None
 
 
 # ---------------------------------------------------------------------------
