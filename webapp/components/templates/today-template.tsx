@@ -6,6 +6,8 @@
  */
 "use client";
 
+import Link from "next/link";
+
 import type {
   AssessmentSlotEntry,
   LessonSlotEntry,
@@ -41,6 +43,13 @@ export function TodayTemplate(props: TodayTemplateProps) {
     );
   }
 
+  // Onboarding nudge: any CST that's past day 5 with no taught history
+  // suggests the teacher joined mid-year. Surface a per-CST link to the
+  // wizard (D-12 / F4.12).
+  const onboardingCandidates = today.items.filter(
+    (e) => e.day_number !== null && e.day_number > 5 && !e.previous_taught,
+  );
+
   return (
     <div>
       <div className="mb-5 flex items-baseline justify-between">
@@ -49,6 +58,30 @@ export function TodayTemplate(props: TodayTemplateProps) {
         </h1>
         <span className="text-xs text-dars-muted font-mono">{today.as_of}</span>
       </div>
+
+      {onboardingCandidates.length > 0 ? (
+        <div className="mb-4 rounded-md border border-dars-terra/30 bg-dars-terra-light/15 p-3 text-sm">
+          <p className="font-medium text-dars-ink">
+            Joining this class mid-year?
+          </p>
+          <p className="text-xs text-dars-muted mt-1">
+            We can mark earlier slots as <em>unknown</em> in your SLO coverage
+            and start the calendar at where you are.
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {onboardingCandidates.map((entry) => (
+              <li key={entry.cst_id}>
+                <a
+                  href={`/teacher-app/onboarding/${entry.cst_id}`}
+                  className="inline-block px-2.5 py-1 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90"
+                >
+                  Set starting point — Grade {entry.grade_code} {entry.subject_code}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <ul className="space-y-4">
         {today.items.map((entry) => (
@@ -224,14 +257,12 @@ function AssessmentCard({
         >
           View Exam
         </button>
-        <button
-          type="button"
-          disabled
-          className="px-3 py-1.5 rounded-md border border-dars-rule-light text-dars-muted text-xs font-medium cursor-not-allowed"
-          title="Mastery entry ships in F4.13"
+        <Link
+          href={`/teacher-app/classes/${entry.cst_id}/assessments/${slot.slot_id}/results`}
+          className="px-3 py-1.5 rounded-md border border-dars-rule-dark text-dars-ink text-xs font-medium hover:bg-dars-parchment-deep"
         >
-          Record Results (soon)
-        </button>
+          Record Results
+        </Link>
       </div>
     </div>
   );

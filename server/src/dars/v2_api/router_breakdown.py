@@ -283,6 +283,7 @@ async def create_breakdown(
 @router.get("/breakdowns", response_model=BreakdownListResponse)
 async def list_breakdowns(
     scope: str | None = Query(default=None),
+    scope_ref_id: UUID | None = Query(default=None),
     curriculum_id: UUID | None = Query(default=None),
     grade_id: UUID | None = Query(default=None),
     subject_id: UUID | None = Query(default=None),
@@ -294,6 +295,9 @@ async def list_breakdowns(
     if scope is not None:
         params.append(scope)
         where.append(f"scope = ${len(params)}")
+    if scope_ref_id is not None:
+        params.append(scope_ref_id)
+        where.append(f"scope_ref_id = ${len(params)}")
     if curriculum_id is not None:
         params.append(curriculum_id)
         where.append(f"curriculum_id = ${len(params)}")

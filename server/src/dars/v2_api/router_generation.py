@@ -1,9 +1,9 @@
 """
 F3.12 — Per-org usage report.
 F3.13 — Class-lesson-slot detail with LP status surface.
+F4.13 — Submit exam mastery results.
 
-Both endpoints take the per-org X-API-Key (not admin) since they're
-read-only views of the org's own data.
+Endpoints take the per-org X-API-Key.
 """
 import logging
 from datetime import date
@@ -11,7 +11,13 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
+from dars.breakdown.mastery_service import (
+    PerQuestionResult,
+    SubmitResultsInput,
+    submit_exam_results,
+)
 from dars.v2_api.deps import OrgContext, get_current_org, get_db_conn
 
 log = logging.getLogger("v2_api.generation")
@@ -217,3 +223,142 @@ async def get_class_lesson_slot_detail(
             [str(x) for x in (row["lp_covered_sub_slo_ids"] or [])]
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# F4.13 — submit mastery results for an assessment slot
+# ---------------------------------------------------------------------------
+
+
+class PerQuestionBody(BaseModel):
+    question_index: int = Field(ge=0)
+    students_correct: int = Field(ge=0)
+    marks_total: int = 1
+
+
+class SubmitResultsBody(BaseModel):
+    students_present: int = Field(gt=0)
+    per_question: list[PerQuestionBody]
+    assessed_on: date | None = None
+    recorded_by_teacher_id: UUID | None = None
+
+
+class SubmitResultsResponse(BaseModel):
+    exam_result_id: UUID
+    sub_slo_mastery_rows: int
+
+
+@router.get("/class-assessment-slots/{slot_id}")
+async def get_class_assessment_slot_detail(
+    slot_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> dict:
+    """
+    Detail view used by the teacher app's mastery entry form and the
+    "view exam" slide-over. Joins through generated_exams for the
+    result JSON, exam_paper_html, status, tagging output.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT
+            cas.id, cas.cst_id, cas.position, cas.assessment_type,
+            cas.anchor_date, cas.status, cas.generated_exam_id, cas.org_id,
+            ge.status                 AS exam_status,
+            ge.result                 AS exam_result,
+            ge.exam_paper_html        AS exam_paper_html,
+            ge.question_sub_slo_tags  AS question_sub_slo_tags,
+            ge.tagging_status         AS exam_tagging_status,
+            ge.error_message          AS exam_error_message
+        FROM class_assessment_slots cas
+        LEFT JOIN generated_exams ge ON ge.id = cas.generated_exam_id
+        WHERE cas.id = $1
+        """,
+        slot_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="assessment slot not found")
+    if row["org_id"] != org.id:
+        raise HTTPException(status_code=404, detail="assessment slot not found")
+
+    topic_rows = await conn.fetch(
+        """
+        SELECT t.id, t.title
+        FROM class_assessment_slot_topics cast2
+        JOIN topics t ON t.id = cast2.topic_id
+        WHERE cast2.class_assessment_slot_id = $1
+        ORDER BY cast2.position
+        """,
+        slot_id,
+    )
+
+    return {
+        "id": str(row["id"]),
+        "cst_id": str(row["cst_id"]),
+        "position": row["position"],
+        "assessment_type": row["assessment_type"],
+        "anchor_date": row["anchor_date"].isoformat() if row["anchor_date"] else None,
+        "status": row["status"],
+        "exam_status": row["exam_status"] or "not_generated",
+        "exam_result": row["exam_result"],
+        "exam_paper_html": row["exam_paper_html"],
+        "question_sub_slo_tags": row["question_sub_slo_tags"],
+        "exam_tagging_status": row["exam_tagging_status"],
+        "exam_error_message": row["exam_error_message"],
+        "topic_ids": [str(t["id"]) for t in topic_rows],
+        "topic_titles": [t["title"] for t in topic_rows],
+    }
+
+
+@router.post(
+    "/class-assessment-slots/{slot_id}/results",
+    response_model=SubmitResultsResponse,
+)
+async def submit_class_assessment_results(
+    slot_id: UUID,
+    payload: SubmitResultsBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SubmitResultsResponse:
+    """
+    Record per-question correct counts for a completed assessment slot.
+    Idempotent: resubmitting deletes the previous exam_results +
+    sub_slo_mastery rows for this slot and re-creates them.
+
+    Server walks the generated_exam.result tree in the same order
+    iter_questions() (F3.9) uses, flattening to 0..N-1; clients submit
+    `question_index` against that flat sequence.
+    """
+    # Tenancy: confirm the slot belongs to a CST in this org.
+    org_check = await conn.fetchval(
+        "SELECT org_id FROM class_assessment_slots WHERE id = $1",
+        slot_id,
+    )
+    if org_check is None or org_check != org.id:
+        raise HTTPException(status_code=404, detail="assessment slot not found")
+
+    try:
+        result = await submit_exam_results(
+            conn,
+            SubmitResultsInput(
+                class_assessment_slot_id=slot_id,
+                students_present=payload.students_present,
+                recorded_by_teacher_id=payload.recorded_by_teacher_id,
+                per_question=[
+                    PerQuestionResult(
+                        question_index=q.question_index,
+                        students_correct=q.students_correct,
+                        marks_total=q.marks_total,
+                    )
+                    for q in payload.per_question
+                ],
+                assessed_on=payload.assessed_on,
+            ),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return SubmitResultsResponse(
+        exam_result_id=result.exam_result_id,
+        sub_slo_mastery_rows=result.sub_slo_mastery_rows,
+    )

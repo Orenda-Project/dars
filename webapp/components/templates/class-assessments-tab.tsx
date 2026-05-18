@@ -6,6 +6,8 @@
  */
 "use client";
 
+import Link from "next/link";
+
 import type { ClassAssessmentSlotListItem } from "@/lib/dars-api";
 
 interface AssessmentsTabProps {
@@ -64,14 +66,12 @@ export function ClassAssessmentsTab({ items, onView }: AssessmentsTabProps) {
               >
                 View Exam
               </button>
-              <button
-                type="button"
-                disabled
-                className="px-2.5 py-1 rounded border border-dars-rule-light text-xs text-dars-muted cursor-not-allowed"
-                title="Mastery entry ships in F4.13"
+              <Link
+                href={`/teacher-app/classes/${slot.cst_id}/assessments/${slot.id}/results`}
+                className="px-2.5 py-1 rounded border border-dars-rule-dark text-xs text-dars-ink hover:bg-dars-parchment-deep"
               >
-                Record Results (soon)
-              </button>
+                Record Results
+              </Link>
               <ExamStatusPill status={slot.exam_status} />
             </div>
           </li>
