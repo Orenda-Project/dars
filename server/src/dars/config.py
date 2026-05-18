@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # Public base URL for this dars instance — used to build webhook callback URLs
     # sent to LP Assistant and UG_EG. Must be reachable from those services.
     dars_base_url: str = "https://dars.taleemabad.com"
+    # Shared secrets for verifying inbound webhook posts (D-41).
+    # Inbound requests must carry header X-Webhook-Secret matching these.
+    # Empty string = unconfigured; the webhook handler will refuse all
+    # requests when unset (avoids accidentally accepting unsigned traffic).
+    lp_assistant_webhook_secret: str = ""
+    ug_eg_webhook_secret: str = ""
     cors_origins: str = "http://localhost:3000,https://truthful-renewal-production-c9ce.up.railway.app"
 
     @property
