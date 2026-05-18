@@ -52,12 +52,14 @@ export default function ClassesPage() {
       const classById = new Map<string, SchoolClass>(classes.map((c) => [c.id, c]));
       const schoolById = new Map(schools.map((s) => [s.id, s]));
 
+      // CST → school_class → (grade, school). CST itself only carries
+      // school_class_id + subject_id; everything else is joined.
       setItems(
         csts.map((cst: CST) => {
-          const grade = gradeById.get(cst.grade_id);
-          const subject = subjectById.get(cst.subject_id);
           const klass = classById.get(cst.school_class_id);
-          const school = schoolById.get(cst.school_id);
+          const grade = klass ? gradeById.get(klass.grade_id) : undefined;
+          const school = klass ? schoolById.get(klass.school_id) : undefined;
+          const subject = subjectById.get(cst.subject_id);
           return {
             cst_id: cst.id,
             className: klass?.name ?? `Class ${cst.school_class_id.slice(0, 8)}`,

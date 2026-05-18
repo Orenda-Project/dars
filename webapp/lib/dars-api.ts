@@ -81,19 +81,25 @@ export interface SchoolClass {
   school_id: UUID;
   academic_year_id: UUID;
   grade_id: UUID;
-  section: string | null;
+  section: string;
   name: string;
 }
 
+/**
+ * CST = (class, subject, teacher) tuple. Note the row itself only carries
+ * `subject_id` and `school_class_id` directly — `grade_id` / `school_id`
+ * live on the joined `school_classes` row; `curriculum_id` is org-level.
+ * The list endpoint omits `current_sequence_position`; the single-row
+ * GET adds it.
+ */
 export interface CST {
   id: UUID;
   org_id: UUID;
-  school_id: UUID;
   school_class_id: UUID;
-  teacher_id: UUID;
+  teacher_id: UUID | null;
   subject_id: UUID;
-  curriculum_id: UUID;
-  grade_id: UUID;
+  book_id: UUID | null;
+  current_sequence_position?: number | null;
 }
 
 // ---------------------------------------------------------------------------
