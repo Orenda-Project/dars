@@ -86,7 +86,7 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 
 ## Step 5 — Current state
 
-**As of last update: 2026-05-18 — Phase 2 closed, Phase 3 starting**
+**As of last update: 2026-05-18 — Phase 3 close-out PR open**
 
 | Item | Status |
 |---|---|
@@ -94,13 +94,14 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 | Plan reviewed by user | ✅ |
 | Phase 1 (Foundation) | ✅ shipped; bead `feat-v2-phase-1-foundation` closed |
 | Phase 2 (Breakdown Engine) | ✅ shipped (F2.1..F2.16); bead `feat-v2-phase-2-breakdown` closed (PR #58 merged 2026-05-16) |
-| Phase 3 (Generation Pipeline) | 🟡 in progress; bead `feat-v2-phase-3-generation` open; F3.1 (PR #59) + F3.2+F3.3 (PR #60) merged; F3.4+F3.5 in flight |
+| Phase 3 (Generation Pipeline) | 🟡 close-out PR in flight; F3.1..F3.5 merged; F3.6..F3.13 bundled in this branch (`feat/v2-phase-3-f3.6-f3.13-close`) |
 | Phase 4 (Teacher App) | ⏳ blocked by Phase 3 |
 | Phase 5 (Dashboard) | ⏳ blocked by Phase 4 |
 | Seed (Dars Curriculum × English × G1) | ✅ frozen on staging: 21 SLOs, 71 sub-SLOs, 10 chapters, 31 topics, 1 demo org + Aisha + G1-A CST; seed now publishes global + org + class breakdowns |
 | Staging DB | ✅ on v2 schema; legacy v1 code deleted in PR #47 |
 | Demo org API key | `dk_demo_dars_eng_g1_2dc7e0b8408142fa` (see `server/src/dars/seeds/tenancy_demo.py`) |
 | /api/v2/* read-only endpoints | ✅ tenancy + curriculum + book (Phase 1); breakdown CRUD + fork + publish + projector + anchor + mark-taught + onboarding + /today + /me/calendar (Phase 2) |
+| /api/v1/* generation endpoints | 🟡 in flight in this PR: webhooks (lp + exam) + refresh + breakdowns/{id}/generation-status + orgs/me/usage + class-lesson-slots/{id} |
 | Webapp `/teacher-app/*` and `/dashboard/*` | ⚠️ 404 on staging (PR #47 deleted legacy v1 routes; Phase 4 rewrites against v2). This is expected, not a bug. See **D-72**. |
 
 **Phase 1 PR history (chronological):**
@@ -110,9 +111,9 @@ PR #37 (F1.1 cutover) · PR #38 (F1.2 lookups) · PR #39 (migration-order fix) �
 PR #50 (F2.1+F2.2+F2.3 services) · PR #51 (F2.4 breakdown CRUD) · PR #54 (F2.5 auto-build) · PR #55 (F2.6 sub-SLO trigger) · PR #56 (F2.7+F2.8+F2.9+F2.10 fork+projector+realize+holidays) · PR #57 (F2.11+F2.12+F2.13 anchor+mark-taught+onboarding) · PR #58 (F2.14+F2.15+F2.16 seed-publishes + /today + /me/calendar — close-out)
 
 **Next thing to do unless the user says otherwise:**
-F3.4+F3.5 (LP + Exam cache lookup/insert + class-scope branching, on `feat/v2-phase-3-f3.4-f3.5-cache`) in flight. After merge: F3.6 (webhook handlers for lp + exam, idempotent + shared-secret auth) per [docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md](docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md).
+Phase 3 close-out PR (this branch — F3.6..F3.13) ships webhooks + refresh + tagging + revision LP + batch publish + usage report + failure surface. After merge: close bead `feat-v2-phase-3-generation`, open `feat-v2-phase-4-teacher-app`, start Phase 4 with F4.1 per [docs/plans/2026-05-15-dars-v2-rebuild/06-phase-4-teacher-app.md](docs/plans/2026-05-15-dars-v2-rebuild/06-phase-4-teacher-app.md).
 
-**Known op issue (2026-05-18):** Railway staging auto-deploy is not picking up merges #59 and #60 — webhook delivery appears broken. Latest deployed commit is `115528a` (PR #58). User is investigating; manual redeploy may be needed before staging reflects Phase 3 work. F3.4+F3.5 PR will pile onto the same unsynced staging head until resolved.
+**Known op issue (2026-05-18):** Railway staging auto-deploy stopped picking up merges after PR #58 — webhook delivery to Railway appears broken. As of this PR, three Phase 3 PRs are merged on git but not deployed (#59, #60, #61). User is investigating; a manual redeploy of staging head will be needed before staging reflects any Phase 3 work end-to-end.
 
 **State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with [.beads/status.jsonl](.beads/status.jsonl). **The bead is the source of truth for what's currently in flight; REBUILD.md is the human-readable summary.** If they disagree, the bead wins and REBUILD.md is stale — fix REBUILD.md.
 

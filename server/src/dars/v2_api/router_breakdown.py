@@ -28,6 +28,10 @@ from dars.breakdown.slo_breakdown_service import (
     SUBJECT_CODE_TO_KEY,
     run_breakdown_for_slos,
 )
+from dars.generated_lps.batch_service import (
+    enqueue_for_breakdown,
+    generation_status_for_breakdown,
+)
 from dars.v2_api.deps import get_db_conn, get_db_pool, require_admin
 from dars.v2_api.lp_types import VALID_SLOT_TYPES, is_valid_lp_type
 from dars.v2_api.schemas_breakdown import (
@@ -391,6 +395,7 @@ async def update_breakdown(
 @router.post("/breakdowns/{breakdown_id}/publish", response_model=BreakdownRead)
 async def publish_breakdown(
     breakdown_id: UUID,
+    background_tasks: BackgroundTasks,
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownRead:
     current = await _require_draft(conn, breakdown_id)
@@ -417,7 +422,40 @@ async def publish_breakdown(
                 detail=f"publish succeeded but realize failed: {e}",
             )
     log.info("publish_breakdown: id=%s now published", breakdown_id)
+
+    # F3.11 — fire batch generation as a background task so publish stays fast.
+    background_tasks.add_task(_bg_enqueue_breakdown, row["id"])
+
     return await _hydrate_breakdown(conn, row)
+
+
+async def _bg_enqueue_breakdown(breakdown_id: UUID) -> None:
+    """Background task wrapper: opens its own connection from the pool."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        try:
+            await enqueue_for_breakdown(conn, breakdown_id)
+        except Exception:  # noqa: BLE001
+            log.exception("bg_enqueue_breakdown failed for id=%s", breakdown_id)
+
+
+@router.get("/breakdowns/{breakdown_id}/generation-status")
+async def get_generation_status(
+    breakdown_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> dict:
+    """F3.11 — counts of generated_lps + generated_exams by status.
+
+    Returns:
+        {
+          "lp":   {"total": N, "pending": p, "in_flight": i, "ready": r, "error": e},
+          "exam": {...},
+        }
+    """
+    try:
+        return await generation_status_for_breakdown(conn, breakdown_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/breakdowns/{breakdown_id}", status_code=status.HTTP_204_NO_CONTENT)

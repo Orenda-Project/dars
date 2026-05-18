@@ -21,6 +21,7 @@ Lifecycle for a slot's LP:
 Revision LPs (F3.10) use a different keying with revision_topic_set_hash;
 they go through `get_or_generate_revision_lp` (TODO in F3.10).
 """
+import hashlib
 import logging
 from dataclasses import dataclass
 from typing import Awaitable, Callable
@@ -33,6 +34,11 @@ from dars.generated_lps.lp_assistant_client import (
     LPRequest,
     request_lp_generation as default_request_lp_generation,
 )
+
+# F3.10: cap the number of prior topics fed into a revision LP. The
+# topic_text concat can balloon past LP Assistant's context window if
+# we feed an entire chapter back at once.
+REVISION_MAX_PRIOR_TOPICS = 5
 
 log = logging.getLogger("generated_lps.service")
 
@@ -436,4 +442,194 @@ async def get_or_generate_class_specific_lp(
         new_id,
     )
     assert fresh is not None
+    return _record_to_dataclass(fresh)
+
+
+# ---------------------------------------------------------------------------
+# F3.10 — Revision LP path
+# ---------------------------------------------------------------------------
+
+
+async def _load_revision_slot_context(
+    conn: asyncpg.Connection, lesson_slot_id: UUID
+) -> dict:
+    """For a revision-type class_lesson_slot, gather the slot's CST/curriculum
+    info AND the list of prior topics in the same chapter, ordered."""
+    base = await conn.fetchrow(
+        """
+        SELECT
+            cls.id            AS lesson_slot_id,
+            cls.cst_id        AS cst_id,
+            cls.position      AS slot_position,
+            cls.slot_type     AS slot_type,
+            cls.breakdown_slot_id AS breakdown_slot_id,
+            cst.curriculum_id AS curriculum_id,
+            cst.grade_id      AS grade_id,
+            cst.subject_id    AS subject_id,
+            g.code            AS grade_code,
+            s.code            AS subject_code,
+            bs.breakdown_chapter_id AS breakdown_chapter_id
+        FROM class_lesson_slots cls
+        JOIN class_subject_teachers cst ON cst.id = cls.cst_id
+        JOIN grades g                   ON g.id = cst.grade_id
+        JOIN subjects s                 ON s.id = cst.subject_id
+        JOIN breakdown_slots bs         ON bs.id = cls.breakdown_slot_id
+        WHERE cls.id = $1
+        """,
+        lesson_slot_id,
+    )
+    if base is None:
+        raise ValueError(f"lesson_slot_id={lesson_slot_id} not found")
+    if base["slot_type"] != "revision":
+        raise ValueError(
+            f"lesson_slot_id={lesson_slot_id} is not a revision slot "
+            f"(slot_type={base['slot_type']!r}); use get_or_generate_lp instead"
+        )
+
+    # Walk class_lesson_slots within the same chapter & cst, position
+    # below the revision slot. This is what `chapter.topics_before(this_slot)`
+    # resolves to in code.
+    prior_rows = await conn.fetch(
+        """
+        SELECT cls.topic_id, t.topic_text, cls.position
+        FROM class_lesson_slots cls
+        JOIN breakdown_slots bs ON bs.id = cls.breakdown_slot_id
+        JOIN topics t            ON t.id = cls.topic_id
+        WHERE cls.cst_id = $1
+          AND bs.breakdown_chapter_id = $2
+          AND cls.position < $3
+          AND cls.slot_type = 'lesson'
+          AND cls.topic_id IS NOT NULL
+        ORDER BY cls.position
+        """,
+        base["cst_id"], base["breakdown_chapter_id"], base["slot_position"],
+    )
+    return {**base, "prior_topics": prior_rows}
+
+
+def _hash_topic_id_list(topic_ids: list[UUID]) -> str:
+    canonical = ",".join(sorted(str(t) for t in topic_ids))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def get_or_generate_revision_lp(
+    conn: asyncpg.Connection,
+    lesson_slot_id: UUID,
+    *,
+    dispatcher: DispatchCallable | None = None,
+) -> GeneratedLP:
+    """
+    F3.10 — Revision LP path.
+
+    Cache key: f"{curriculum_id}:revision:{topic_ids_hash}" where
+    topic_ids = the chapter's lesson-slot topics PRECEDING this revision
+    slot (capped at REVISION_MAX_PRIOR_TOPICS for context-window safety).
+
+    `page_content` = "\\n\\n".join(prior topic_texts).
+
+    The list of topic_ids is persisted to `generated_lp_revision_topics`
+    so the F3.8 tagging service can union their sub-SLOs as candidates.
+    """
+    log.info("get_or_generate_revision_lp: entry lesson_slot_id=%s", lesson_slot_id)
+
+    ctx = await _load_revision_slot_context(conn, lesson_slot_id)
+    prior = ctx["prior_topics"]
+    if not prior:
+        raise ValueError(
+            f"revision slot {lesson_slot_id} has no preceding lesson topics"
+        )
+
+    # Cap to last N topics; sort by position (already sorted by query).
+    if len(prior) > REVISION_MAX_PRIOR_TOPICS:
+        log.info(
+            "get_or_generate_revision_lp: truncating %d -> %d prior topics",
+            len(prior), REVISION_MAX_PRIOR_TOPICS,
+        )
+        prior = prior[-REVISION_MAX_PRIOR_TOPICS:]
+
+    topic_ids = [r["topic_id"] for r in prior]
+    topic_ids_hash = _hash_topic_id_list(topic_ids)
+    cache_key = f"{ctx['curriculum_id']}:revision:{topic_ids_hash}"
+
+    existing = await conn.fetchrow(
+        """
+        SELECT id, cache_key, scope, scope_ref_id, curriculum_id, grade_id,
+               subject_id, topic_id, lp_type, status, job_id, content
+        FROM generated_lps
+        WHERE cache_key = $1 AND scope = 'global'
+        """,
+        cache_key,
+    )
+    if existing is not None and existing["status"] != "ERROR":
+        await _link_slot_to_lp(conn, lesson_slot_id, existing["id"])
+        log.info(
+            "get_or_generate_revision_lp: cache hit gen_lp_id=%s",
+            existing["id"],
+        )
+        return _record_to_dataclass(existing)
+
+    # Insert PENDING with topic_id NULL and revision_topic_set_hash set.
+    new_id = await conn.fetchval(
+        """
+        INSERT INTO generated_lps (
+            cache_key, scope, scope_ref_id,
+            curriculum_id, grade_id, subject_id,
+            topic_id, revision_topic_set_hash, lp_type, status
+        )
+        VALUES ($1, 'global', NULL, $2, $3, $4, NULL, $5, 'revision', 'PENDING')
+        RETURNING id
+        """,
+        cache_key, ctx["curriculum_id"], ctx["grade_id"], ctx["subject_id"],
+        topic_ids_hash,
+    )
+
+    # Persist topic membership so tagging (F3.8) can union sub-SLOs.
+    await conn.executemany(
+        """
+        INSERT INTO generated_lp_revision_topics (generated_lp_id, topic_id, position)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (generated_lp_id, topic_id) DO NOTHING
+        """,
+        [(new_id, r["topic_id"], i + 1) for i, r in enumerate(prior)],
+    )
+    await _link_slot_to_lp(conn, lesson_slot_id, new_id)
+
+    page_content = "\n\n".join(
+        (r["topic_text"] or "").strip()
+        for r in prior
+        if (r["topic_text"] or "").strip()
+    )
+    if not page_content:
+        await _mark_error(conn, new_id, "all prior topic_texts were empty")
+        fresh = await conn.fetchrow(
+            "SELECT id, cache_key, scope, scope_ref_id, curriculum_id, grade_id, "
+            "subject_id, topic_id, lp_type, status, job_id, content "
+            "FROM generated_lps WHERE id = $1",
+            new_id,
+        )
+        return _record_to_dataclass(fresh)
+
+    curriculum_code = await _load_curriculum_code(conn, ctx["curriculum_id"])
+    await _dispatch_and_mark(
+        conn,
+        generated_lp_id=new_id,
+        curriculum_code=curriculum_code,
+        grade_code=ctx["grade_code"],
+        subject_code=ctx["subject_code"],
+        topic_text=page_content,
+        lp_type="revision",
+        dispatcher=dispatcher or default_request_lp_generation,
+    )
+
+    fresh = await conn.fetchrow(
+        "SELECT id, cache_key, scope, scope_ref_id, curriculum_id, grade_id, "
+        "subject_id, topic_id, lp_type, status, job_id, content "
+        "FROM generated_lps WHERE id = $1",
+        new_id,
+    )
+    assert fresh is not None
+    log.info(
+        "get_or_generate_revision_lp: inserted gen_lp_id=%s prior_topics=%d",
+        new_id, len(prior),
+    )
     return _record_to_dataclass(fresh)
