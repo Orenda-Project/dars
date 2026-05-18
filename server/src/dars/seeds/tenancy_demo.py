@@ -40,8 +40,15 @@ DEMO_ORG_NAME = "Dars Demo Org"
 DEMO_ORG_API_KEY_RAW = "dk_demo_dars_eng_g1_2dc7e0b8408142fa"  # staging only; deterministic
 DEMO_ORG_API_KEY_PREFIX = DEMO_ORG_API_KEY_RAW[:8]
 
-DEMO_ADMIN_EMAIL = "admin@dars-demo.local"
-DEMO_ADMIN_PASSWORD = "darsdemo2026"  # staging only; backend doesn't even use it yet
+# RFC 2606 reserves `.example` as documentation/test TLD. Pydantic's
+# EmailStr accepts it (unlike `.local`/`.test` which are mDNS-reserved
+# and rejected by the email-validator library — see
+# https://github.com/pydantic/pydantic/issues/9559).
+# We changed the demo seed from `admin@dars-demo.local` to the address
+# below because the prior value couldn't be passed back through any
+# signup/admin-create endpoint that uses EmailStr validation.
+DEMO_ADMIN_EMAIL = "admin@dars-demo.example"
+DEMO_ADMIN_PASSWORD = "darsdemo2026"  # staging only
 DEMO_ADMIN_NAME = "Demo Admin"
 
 DEMO_SCHOOL_NAME = "Dars Demo School"
