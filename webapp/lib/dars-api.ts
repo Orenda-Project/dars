@@ -156,20 +156,33 @@ export interface Book {
   title: string;
 }
 
+/**
+ * `chapter_text` is a structured page slice — list of objects keyed by
+ * page-content type ({ kind, text } pairs etc). It's only populated when
+ * the request hits `?include=chapter_text`; otherwise null.
+ */
+export type ChapterTextEntry = Record<string, unknown>;
+
 export interface BookChapter {
   id: UUID;
   book_id: UUID;
-  position: number;
+  chapter_number: number;
   title: string;
-  chapter_text: string | null;
+  start_page: number | null;
+  end_page: number | null;
+  chapter_text: ChapterTextEntry[] | null;
+  status: string;
 }
 
 export interface Topic {
   id: UUID;
   book_chapter_id: UUID;
-  position: number;
+  topic_number: number;
   title: string;
+  start_line: number | null;
+  end_line: number | null;
   topic_text: string | null;
+  status: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +241,64 @@ export interface ClassAssessmentSlot {
   status: "scheduled" | "completed" | "skipped";
   generated_exam_id: UUID | null;
   topic_ids: UUID[];
+}
+
+/**
+ * Row returned by `/api/v2/csts/{id}/lesson-slots` — adds chapter context
+ * + LP status so the teacher app can render grouped lists without N+1
+ * fetches.
+ */
+export interface ClassLessonSlotListItem {
+  id: UUID;
+  cst_id: UUID;
+  position: number;
+  slot_type: "lesson" | "revision";
+  lp_type: string | null;
+  topic_id: UUID | null;
+  topic_title: string | null;
+  anchor_date: ISODate | null;
+  status: "planned" | "taught" | "skipped";
+  generated_lp_id: UUID | null;
+  lp_status:
+    | "not_generated"
+    | "PENDING"
+    | "IN_FLIGHT"
+    | "READY"
+    | "ERROR";
+  breakdown_chapter_id: UUID;
+  breakdown_chapter_position: number;
+  breakdown_chapter_title: string;
+}
+
+export interface ClassLessonSlotListResponse {
+  cst_id: UUID;
+  items: ClassLessonSlotListItem[];
+}
+
+export interface ClassAssessmentSlotListItem {
+  id: UUID;
+  cst_id: UUID;
+  position: number;
+  assessment_type: "formative" | "summative";
+  anchor_date: ISODate | null;
+  status: "scheduled" | "completed" | "skipped";
+  generated_exam_id: UUID | null;
+  exam_status:
+    | "not_generated"
+    | "PENDING"
+    | "IN_FLIGHT"
+    | "READY"
+    | "ERROR";
+  topic_ids: UUID[];
+  topic_titles: string[];
+  breakdown_chapter_id: UUID;
+  breakdown_chapter_position: number;
+  breakdown_chapter_title: string;
+}
+
+export interface ClassAssessmentSlotListResponse {
+  cst_id: UUID;
+  items: ClassAssessmentSlotListItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -379,16 +450,26 @@ export interface SubSLOCoverageResponse {
 // Holidays
 // ---------------------------------------------------------------------------
 
+/**
+ * One row in the union of org / school / cst holiday sources.
+ * `action` is set only on school/cst overrides; org holidays always add.
+ */
 export interface Holiday {
-  id: UUID;
-  scope: "org" | "school" | "cst";
-  scope_ref_id: UUID;
-  name: string;
-  start_date: ISODate;
-  end_date: ISODate;
+  date: ISODate;
+  name: string | null;
+  source: "org" | "school" | "cst";
+  action: "add" | "remove" | null;
 }
 
-export interface HolidayListResponse extends ListResponse<Holiday> {}
+export interface HolidayListResponse {
+  items: Holiday[];
+  effective_dates: ISODate[];
+}
+
+export interface HolidayCreated {
+  id: UUID;
+  date: ISODate;
+}
 
 // ---------------------------------------------------------------------------
 // Usage
@@ -641,6 +722,18 @@ export const slots = {
   getLessonSlotDetail: (slot_id: UUID) =>
     request<ClassLessonSlotDetail>(`/api/v1/class-lesson-slots/${slot_id}`),
 
+  /** F4.6 — all lesson slots for a CST, joined with breakdown chapter + LP status. */
+  listLessonSlotsForCST: (cst_id: UUID) =>
+    request<ClassLessonSlotListResponse>(
+      `/api/v2/csts/${cst_id}/lesson-slots`,
+    ),
+
+  /** F4.7 — all assessment slots for a CST. */
+  listAssessmentSlotsForCST: (cst_id: UUID) =>
+    request<ClassAssessmentSlotListResponse>(
+      `/api/v2/csts/${cst_id}/assessment-slots`,
+    ),
+
   markTaught: (slot_id: UUID, body: { taught_on: ISODate; notes?: string }) =>
     request<MarkActionResponse>(
       `/api/v2/class-lesson-slots/${slot_id}/mark-taught`,
@@ -757,9 +850,9 @@ export const holidays = {
 
   addCSTOverride: (
     cst_id: UUID,
-    body: { name: string; start_date: ISODate; end_date: ISODate },
+    body: { date: ISODate; name?: string; action: "add" | "remove" },
   ) =>
-    request<Holiday>(`/api/v2/csts/${cst_id}/holiday-overrides`, {
+    request<HolidayCreated>(`/api/v2/csts/${cst_id}/holiday-overrides`, {
       method: "POST",
       body,
     }),

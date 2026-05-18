@@ -67,3 +67,53 @@ class SubSLOCoverageResponse(BaseModel):
     cst_id: UUID
     joined_at_position: int
     items: list[SubSLOCoverageEntry]
+
+
+# ---------------------------------------------------------------------------
+# Class slot listings (F4.6/F4.7) — used by the teacher app to render
+# the full Lessons / Assessments tabs grouped by breakdown chapter.
+# ---------------------------------------------------------------------------
+
+
+class ClassLessonSlotListItem(BaseModel):
+    id: UUID
+    cst_id: UUID
+    position: int
+    slot_type: str  # 'lesson' | 'revision'
+    lp_type: str | None
+    topic_id: UUID | None
+    topic_title: str | None
+    anchor_date: date | None
+    status: str  # 'planned' | 'taught' | 'skipped'
+    generated_lp_id: UUID | None
+    lp_status: str  # 'not_generated' | 'PENDING' | 'IN_FLIGHT' | 'READY' | 'ERROR'
+    # Breakdown chapter context — drives the grouped UI.
+    breakdown_chapter_id: UUID
+    breakdown_chapter_position: int
+    breakdown_chapter_title: str
+
+
+class ClassLessonSlotListResponse(BaseModel):
+    cst_id: UUID
+    items: list[ClassLessonSlotListItem]
+
+
+class ClassAssessmentSlotListItem(BaseModel):
+    id: UUID
+    cst_id: UUID
+    position: int
+    assessment_type: str  # 'formative' | 'summative'
+    anchor_date: date | None
+    status: str  # 'scheduled' | 'completed' | 'skipped'
+    generated_exam_id: UUID | None
+    exam_status: str
+    topic_ids: list[UUID]
+    topic_titles: list[str]
+    breakdown_chapter_id: UUID
+    breakdown_chapter_position: int
+    breakdown_chapter_title: str
+
+
+class ClassAssessmentSlotListResponse(BaseModel):
+    cst_id: UUID
+    items: list[ClassAssessmentSlotListItem]
