@@ -86,28 +86,31 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 
 ## Step 5 — Current state
 
-**As of last update: 2026-05-15 — Phase 1 closed**
+**As of last update: 2026-05-18 — Phase 2 closed, Phase 3 starting**
 
 | Item | Status |
 |---|---|
 | Plan written | ✅ all plan + reference files committed |
 | Plan reviewed by user | ✅ |
 | Phase 1 (Foundation) | ✅ shipped; bead `feat-v2-phase-1-foundation` closed |
-| Phase 2 (Breakdown Engine) | ✅ shipped (F2.1..F2.16); bead `feat-v2-phase-2-breakdown` closed with this PR |
-| Phase 3 (Generation Pipeline) | 🟡 unblocked; bead `feat-v2-phase-3-generation` opens with the next branch |
+| Phase 2 (Breakdown Engine) | ✅ shipped (F2.1..F2.16); bead `feat-v2-phase-2-breakdown` closed (PR #58 merged 2026-05-16) |
+| Phase 3 (Generation Pipeline) | 🟡 in progress; bead `feat-v2-phase-3-generation` open; starting with F3.1 |
 | Phase 4 (Teacher App) | ⏳ blocked by Phase 3 |
 | Phase 5 (Dashboard) | ⏳ blocked by Phase 4 |
-| Seed (Dars Curriculum × English × G1) | ✅ frozen on staging: 21 SLOs, 71 sub-SLOs, 10 chapters, 31 topics, 1 demo org + Aisha + G1-A CST |
+| Seed (Dars Curriculum × English × G1) | ✅ frozen on staging: 21 SLOs, 71 sub-SLOs, 10 chapters, 31 topics, 1 demo org + Aisha + G1-A CST; seed now publishes global + org + class breakdowns |
 | Staging DB | ✅ on v2 schema; legacy v1 code deleted in PR #47 |
 | Demo org API key | `dk_demo_dars_eng_g1_2dc7e0b8408142fa` (see `server/src/dars/seeds/tenancy_demo.py`) |
-| /api/v2/* read-only endpoints | ✅ 27 endpoints live (tenancy + curriculum + book) |
+| /api/v2/* read-only endpoints | ✅ tenancy + curriculum + book (Phase 1); breakdown CRUD + fork + publish + projector + anchor + mark-taught + onboarding + /today + /me/calendar (Phase 2) |
 | Webapp `/teacher-app/*` and `/dashboard/*` | ⚠️ 404 on staging (PR #47 deleted legacy v1 routes; Phase 4 rewrites against v2). This is expected, not a bug. See **D-72**. |
 
 **Phase 1 PR history (chronological):**
 PR #37 (F1.1 cutover) · PR #38 (F1.2 lookups) · PR #39 (migration-order fix) · PR #40 (F1.3 SLOs) · PR #41 (F1.4 book content) · PR #42 (F1.5 tenancy) · PR #43 (date encoding fix) · PR #44 (F1.6 tenancy API) · PR #45 (F1.7 curriculum API) · PR #46 (F1.8 book API) · PR #47 (F1.9 smoke + F1.10 legacy delete)
 
+**Phase 2 PR history (chronological):**
+PR #50 (F2.1+F2.2+F2.3 services) · PR #51 (F2.4 breakdown CRUD) · PR #54 (F2.5 auto-build) · PR #55 (F2.6 sub-SLO trigger) · PR #56 (F2.7+F2.8+F2.9+F2.10 fork+projector+realize+holidays) · PR #57 (F2.11+F2.12+F2.13 anchor+mark-taught+onboarding) · PR #58 (F2.14+F2.15+F2.16 seed-publishes + /today + /me/calendar — close-out)
+
 **Next thing to do unless the user says otherwise:**
-F2.14+F2.15+F2.16 bundled as the Phase 2 close-out PR (pending review/merge). Once merged, open bead `feat-v2-phase-3-generation` and start Phase 3 with F3.1 per [docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md](docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md). Branch off `staging`. Bundle adjacent features as one PR; never skip ahead in numeric order.
+Branch off `staging` as `feat/v2-phase-3-f3.1-lp-tagging`. Start Phase 3 with F3.1 (port Schema's `lp_tagging.py` → `dars/breakdown/lp_tagging_service.py`) per [docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md](docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md). Bundle adjacent features as one PR; never skip ahead in numeric order.
 
 **State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with [.beads/status.jsonl](.beads/status.jsonl). **The bead is the source of truth for what's currently in flight; REBUILD.md is the human-readable summary.** If they disagree, the bead wins and REBUILD.md is stale — fix REBUILD.md.
 

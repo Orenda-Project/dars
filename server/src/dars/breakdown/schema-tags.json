@@ -1,0 +1,292 @@
+[
+  {
+    "category": "SLO",
+    "tag": "Subject-Grade-Domain-Slo no. e.g., M-01-A-1.1",
+    "description": "The teacher clearly states the lesson's objectives/topic at the start.",
+    "completion_status": {
+      "done": "Done ✓ The teacher clearly states the lesson objective at the beginning.",
+      "partially_done": "Partially Done ⚠ Goal was mentioned but vague (\"We're learning about animals\" vs. \"classify animals by characteristics\")",
+      "skipped": "Skipped ✗ No explicit mentioning of goal statement in first 10 minutes"
+    }
+  },
+  {
+    "category": "Blooms",
+    "tag": "Remember,Understand,Apply,Analyze,Evaluate,Create",
+    "description": "The teacher aligns all activities and practices with the cognitive level of the SLO/topic",
+    "completion_status": {
+      "done": "Aligned - Instructions, Activities and Practice tasks match the SLO’s cognitive level (i.e. Bloom's level)",
+      "partially_done": "Partially Aligned - Some Instruction, Activities and Practices are  aligned but some are either below or above the cognitive level.",
+      "skipped": "Not Aligned - The entire lesson remains at a lower or higher cognitive level compared to the intended SLO."
+    }
+  },
+  {
+    "category": "21st century skills",
+    "tag": "Collaboration,Communication,Creativity,Critical Thinking",
+    "description": "Teacher includes at least one 21st century skill in his/her lesson plan.",
+    "completion_status": {
+      "done": "Done ✓ The teacher effectively integrates 21st-century skills that are in the LP.",
+      "partially_done": "Partially Done ⚠ The teacher attempts to include 21st-century skill, but it lacks depth.",
+      "skipped": "Skipped ✗ There is no evidence of intentional incorporation of any 21st-century skills."
+    }
+  },
+  {
+    "category": "Hook",
+    "tag": "Visual",
+    "description": "uses picture, chart, demo, video",
+    "completion_status": {
+      "done": "Done ✓ The teacher effectively uses the visual aids at the start of the lesson to introduce the topic and engage all students in the hook.",
+      "partially_done": "Partially Done ⚠ The teacher uses a visual aid but it is not well explained",
+      "skipped": "Skipped ✗ The teacher does not use any visual aid to start the lesson."
+    }
+  },
+  {
+    "category": "Hook",
+    "tag": "Audio",
+    "description": "uses sound, audio, poem or song",
+    "completion_status": {
+      "done": "Done ✓  The teacher effectively uses the audio element at the start of the lesson to capture students’ attention and introduce the lesson.",
+      "partially_done": "Partially Done ⚠ The teacher uses an audio element but it is unclear, or not connected to the lesson objective.",
+      "skipped": "Skipped ✗ The teacher does not use any audio element to start the lesson."
+    }
+  },
+  {
+    "category": "Hook",
+    "tag": "Activity",
+    "description": "movement, action, roleplay",
+    "completion_status": {
+      "done": "Done ✓  The teacher effectively conducts an activity at the start of the lesson to actively engage students and connect it with the lesson topic.",
+      "partially_done": "Partially Done ⚠ The activity is attempted but it is not aligned with learning objective or cognitive level, or  students were not engaged.",
+      "skipped": "Skipped ✗  The teacher does not perform the planned activity at the start of the lesson."
+    }
+  },
+  {
+    "category": "Hook",
+    "tag": "Hands On",
+    "description": "uses manipulatives or concrete resources other than marker and board.",
+    "completion_status": {
+      "done": "Done ✓ The teacher effectively uses manipulatives or tangible materials at the start of the lesson to introduce the concept in the hook.",
+      "partially_done": "Partially Done ⚠ The teacher uses manipulatives but without clear explanation",
+      "skipped": "Skipped ✗ The teacher does not use any manuplative at the start of lesson."
+    }
+  },
+  {
+    "category": "Hook",
+    "tag": "Real World",
+    "description": "clearly connects to everyday life/situations through specific examples",
+    "completion_status": {
+      "done": "Done ✓ At the start of the lesson, teacher connects the topic to real-life experiences and helps students see where it applies.",
+      "partially_done": "Partially Done ⚠ The teacher mentions or implies real-life application but without clarity.",
+      "skipped": "Skipped ✗ No attempt is made to connect the topic/SLO to students’ lives or explain its purpose."
+    }
+  },
+  {
+    "category": "Hook",
+    "tag": "Prior Knowledge",
+    "description": "activates background knowledge",
+    "completion_status": {
+      "done": "Done ✓ At the start of the lesson, teacher ctivates prior knowledge of students with relatable questions/discussion and connects it with the lesson objectives",
+      "partially_done": "Partially Done ⚠ Teacher recall previous learning but does not relate it to the lesson objective.",
+      "skipped": "Skipped ✗ No effort to activate prior knowledge."
+    }
+  },
+  {
+    "category": "Hook",
+    "tag": "Scenario",
+    "description": "situational / imagine-this setup",
+    "completion_status": {
+      "done": "Done ✓ At the start of the lesson, the teacher effectively presents a realistic or imaginative scenario to help students visualize the concept and connect it to the lesson objective.",
+      "partially_done": "Partially Done ⚠ The teacher mentions a scenario or situation but does not clearly connect it to the lesson or fails to fully engage students in imagining it.",
+      "skipped": "Skipped ✗ No scenario or “imagine-this” setup is used at the beginning of the lesson."
+    }
+  },
+  {
+    "category": "Explanation",
+    "tag": "I-Do-Model",
+    "description": "teacher demonstrates skill/procedure/steps",
+    "completion_status": {
+      "done": "Done ✓ The teacher clearly models the  skill/steps /procedure step by step, thinking aloud and showing the correct process.",
+      "partially_done": "Partially Done ⚠  The teacher gives a brief or incomplete demonstration without fully explaining the process or reasoning.",
+      "skipped": "Skipped ✗ The teacher does not model the skill or concept"
+    }
+  },
+  {
+    "category": "Explanation",
+    "tag": "I-Do-Visual",
+    "description": "teacher explains through any diagram / visual aid (chart, flash card, picture, drawing)/ flow charts, `\n``simple writing on the board to teach a concept is not included in this```.",
+    "completion_status": {
+      "done": "Done ✓  For explaning the topic, the teacher effectively uses visual aids (diagram, chart, or drawing) to enhance understanding of the concept.",
+      "partially_done": "Partially Done ⚠  A visual is used but lacks clarity, connection to the topic, or explanation.",
+      "skipped": "Skipped ✗ No visual aids are used during the explanation."
+    }
+  },
+  {
+    "category": "Explanation",
+    "tag": "I-Do-Hands On",
+    "description": "teacher uses manipulatives, or concrete resources other than marker and board.",
+    "completion_status": {
+      "done": "Done ✓  For explaning the topic, the teacher uses manipulatives to make the explanation concrete and engaging.",
+      "partially_done": "Partially Done ⚠  Manipulatives are used briefly but without clear explanation or the use of their purpose.",
+      "skipped": "Skipped ✗ The teacher does not use any hands-on material in the explanation."
+    }
+  },
+  {
+    "category": "Explanation",
+    "tag": "I-Do-ModelExample",
+    "description": "shows a worked sample",
+    "completion_status": {
+      "done": "Done ✓  The teacher shows a complete worked example or step-by-step sample illustrating correct application of the concept.",
+      "partially_done": "Partially Done ⚠  The teacher shows a sample but does not explain each step clearly.",
+      "skipped": "Skipped ✗ No worked example is shown during the explanation."
+    }
+  },
+  {
+    "category": "Explanation",
+    "tag": "I-Do-common error",
+    "description": "clearly shows or adress a common mistake or misconception",
+    "completion_status": {
+      "done": "Done ✓  The teacher highlights a common error or misconception and contrasts it with the correct method to strengthen understanding.",
+      "partially_done": "Partially Done ⚠  A common error is mentioned but not clearly addressed or corrected.",
+      "skipped": "Skipped ✗ The teacher does not discuss any common errors or misconceptions."
+    }
+  },
+  {
+    "category": "Explanation",
+    "tag": "I-Do-RealWorld",
+    "description": "connects concept to real context through specific examples",
+    "completion_status": {
+      "done": "Done ✓  The teacher clearly relates the concept to real-world applications or familiar experiences.",
+      "partially_done": "Partially Done ⚠  The teacher mentions real-world use but without clear connection or relevance to the concept.",
+      "skipped": "Skipped ✗ No real-world examples or applications are shared."
+    }
+  },
+  {
+    "category": "Explanation",
+    "tag": "I-Do-Story",
+    "description": "embeds concept in a narrative",
+    "completion_status": {
+      "done": "Done ✓  The teacher uses a meaningful story or anecdote to illustrate the concept and maintain student interest.",
+      "partially_done": "Partially Done ⚠  A story is shared but loosely connected to the lesson concept or not fully explained.",
+      "skipped": "Skipped ✗ The teacher does not use any story or narrative in the explanation."
+    }
+  },
+  {
+    "category": "CFU (part of explanation)",
+    "tag": "CFU-Verbal",
+    "description": "teacher asks specific oral questions and expects answers.",
+    "completion_status": {
+      "done": "Done ✓ The teacher effectively uses verbal questioning to check student understanding during or after explanation and those questions are aligned to the planned lesson objective.",
+      "partially_done": "Partially Done ⚠ The teacher asks a few oral questions but they are not aligned to the planned learning objective.",
+      "skipped": "Skipped ✗ The teacher does not use oral questioning to check for understanding."
+    }
+  },
+  {
+    "category": "CFU (part of explanation)",
+    "tag": "CFU-MiniTask",
+    "description": "quick written task on paper or a quick whiteboard assessment if there is any",
+    "completion_status": {
+      "done": "Done ✓ The teacher assigns a brief written task, or take a quick whiteboard test to check students’ understanding and provides feedback.",
+      "partially_done": "Partially Done ⚠ The task is given but not reviewed or discussed to confirm student understanding.",
+      "skipped": "Skipped ✗ No quick written or board test given to students to confirm student understanding."
+    }
+  },
+  {
+    "category": "Practice",
+    "tag": "We-Do-Partner",
+    "description": "CLEAR instructions for students work in pairs with teacher support",
+    "completion_status": {
+      "done": "Done ✓ The teacher divided the students into pairs, and provide clear instructions for the task given. e.g., what to do, and how to do etc.",
+      "partially_done": "Partially Done ⚠ Students work in pairs but with unclear task instructions, or feedback is not given by the teacher.",
+      "skipped": "Skipped ✗ Students do not engage in any partner activity."
+    }
+  },
+  {
+    "category": "Practice",
+    "tag": "We-Do-Group",
+    "description": "CLEAR instructions for small group collaboration",
+    "completion_status": {
+      "done": "Done ✓ The teacher divided the students into small groups, and provide clear instructions for the task given. e.g., what to do, and how to do etc.",
+      "partially_done": "Partially Done ⚠ Group activity occurs but the teacher provides unclear task instructions or feedback is not given by the teacher.",
+      "skipped": "Skipped ✗ No small group collaboration occurs."
+    }
+  },
+  {
+    "category": "Practice",
+    "tag": "You-Do-Independent",
+    "description": "CLEAR instructions for individual practice",
+    "completion_status": {
+      "done": "Done ✓ the teacher assign independent task clearly, facilitate the students to complete their work and provide feedback on the answers/task.",
+      "partially_done": "Partially Done ⚠ Students begin independent work, but the teacher does not check their progress or provide feedback.",
+      "skipped": "Skipped ✗ No individual independent practice is provided."
+    }
+  },
+  {
+    "category": "Practice",
+    "tag": "You-need-Support",
+    "description": "teacher helps struggling students",
+    "completion_status": {
+      "done": "Done ✓ The teacher give focused support to struggling students during practice time.",
+      "partially_done": "-",
+      "skipped": "Skipped ✗ Struggling students receive no targeted help during practice."
+    }
+  },
+  {
+    "category": "Practice",
+    "tag": "You-Do-Bonus",
+    "description": "challenge tasks for fast finishers",
+    "completion_status": {
+      "done": "Done ✓ The teacher provides extension or challenge tasks to engage advanced students and  fast finishers.",
+      "partially_done": "Partially Done ⚠ Challenge activities are offered but they are not aligned to the topic.",
+      "skipped": "Skipped ✗ No additional or challenge tasks are given for fast finishers."
+    }
+  },
+  {
+    "category": "Conclusion",
+    "tag": "Exit written",
+    "description": "final quick written quiz",
+    "completion_status": {
+      "done": "Done ✓ The teacher uses a written exit ticket to assess individual understanding before closing the lesson.",
+      "partially_done": "Partially Done ⚠ Exit ticket used but not reviewed or collected at the end of the class.",
+      "skipped": "Skipped ✗ No exit ticket is conducted."
+    }
+  },
+  {
+    "category": "Conclusion",
+    "tag": "CFU-Exit verbal",
+    "description": "teacher ask specific oral questions in the conclusion section",
+    "completion_status": {
+      "done": "Done ✓ The teacher checks understanding through closing oral questions and student answers.",
+      "partially_done": "Partially Done ⚠ Not all planned questions are asked by the teacher or teacher does not provide feedback",
+      "skipped": "Skipped ✗ No oral check for understanding is conducted before ending the lesson."
+    }
+  },
+  {
+    "category": "Conclusion",
+    "tag": "CFU-Signal",
+    "description": "thumbs-up/down, show fingers/faces",
+    "completion_status": {
+      "done": "Done ✓ The teacher checks student's understanding through AFL strategy of thumbs-up/down, OR show fingers/faces, and provides feedback.",
+      "partially_done": "Partially Done ⚠ Not all planned questions are asked by the teacher or teacher does not provide feedback",
+      "skipped": "Skipped ✗ No signal check for understanding is used."
+    }
+  },
+  {
+    "category": "Conclusion",
+    "tag": "Wrap-Summary",
+    "description": "teacher clearly restates key learning points",
+    "completion_status": {
+      "done": "Done ✓ The teacher clearly summarizes main ideas, ensuring students recall what was learned.",
+      "partially_done": "Partially Done ⚠ Summary misses main ideas of the lesson.",
+      "skipped": "Skipped ✗ The teacher does not summarize the key learning points."
+    }
+  },
+  {
+    "category": "Conclusion",
+    "tag": "Wrap-StudentReflect",
+    "description": "students share what they learned or felt confident about, or how they can apply the concept in real world.",
+    "completion_status": {
+      "done": "Done ✓ The teacher prompts students to reflect and share what they learned or found meaningful, OR how they can apply the concept in real world.",
+      "partially_done": "-",
+      "skipped": "Skipped ✗ Students are not given time to reflect or share their learning."
+    }
+  }
+]
