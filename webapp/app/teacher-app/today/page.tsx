@@ -1,310 +1,132 @@
+/**
+ * F4.4 — /teacher-app/today
+ *
+ * Owns data fetching, slide-over state, and mark-taught.
+ */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { LPViewer } from "@/components/molecules/lp-viewer";
+import { SlideOver } from "@/components/molecules/slide-over";
+import { TodayTemplate } from "@/components/templates/today-template";
 import {
-  getToday,
-  markTaught,
-  type TodaySlotEntry,
-  type ClassLessonSlotRead,
-} from "@/lib/school-api";
-import { getMockLP, getMockExam } from "@/lib/teacher-app-mocks";
-import { ExamPaperView } from "../_components/exam-paper-view";
+  DarsApiError,
+  slots as slotsApi,
+  today as todayApi,
+  type AssessmentSlotEntry,
+  type LessonSlotEntry,
+  type TodayEntry,
+  type TodayResponse,
+} from "@/lib/dars-api";
 
-// ---------------------------------------------------------------------------
-// LP slide-over
-// ---------------------------------------------------------------------------
-
-function LPSlideOver({
-  lpId,
-  subject,
-  onClose,
-}: {
-  lpId: string;
-  subject: string;
-  onClose: () => void;
-}) {
-  const lp = getMockLP(lpId, subject);
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white h-full shadow-xl flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h2 className="font-semibold text-gray-900 text-sm">Lesson Plan</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors bg-transparent border-none cursor-pointer p-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          {lp.content && (
-            <div
-              className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: lp.content }}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Exam slide-over (used when today is an assessment day)
-// ---------------------------------------------------------------------------
-
-function ExamSlideOver({
-  examId,
-  subject,
-  onClose,
-}: {
-  examId: string;
-  subject: string;
-  onClose: () => void;
-}) {
-  const exam = getMockExam(examId, subject);
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white h-full shadow-xl flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h2 className="font-semibold text-gray-900 text-sm">Exam</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors bg-transparent border-none cursor-pointer p-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <ExamPaperView result={exam.result} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Slot card
-// ---------------------------------------------------------------------------
-
-function SlotBadge({ slot }: { slot: ClassLessonSlotRead }) {
-  return (
-    <div className="text-xs text-gray-500">
-      <span className="font-medium">Day {slot.day_number}</span>
-      {" · "}
-      <span>{slot.lp_type}</span>
-      {" · "}
-      <span className="truncate">{slot.title}</span>
-    </div>
-  );
-}
-
-function TodayCard({ entry, onTaught }: { entry: TodaySlotEntry; onTaught: (slotId: string) => void }) {
-  const [marking, setMarking] = useState(false);
-  const [viewLpId, setViewLpId] = useState<string | null>(null);
-  const [viewExamId, setViewExamId] = useState<string | null>(null);
-  const slot = entry.next_planned_slot;
-  const assessment = entry.assessment_slot;
-
-  async function handleMarkTaught() {
-    if (!slot) return;
-    setMarking(true);
-    try {
-      await markTaught(slot.id);
-      onTaught(slot.id);
-    } catch {
-      // silent
-    } finally {
-      setMarking(false);
-    }
-  }
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-      {/* Class header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-gray-900 text-sm">{entry.class_name}</h3>
-          <p className="text-xs text-gray-500 mt-0.5">{entry.subject}</p>
-        </div>
-        {entry.teacher_name && (
-          <span className="text-xs text-gray-400">{entry.teacher_name}</span>
-        )}
-      </div>
-
-      <div className="px-5 py-4 space-y-3">
-        {/* Previous slot */}
-        {entry.previous_taught_slot ? (
-          <div className="opacity-50">
-            <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">Previously taught</p>
-            <SlotBadge slot={entry.previous_taught_slot} />
-          </div>
-        ) : (
-          <p className="text-xs text-gray-300 italic">No previous lessons</p>
-        )}
-
-        {/* Today's activity — assessment takes priority over lesson */}
-        {assessment ? (
-          (() => {
-            const isFa = assessment.assessment_type === "formative";
-            const accent = isFa
-              ? { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700", btn: "bg-rose-600 hover:bg-rose-700", chip: "bg-rose-100 text-rose-800" }
-              : { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-700", btn: "bg-violet-600 hover:bg-violet-700", chip: "bg-violet-100 text-violet-800" };
-            return (
-              <div className={`${accent.bg} border ${accent.border} rounded-lg p-4`}>
-                <p className={`text-[10px] uppercase tracking-widest ${accent.text} mb-2 font-semibold`}>Today — Assessment</p>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {assessment.title ?? (isFa ? "Formative Assessment" : "Summative Assessment")}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-xs ${accent.chip} px-2 py-0.5 rounded font-medium uppercase`}>
-                        {isFa ? "FA" : "SA"}
-                      </span>
-                      {entry.day_number != null && (
-                        <span className="text-xs text-gray-400">Day {entry.day_number}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-3">
-                  <button
-                    onClick={() => setViewExamId(assessment.exam_id ?? assessment.id)}
-                    className={`text-xs px-3 py-1.5 text-white rounded-md transition-colors cursor-pointer font-medium border-none ${accent.btn}`}
-                  >
-                    View Exam
-                  </button>
-                </div>
-              </div>
-            );
-          })()
-        ) : slot ? (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <p className="text-[10px] uppercase tracking-widest text-amber-600 mb-2 font-semibold">Today&apos;s Lesson</p>
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{slot.title}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium">{slot.lp_type}</span>
-                  <span className="text-xs text-gray-400">Day {slot.day_number}</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                onClick={() => setViewLpId(slot.lesson_plan_id ?? slot.id)}
-                className="text-xs px-3 py-1.5 border border-amber-300 text-amber-700 rounded-md hover:bg-amber-100 transition-colors bg-transparent cursor-pointer font-medium"
-              >
-                View LP
-              </button>
-              <button
-                onClick={handleMarkTaught}
-                disabled={marking}
-                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors cursor-pointer font-medium border-none disabled:opacity-50"
-              >
-                {marking ? "Marking…" : "Mark as Taught"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-4">
-            <p className="text-xs text-gray-400">No lesson planned for today</p>
-          </div>
-        )}
-      </div>
-
-      {viewLpId && (
-        <LPSlideOver lpId={viewLpId} subject={entry.subject} onClose={() => setViewLpId(null)} />
-      )}
-      {viewExamId && (
-        <ExamSlideOver examId={viewExamId} subject={entry.subject} onClose={() => setViewExamId(null)} />
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
+type Drawer =
+  | { kind: "lp"; slotId: string; title: string; subtitle: string }
+  | { kind: "exam"; slot: AssessmentSlotEntry; title: string; subtitle: string }
+  | null;
 
 export default function TodayPage() {
-  const [entries, setEntries] = useState<TodaySlotEntry[]>([]);
+  const [today, setToday] = useState<TodayResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState<Drawer>(null);
+  const [busySlotId, setBusySlotId] = useState<string | null>(null);
 
-  useEffect(() => {
-    getToday()
-      .then(setEntries)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setToday(await todayApi.get());
+    } catch (err) {
+      setError(
+        err instanceof DarsApiError
+          ? `${err.status}: ${typeof err.detail === "string" ? err.detail : "request failed"}`
+          : err instanceof Error
+          ? err.message
+          : "Failed to load today",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  function handleTaught(slotId: string) {
-    // Refetch today's schedule after marking taught
-    getToday()
-      .then(setEntries)
-      .catch(() => {
-        // If refetch fails, optimistically remove the slot
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.next_planned_slot?.id === slotId
-              ? { ...e, previous_taught_slot: e.next_planned_slot, next_planned_slot: null }
-              : e
-          )
-        );
-      });
-  }
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-sm text-gray-400 animate-pulse">Loading today&apos;s schedule…</p>
-      </div>
-    );
-  }
+  const onViewLP = (slot: LessonSlotEntry, ctx: TodayEntry) => {
+    setDrawer({
+      kind: "lp",
+      slotId: slot.slot_id,
+      title: slot.slot_type === "revision" ? "Revision LP" : "Lesson plan",
+      subtitle: `Grade ${ctx.grade_code} · ${ctx.subject_code} · Day ${slot.position}`,
+    });
+  };
 
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-        {error}
-      </div>
-    );
-  }
+  const onViewExam = (slot: AssessmentSlotEntry, ctx: TodayEntry) => {
+    setDrawer({
+      kind: "exam",
+      slot,
+      title: slot.assessment_type === "formative" ? "Formative assessment" : "Summative assessment",
+      subtitle: `Grade ${ctx.grade_code} · ${ctx.subject_code} · ${slot.topic_ids.length} topic${slot.topic_ids.length === 1 ? "" : "s"}`,
+    });
+  };
 
-  if (entries.length === 0) {
-    return (
-      <div className="text-center py-16">
-        <div className="text-4xl mb-3">📅</div>
-        <p className="text-gray-500 font-medium">No classes scheduled for today.</p>
-        <p className="text-sm text-gray-400 mt-1">Set up your timetable in the dashboard.</p>
-      </div>
-    );
-  }
+  const onMarkTaught = async (slot: LessonSlotEntry, _ctx: TodayEntry) => {
+    setBusySlotId(slot.slot_id);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await slotsApi.markTaught(slot.slot_id, { taught_on: today });
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof DarsApiError
+          ? `Mark-taught failed (${err.status}): ${typeof err.detail === "string" ? err.detail : "request failed"}`
+          : err instanceof Error
+          ? err.message
+          : "Mark-taught failed",
+      );
+    } finally {
+      setBusySlotId(null);
+    }
+  };
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Today&apos;s Classes</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {new Date().toLocaleDateString("en-PK", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-        </p>
-      </div>
-      <div className="space-y-4">
-        {entries.map((entry) => (
-          <TodayCard key={entry.cst_id} entry={entry} onTaught={handleTaught} />
-        ))}
-      </div>
+    <>
+      <TodayTemplate
+        today={today}
+        loading={loading}
+        error={error}
+        onViewLP={onViewLP}
+        onMarkTaught={onMarkTaught}
+        onViewExam={onViewExam}
+        busySlotId={busySlotId}
+      />
+
+      <SlideOver
+        open={drawer !== null}
+        onClose={() => setDrawer(null)}
+        title={drawer?.title ?? ""}
+        subtitle={drawer?.subtitle}
+      >
+        {drawer?.kind === "lp" ? <LPViewer slotId={drawer.slotId} /> : null}
+        {drawer?.kind === "exam" ? (
+          <ExamPlaceholder slot={drawer.slot} />
+        ) : null}
+      </SlideOver>
+    </>
+  );
+}
+
+function ExamPlaceholder({ slot }: { slot: AssessmentSlotEntry }) {
+  return (
+    <div className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-4 text-sm text-dars-ink">
+      <p className="font-medium">Exam viewer coming in F4.7.</p>
+      <p className="text-xs text-dars-muted mt-2">
+        Backend supplies the exam JSON + HTML via the generated_exam linked to
+        this slot ({slot.slot_id.slice(0, 8)}…). For now the today page only
+        surfaces the LP slide-over.
+      </p>
     </div>
   );
 }

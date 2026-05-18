@@ -1,6 +1,8 @@
+/**
+ * F4.3 — /teacher-app/ root → redirect to /teacher-app/today.
+ */
 import { redirect } from "next/navigation";
 
-// Entry point for the Teacher Sample App — sends the user to today's schedule.
-export default function TeacherAppIndex() {
+export default function TeacherAppRoot() {
   redirect("/teacher-app/today");
 }
