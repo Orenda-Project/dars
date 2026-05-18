@@ -301,6 +301,29 @@ export interface ClassAssessmentSlotListResponse {
   items: ClassAssessmentSlotListItem[];
 }
 
+/** Returned by `GET /api/v1/class-assessment-slots/{id}` (F4.13). */
+export interface ClassAssessmentSlotDetail {
+  id: UUID;
+  cst_id: UUID;
+  position: number;
+  assessment_type: "formative" | "summative";
+  anchor_date: ISODate | null;
+  status: "scheduled" | "completed" | "skipped";
+  exam_status:
+    | "not_generated"
+    | "PENDING"
+    | "IN_FLIGHT"
+    | "READY"
+    | "ERROR";
+  exam_result: unknown;
+  exam_paper_html: string | null;
+  question_sub_slo_tags: Record<string, UUID> | null;
+  exam_tagging_status: "pending" | "done" | "failed" | null;
+  exam_error_message: string | null;
+  topic_ids: UUID[];
+  topic_titles: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Generation (LPs / Exams)
 // ---------------------------------------------------------------------------
@@ -700,14 +723,27 @@ export const books = {
 // Breakdowns (`/api/v2/*`)
 // ---------------------------------------------------------------------------
 
+export interface BreakdownWithChapters extends Breakdown {
+  chapters: {
+    id: UUID;
+    breakdown_id: UUID;
+    book_chapter_id: UUID;
+    position: number;
+    teaching_days: number;
+  }[];
+}
+
 export const breakdowns = {
-  getBreakdowns: (params: { scope?: BreakdownScope; cst_id?: UUID; org_id?: UUID } = {}) =>
+  getBreakdowns: (params: { scope?: BreakdownScope; scope_ref_id?: UUID; status?: string } = {}) =>
     request<ListResponse<Breakdown>>("/api/v2/breakdowns", { query: params }),
-  getBreakdown: (id: UUID) => request<Breakdown>(`/api/v2/breakdowns/${id}`),
+
+  /** Single breakdown read returns chapters + slots hydrated. */
+  getBreakdown: (id: UUID) =>
+    request<BreakdownWithChapters>(`/api/v2/breakdowns/${id}`),
 
   /** Convenience: most-recent published class-scope breakdown for the CST. */
   getMyClassBreakdown: async (cst_id: UUID): Promise<Breakdown | null> => {
-    const res = await breakdowns.getBreakdowns({ scope: "class", cst_id });
+    const res = await breakdowns.getBreakdowns({ scope: "class", scope_ref_id: cst_id });
     const published = res.items.find((b) => b.status === "published");
     return published ?? null;
   },
@@ -732,6 +768,12 @@ export const slots = {
   listAssessmentSlotsForCST: (cst_id: UUID) =>
     request<ClassAssessmentSlotListResponse>(
       `/api/v2/csts/${cst_id}/assessment-slots`,
+    ),
+
+  /** F4.13 — single assessment slot detail including exam_result JSON. */
+  getAssessmentSlotDetail: (slot_id: UUID) =>
+    request<ClassAssessmentSlotDetail>(
+      `/api/v1/class-assessment-slots/${slot_id}`,
     ),
 
   markTaught: (slot_id: UUID, body: { taught_on: ISODate; notes?: string }) =>
@@ -873,23 +915,22 @@ export const usage = {
 
 export interface SubmitExamResultsBody {
   students_present: number;
-  per_question: { question_index: string; students_correct: number }[];
+  per_question: { question_index: number; students_correct: number; marks_total?: number }[];
+  assessed_on?: ISODate;
+  recorded_by_teacher_id?: UUID;
+}
+
+export interface SubmitResultsResponse {
+  exam_result_id: UUID;
+  sub_slo_mastery_rows: number;
 }
 
 export const mastery = {
-  /**
-   * TODO(F4.13): the server endpoint
-   * `POST /api/v1/class-assessment-slots/{id}/results` isn't built yet.
-   * Wire this when the route lands.
-   */
-  submitExamResults: async (
-    _slot_id: UUID,
-    _body: SubmitExamResultsBody,
-  ): Promise<void> => {
-    throw new Error(
-      "mastery.submitExamResults: backend endpoint pending (F4.13).",
-    );
-  },
+  submitExamResults: (slot_id: UUID, body: SubmitExamResultsBody) =>
+    request<SubmitResultsResponse>(
+      `/api/v1/class-assessment-slots/${slot_id}/results`,
+      { method: "POST", body },
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -906,20 +947,40 @@ export interface QuickLPBody {
   generate_bilingual?: boolean;
 }
 
-export const quick = {
-  /**
-   * TODO(F4.14): backend `POST /api/v1/quick-lp` is not built yet.
-   */
-  lp: async (_body: QuickLPBody): Promise<GeneratedLP> => {
-    throw new Error("quick.lp: backend endpoint pending (F4.14).");
-  },
+export interface QuickExamBody {
+  curriculum_code: string;
+  grade: number;
+  subject: string;
+  page_content: string;
+  generation_type?: "exam" | "class_assessment";
+  question_types?: ("seen" | "unseen")[];
+  unseen_categories?: ("objective" | "subjective")[];
+  unseen_objective_types?: string[];
+  unseen_subjective_types?: string[];
+  unseen_objective_counts?: Record<string, number>;
+  unseen_subjective_counts?: Record<string, number>;
+  long_question_sub_types?: string[];
+  include_answer_key?: boolean;
+}
 
-  /**
-   * TODO(F4.14): backend `POST /api/v1/quick-exam` is not built yet.
-   */
-  exam: async (_body: unknown): Promise<GeneratedExam> => {
-    throw new Error("quick.exam: backend endpoint pending (F4.14).");
-  },
+/** Returned by the quick endpoints: the new row id + initial status. */
+export interface QuickGenerationCreated {
+  id: UUID;
+  status: GenerationStatus;
+  job_id: string | null;
+}
+
+export const quick = {
+  lp: (body: QuickLPBody) =>
+    request<QuickGenerationCreated>("/api/v1/quick-lp", {
+      method: "POST",
+      body,
+    }),
+  exam: (body: QuickExamBody) =>
+    request<QuickGenerationCreated>("/api/v1/quick-exam", {
+      method: "POST",
+      body,
+    }),
 };
 
 // ---------------------------------------------------------------------------
