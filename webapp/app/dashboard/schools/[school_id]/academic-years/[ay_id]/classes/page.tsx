@@ -120,7 +120,7 @@ export default function ClassesPage() {
             <select required value={newGradeId} onChange={(e) => setNewGradeId(e.target.value)} className="input">
               {grades.map((g) => (
                 <option key={g.id} value={g.id}>
-                  {g.label}
+                  {g.display_name}
                 </option>
               ))}
             </select>

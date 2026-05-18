@@ -112,7 +112,7 @@ export default function ClassDetailPage() {
           className: klass?.name ?? `Class ${cstId.slice(0, 8)}`,
           schoolName: school?.name ?? "—",
           subjectCode: subject?.code ?? "—",
-          gradeCode: grade?.code ?? "—",
+          gradeCode: grade?.code != null ? String(grade.code) : "—",
           bookId: cst.book_id ?? null,
         });
       } catch (err) {
@@ -252,7 +252,7 @@ export default function ClassDetailPage() {
       const { items: subjectList } = await curriculumApi.getSubjects();
       const { items: gradeList } = await curriculumApi.getGrades();
       const subjectId = subjectList.find((s) => s.code === header.subjectCode)?.id;
-      const gradeId = gradeList.find((g) => g.code === header.gradeCode)?.id;
+      const gradeId = gradeList.find((g) => String(g.code) === header.gradeCode)?.id;
       if (!subjectId || !gradeId) {
         setSloGroups([]);
         return;
