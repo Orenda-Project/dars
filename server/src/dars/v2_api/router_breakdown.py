@@ -1,7 +1,16 @@
 """
-F2.4 — Breakdown CRUD endpoints (admin-only).
+F2.4 — Breakdown CRUD endpoints.
 
-All endpoints in this router require X-Admin-Token (see deps.require_admin).
+Auth: all endpoints take get_current_org (X-API-Key OR X-Admin-Session).
+Access is scoped to the caller's org:
+
+  - global   → readable + forkable by anyone within the same curriculum;
+               creation/edit/delete remains technically open but is gated
+               by org context (no anonymous access)
+  - org      → scope_ref_id must equal caller's org.id
+  - class    → scope_ref_id must point to a CST whose school_class belongs
+               to the caller's org
+
 Published breakdowns are immutable (PATCH/DELETE on chapters or slots → 409).
 PATCH on a published breakdown itself creates a new draft version with
 previous_version_id set (D-18). Publish flips status: 'draft' → 'published'.
@@ -32,7 +41,12 @@ from dars.generated_lps.batch_service import (
     enqueue_for_breakdown,
     generation_status_for_breakdown,
 )
-from dars.v2_api.deps import get_db_conn, get_db_pool, require_admin
+from dars.v2_api.deps import (
+    OrgContext,
+    get_current_org,
+    get_db_conn,
+    get_db_pool,
+)
 from dars.v2_api.lp_types import VALID_SLOT_TYPES, is_valid_lp_type
 from dars.v2_api.schemas_breakdown import (
     AutoBuildBody,
@@ -64,7 +78,6 @@ log = logging.getLogger("v2_api.breakdown")
 router = APIRouter(
     prefix="/api/v2",
     tags=["v2-breakdown"],
-    dependencies=[Depends(require_admin)],
 )
 
 VALID_SCOPES = {"global", "org", "class"}
@@ -95,10 +108,68 @@ async def _load_breakdown_or_404(
     return row
 
 
-async def _require_draft(
-    conn: asyncpg.Connection, breakdown_id: UUID
+async def _cst_org_id(conn: asyncpg.Connection, cst_id: UUID) -> UUID | None:
+    """Resolve a CST's org_id via its school_class. None if CST not found."""
+    return await conn.fetchval(
+        """
+        SELECT sc.org_id
+        FROM class_subject_teachers cst
+        JOIN school_classes sc ON sc.id = cst.school_class_id
+        WHERE cst.id = $1
+        """,
+        cst_id,
+    )
+
+
+async def _assert_scope_in_org(
+    conn: asyncpg.Connection,
+    scope: str,
+    scope_ref_id: UUID | None,
+    org_id: UUID,
+) -> None:
+    """Reject if the (scope, scope_ref_id) tuple isn't owned by org_id.
+
+    'global' is always allowed (it has no org binding); 'org' requires
+    scope_ref_id == org_id; 'class' requires the CST's school_class to
+    belong to org_id.
+    """
+    if scope == "global":
+        return
+    if scope == "org":
+        if scope_ref_id != org_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="scope_ref_id does not belong to caller's org",
+            )
+        return
+    if scope == "class":
+        owner = await _cst_org_id(conn, scope_ref_id)  # type: ignore[arg-type]
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="CST not found",
+            )
+        if owner != org_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CST does not belong to caller's org",
+            )
+        return
+
+
+async def _load_breakdown_for_org(
+    conn: asyncpg.Connection, breakdown_id: UUID, org_id: UUID
 ) -> asyncpg.Record:
+    """Load a breakdown and assert the caller's org may access it."""
     row = await _load_breakdown_or_404(conn, breakdown_id)
+    await _assert_scope_in_org(conn, row["scope"], row["scope_ref_id"], org_id)
+    return row
+
+
+async def _require_draft(
+    conn: asyncpg.Connection, breakdown_id: UUID, org_id: UUID
+) -> asyncpg.Record:
+    row = await _load_breakdown_for_org(conn, breakdown_id, org_id)
     if row["status"] != "draft":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -238,9 +309,10 @@ async def _hydrate_breakdown(
 )
 async def create_breakdown(
     payload: BreakdownCreate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownRead:
-    log.info("create_breakdown: scope=%s subject_id=%s", payload.scope, payload.subject_id)
+    log.info("create_breakdown: org=%s scope=%s subject_id=%s", org.id, payload.scope, payload.subject_id)
     if payload.scope not in VALID_SCOPES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -262,6 +334,7 @@ async def create_breakdown(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"scope='{payload.scope}' requires scope_ref_id",
         )
+    await _assert_scope_in_org(conn, payload.scope, payload.scope_ref_id, org.id)
 
     row = await conn.fetchrow(
         """
@@ -288,10 +361,22 @@ async def list_breakdowns(
     grade_id: UUID | None = Query(default=None),
     subject_id: UUID | None = Query(default=None),
     status_: str | None = Query(default=None, alias="status"),
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownListResponse:
-    where: list[str] = ["status != 'deleted'"]
-    params: list = []
+    # Visibility rule: global breakdowns matching the caller's curriculum,
+    # plus the caller's own org-scope and class-scope rows.
+    params: list = [org.id, org.curriculum_id]
+    org_filter = (
+        "(scope = 'global' AND curriculum_id = $2) "
+        "OR (scope = 'org' AND scope_ref_id = $1) "
+        "OR (scope = 'class' AND scope_ref_id IN ("
+        "    SELECT cst.id FROM class_subject_teachers cst "
+        "    JOIN school_classes sc ON sc.id = cst.school_class_id "
+        "    WHERE sc.org_id = $1"
+        "))"
+    )
+    where: list[str] = ["status != 'deleted'", f"({org_filter})"]
     if scope is not None:
         params.append(scope)
         where.append(f"scope = ${len(params)}")
@@ -327,9 +412,10 @@ async def list_breakdowns(
 @router.get("/breakdowns/{breakdown_id}", response_model=BreakdownRead)
 async def get_breakdown(
     breakdown_id: UUID,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownRead:
-    row = await _load_breakdown_or_404(conn, breakdown_id)
+    row = await _load_breakdown_for_org(conn, breakdown_id, org.id)
     return await _hydrate_breakdown(conn, row)
 
 
@@ -337,9 +423,10 @@ async def get_breakdown(
 async def update_breakdown(
     breakdown_id: UUID,
     payload: BreakdownUpdate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownRead:
-    current = await _load_breakdown_or_404(conn, breakdown_id)
+    current = await _load_breakdown_for_org(conn, breakdown_id, org.id)
     if current["status"] == "published":
         # D-18: PATCH on a published breakdown creates a new draft version.
         log.info("update_breakdown: published id=%s — creating new version", breakdown_id)
@@ -400,9 +487,10 @@ async def update_breakdown(
 async def publish_breakdown(
     breakdown_id: UUID,
     background_tasks: BackgroundTasks,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownRead:
-    current = await _require_draft(conn, breakdown_id)
+    current = await _require_draft(conn, breakdown_id, org.id)
     row = await conn.fetchrow(
         """
         UPDATE breakdowns
@@ -446,6 +534,7 @@ async def _bg_enqueue_breakdown(breakdown_id: UUID) -> None:
 @router.get("/breakdowns/{breakdown_id}/generation-status")
 async def get_generation_status(
     breakdown_id: UUID,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> dict:
     """F3.11 — counts of generated_lps + generated_exams by status.
@@ -456,6 +545,7 @@ async def get_generation_status(
           "exam": {...},
         }
     """
+    await _load_breakdown_for_org(conn, breakdown_id, org.id)
     try:
         return await generation_status_for_breakdown(conn, breakdown_id)
     except ValueError as e:
@@ -465,9 +555,10 @@ async def get_generation_status(
 @router.delete("/breakdowns/{breakdown_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_breakdown(
     breakdown_id: UUID,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> None:
-    current = await _load_breakdown_or_404(conn, breakdown_id)
+    current = await _load_breakdown_for_org(conn, breakdown_id, org.id)
     if current["status"] == "published":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -493,9 +584,10 @@ async def delete_breakdown(
 async def add_chapter(
     breakdown_id: UUID,
     payload: BreakdownChapterCreate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownChapterRead:
-    await _require_draft(conn, breakdown_id)
+    await _require_draft(conn, breakdown_id, org.id)
     exists = await conn.fetchval(
         "SELECT 1 FROM book_chapters WHERE id = $1", payload.book_chapter_id
     )
@@ -529,9 +621,10 @@ async def update_chapter(
     breakdown_id: UUID,
     chapter_id: UUID,
     payload: BreakdownChapterUpdate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownChapterRead:
-    await _require_draft(conn, breakdown_id)
+    await _require_draft(conn, breakdown_id, org.id)
     await _validate_chapter_belongs_to_breakdown(conn, breakdown_id, chapter_id)
     sets: list[str] = []
     params: list = []
@@ -579,9 +672,10 @@ async def update_chapter(
 async def add_slot(
     breakdown_id: UUID,
     payload: BreakdownSlotCreate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownSlotRead:
-    bd = await _require_draft(conn, breakdown_id)
+    bd = await _require_draft(conn, breakdown_id, org.id)
     chapter = await _validate_chapter_belongs_to_breakdown(
         conn, breakdown_id, payload.breakdown_chapter_id
     )
@@ -651,9 +745,10 @@ async def update_slot(
     breakdown_id: UUID,
     slot_id: UUID,
     payload: BreakdownSlotUpdate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownSlotRead:
-    bd = await _require_draft(conn, breakdown_id)
+    bd = await _require_draft(conn, breakdown_id, org.id)
     slot = await _validate_slot_belongs_to_breakdown(conn, breakdown_id, slot_id)
     subject_code = await _subject_code(conn, bd["subject_id"])
     effective_slot_type = payload.slot_type if payload.slot_type is not None else slot["slot_type"]
@@ -705,9 +800,10 @@ async def update_slot(
 async def delete_slot(
     breakdown_id: UUID,
     slot_id: UUID,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> None:
-    await _require_draft(conn, breakdown_id)
+    await _require_draft(conn, breakdown_id, org.id)
     await _validate_slot_belongs_to_breakdown(conn, breakdown_id, slot_id)
     await conn.execute("DELETE FROM breakdown_slots WHERE id = $1", slot_id)
     log.info("delete_slot: breakdown=%s slot=%s removed", breakdown_id, slot_id)
@@ -726,6 +822,7 @@ async def set_slot_anchor(
     breakdown_id: UUID,
     slot_id: UUID,
     payload: AnchorUpdate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> BreakdownSlotRead:
     """
@@ -736,7 +833,7 @@ async def set_slot_anchor(
     keep authoritative scheduling at org level. Published breakdowns
     are immutable (409) consistent with the rest of slot mutation.
     """
-    bd = await _load_breakdown_or_404(conn, breakdown_id)
+    bd = await _load_breakdown_for_org(conn, breakdown_id, org.id)
     if bd["scope"] not in ("global", "org"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -785,6 +882,7 @@ async def set_slot_anchor(
 )
 async def auto_build(
     payload: AutoBuildBody,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> AutoBuildResponse:
     """
@@ -806,6 +904,7 @@ async def auto_build(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"scope='{payload.scope}' requires scope_ref_id",
         )
+    await _assert_scope_in_org(conn, payload.scope, payload.scope_ref_id, org.id)
 
     try:
         result = await auto_build_breakdown(
@@ -879,6 +978,7 @@ async def _subject_key_for_slo(
 async def trigger_single_slo_breakdown(
     slo_id: UUID,
     force: bool = Query(default=False),
+    _org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> SubSLOBreakdownResponse:
     """
@@ -925,6 +1025,7 @@ async def _run_bulk_breakdown(
 async def trigger_bulk_sub_slo_breakdown(
     payload: SubSLOBulkRequest,
     background_tasks: BackgroundTasks,
+    _org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> SubSLOBulkAccepted:
     """
@@ -985,9 +1086,16 @@ async def trigger_bulk_sub_slo_breakdown(
 async def fork_org(
     breakdown_id: UUID,
     payload: ForkOrgBody,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> ForkResponse:
     """Org admin forks a published global breakdown → org-scope draft."""
+    await _load_breakdown_for_org(conn, breakdown_id, org.id)
+    if payload.org_id != org.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="org_id must match caller's org",
+        )
     try:
         new_id, chapters, slots = await fork_breakdown(
             conn,
@@ -1021,9 +1129,19 @@ async def fork_org(
 async def fork_class(
     breakdown_id: UUID,
     payload: ForkClassBody,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> ForkResponse:
     """Org admin forks a published org breakdown → class-scope draft for a CST."""
+    await _load_breakdown_for_org(conn, breakdown_id, org.id)
+    cst_owner = await _cst_org_id(conn, payload.cst_id)
+    if cst_owner is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CST not found")
+    if cst_owner != org.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CST does not belong to caller's org",
+        )
     try:
         new_id, chapters, slots = await fork_breakdown(
             conn,
@@ -1059,8 +1177,10 @@ async def fork_class(
 )
 async def realize(
     breakdown_id: UUID,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> RealizeResponse:
+    await _load_breakdown_for_org(conn, breakdown_id, org.id)
     try:
         res = await realize_class_breakdown(conn, breakdown_id)
     except ValueError as e:

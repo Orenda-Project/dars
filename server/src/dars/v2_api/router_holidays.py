@@ -1,5 +1,9 @@
 """
-F2.10 — Holiday inheritance endpoints (admin-only in v1).
+F2.10 — Holiday inheritance endpoints.
+
+Auth: get_current_org (X-API-Key OR X-Admin-Session). Cross-org access
+is rejected: org_id path param must equal caller's org; school_id and
+cst_id are validated to belong to caller's org.
 
 D-26: effective holiday set is Org → School → CST. We expose:
 
@@ -9,10 +13,6 @@ D-26: effective holiday set is Org → School → CST. We expose:
   POST   /api/v2/schools/{school_id}/holiday-overrides
   GET    /api/v2/csts/{cst_id}/holidays
   POST   /api/v2/csts/{cst_id}/holiday-overrides
-
-The spec uses /orgs/me/* in places. To keep things simple in v1 we pass
-org_id explicitly; the dashboard (Phase 5) can rewrite to /me later
-when org-scoped auth is wired into these endpoints.
 """
 import logging
 from uuid import UUID
@@ -28,7 +28,7 @@ from dars.breakdown.holidays import (
     get_school_overrides,
     resolve_cst_context,
 )
-from dars.v2_api.deps import get_db_conn, require_admin
+from dars.v2_api.deps import OrgContext, get_current_org, get_db_conn
 from dars.v2_api.schemas_holidays import (
     CstOverrideCreate,
     HolidayCreated,
@@ -43,11 +43,52 @@ log = logging.getLogger("v2_api.holidays")
 router = APIRouter(
     prefix="/api/v2",
     tags=["v2-holidays"],
-    dependencies=[Depends(require_admin)],
 )
 
 
 _VALID_OVERRIDE_ACTIONS = {"add", "remove"}
+
+
+def _assert_org_match(path_org_id: UUID, caller_org_id: UUID) -> None:
+    if path_org_id != caller_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="org_id does not match caller's org",
+        )
+
+
+async def _assert_school_in_org(
+    conn: asyncpg.Connection, school_id: UUID, caller_org_id: UUID
+) -> None:
+    owner = await conn.fetchval("SELECT org_id FROM schools WHERE id = $1", school_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="school not found")
+    if owner != caller_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="school does not belong to caller's org",
+        )
+
+
+async def _assert_cst_in_org(
+    conn: asyncpg.Connection, cst_id: UUID, caller_org_id: UUID
+) -> None:
+    owner = await conn.fetchval(
+        """
+        SELECT sc.org_id
+        FROM class_subject_teachers cst
+        JOIN school_classes sc ON sc.id = cst.school_class_id
+        WHERE cst.id = $1
+        """,
+        cst_id,
+    )
+    if owner is None:
+        raise HTTPException(status_code=404, detail="cst not found")
+    if owner != caller_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="cst does not belong to caller's org",
+        )
 
 
 def _check_action(action: str) -> None:
@@ -67,8 +108,10 @@ def _check_action(action: str) -> None:
 async def list_org_holidays(
     org_id: UUID,
     academic_year_id: UUID = Query(),
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> HolidayListResponse:
+    _assert_org_match(org_id, org.id)
     # Validate AY belongs to the org for safety.
     ay_org = await conn.fetchval(
         "SELECT org_id FROM academic_years WHERE id = $1",
@@ -105,8 +148,10 @@ async def list_org_holidays(
 async def add_org_holiday(
     org_id: UUID,
     payload: OrgHolidayCreate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> HolidayCreated:
+    _assert_org_match(org_id, org.id)
     ay = await conn.fetchrow(
         "SELECT id, org_id FROM academic_years WHERE id = $1",
         payload.academic_year_id,
@@ -139,13 +184,10 @@ async def add_org_holiday(
 async def list_school_holidays(
     school_id: UUID,
     academic_year_id: UUID = Query(),
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> HolidayListResponse:
-    school = await conn.fetchrow(
-        "SELECT id, org_id FROM schools WHERE id = $1", school_id
-    )
-    if school is None:
-        raise HTTPException(status_code=404, detail="school not found")
+    await _assert_school_in_org(conn, school_id, org.id)
 
     org_set = await get_org_holidays(conn, academic_year_id)
     overrides = await get_school_overrides(conn, school_id)
@@ -168,11 +210,11 @@ async def list_school_holidays(
 async def add_school_override(
     school_id: UUID,
     payload: SchoolOverrideCreate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> HolidayCreated:
     _check_action(payload.action)
-    if not await conn.fetchval("SELECT 1 FROM schools WHERE id = $1", school_id):
-        raise HTTPException(status_code=404, detail="school not found")
+    await _assert_school_in_org(conn, school_id, org.id)
     row = await conn.fetchrow(
         """
         INSERT INTO school_holiday_overrides (school_id, date, name, action)
@@ -196,8 +238,10 @@ async def add_school_override(
 @router.get("/csts/{cst_id}/holidays", response_model=HolidayListResponse)
 async def list_cst_holidays(
     cst_id: UUID,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> HolidayListResponse:
+    await _assert_cst_in_org(conn, cst_id, org.id)
     try:
         _, school_id, ay_id, _ = await resolve_cst_context(conn, cst_id)
     except ValueError as e:
@@ -228,13 +272,11 @@ async def list_cst_holidays(
 async def add_cst_override(
     cst_id: UUID,
     payload: CstOverrideCreate,
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> HolidayCreated:
     _check_action(payload.action)
-    if not await conn.fetchval(
-        "SELECT 1 FROM class_subject_teachers WHERE id = $1", cst_id
-    ):
-        raise HTTPException(status_code=404, detail="cst not found")
+    await _assert_cst_in_org(conn, cst_id, org.id)
     row = await conn.fetchrow(
         """
         INSERT INTO cst_holiday_overrides (cst_id, date, name, action)

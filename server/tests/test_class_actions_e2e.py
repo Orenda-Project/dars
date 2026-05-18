@@ -4,8 +4,8 @@ F2.11 + F2.12 + F2.13 — end-to-end against the seed.
 Walks fork → realize → set anchor → mark-taught → skip → onboard →
 coverage. DB-gated.
 
-Uses the demo org's API key for teacher-facing endpoints and the admin
-token for breakdown CRUD / anchor.
+Uses the demo org's API key for both teacher-facing and breakdown
+endpoints (one auth model after the require_admin retirement).
 """
 import os
 
@@ -13,19 +13,13 @@ import asyncpg
 import pytest
 from httpx import AsyncClient
 
-ADMIN_TOKEN = "test-admin-token-f24"
-os.environ.setdefault("DARS_ADMIN_TOKEN", ADMIN_TOKEN)
-from dars.config import settings  # noqa: E402
-
-if settings.admin_secret != ADMIN_TOKEN:
-    object.__setattr__(settings, "admin_secret", ADMIN_TOKEN)
-
+from dars.config import settings
 
 DEMO_API_KEY = "dk_demo_dars_eng_g1_2dc7e0b8408142fa"
 
 
 def admin_headers() -> dict[str, str]:
-    return {"X-Admin-Token": ADMIN_TOKEN}
+    return {"X-API-Key": DEMO_API_KEY}
 
 
 def org_headers() -> dict[str, str]:

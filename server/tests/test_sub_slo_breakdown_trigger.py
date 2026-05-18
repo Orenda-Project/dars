@@ -12,17 +12,14 @@ import asyncpg
 import pytest
 from httpx import AsyncClient
 
-ADMIN_TOKEN = "test-admin-token-f24"
-os.environ.setdefault("DARS_ADMIN_TOKEN", ADMIN_TOKEN)
 from dars.breakdown import slo_breakdown_service  # noqa: E402
 from dars.config import settings  # noqa: E402
 
-if settings.admin_secret != ADMIN_TOKEN:
-    object.__setattr__(settings, "admin_secret", ADMIN_TOKEN)
+DEMO_API_KEY = "dk_demo_dars_eng_g1_2dc7e0b8408142fa"
 
 
 def admin_headers() -> dict[str, str]:
-    return {"X-Admin-Token": ADMIN_TOKEN}
+    return {"X-API-Key": DEMO_API_KEY}
 
 
 def _asyncpg_url(database_url: str) -> str:
