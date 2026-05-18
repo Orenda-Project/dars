@@ -94,7 +94,7 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 | Plan reviewed by user | ✅ |
 | Phase 1 (Foundation) | ✅ shipped; bead `feat-v2-phase-1-foundation` closed |
 | Phase 2 (Breakdown Engine) | ✅ shipped (F2.1..F2.16); bead `feat-v2-phase-2-breakdown` closed (PR #58 merged 2026-05-16) |
-| Phase 3 (Generation Pipeline) | 🟡 in progress; bead `feat-v2-phase-3-generation` open; starting with F3.1 |
+| Phase 3 (Generation Pipeline) | 🟡 in progress; bead `feat-v2-phase-3-generation` open; F3.1 (PR #59) + F3.2+F3.3 in flight |
 | Phase 4 (Teacher App) | ⏳ blocked by Phase 3 |
 | Phase 5 (Dashboard) | ⏳ blocked by Phase 4 |
 | Seed (Dars Curriculum × English × G1) | ✅ frozen on staging: 21 SLOs, 71 sub-SLOs, 10 chapters, 31 topics, 1 demo org + Aisha + G1-A CST; seed now publishes global + org + class breakdowns |
@@ -110,7 +110,7 @@ PR #37 (F1.1 cutover) · PR #38 (F1.2 lookups) · PR #39 (migration-order fix) �
 PR #50 (F2.1+F2.2+F2.3 services) · PR #51 (F2.4 breakdown CRUD) · PR #54 (F2.5 auto-build) · PR #55 (F2.6 sub-SLO trigger) · PR #56 (F2.7+F2.8+F2.9+F2.10 fork+projector+realize+holidays) · PR #57 (F2.11+F2.12+F2.13 anchor+mark-taught+onboarding) · PR #58 (F2.14+F2.15+F2.16 seed-publishes + /today + /me/calendar — close-out)
 
 **Next thing to do unless the user says otherwise:**
-Branch off `staging` as `feat/v2-phase-3-f3.1-lp-tagging`. Start Phase 3 with F3.1 (port Schema's `lp_tagging.py` → `dars/breakdown/lp_tagging_service.py`) per [docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md](docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md). Bundle adjacent features as one PR; never skip ahead in numeric order.
+PR #59 (F3.1 — `lp_tagging_service`) open against `staging`; this branch (`feat/v2-phase-3-f3.2-f3.3-clients`) adds the LP Assistant v3 + UG_EG v2 clients with shared `curriculum_mapping.py` (D-61). After both merge, next bundle is F3.4+F3.5 (LP + Exam cache lookup/insert + class-scope branching) per [docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md](docs/plans/2026-05-15-dars-v2-rebuild/05-phase-3-generation-pipeline.md). Bundle adjacent features as one PR; never skip ahead in numeric order.
 
 **State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with [.beads/status.jsonl](.beads/status.jsonl). **The bead is the source of truth for what's currently in flight; REBUILD.md is the human-readable summary.** If they disagree, the bead wins and REBUILD.md is stale — fix REBUILD.md.
 
