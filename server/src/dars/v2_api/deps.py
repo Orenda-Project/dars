@@ -57,29 +57,72 @@ class OrgContext:
 
 async def get_current_org(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_admin_session: str | None = Header(default=None, alias="X-Admin-Session"),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> OrgContext:
-    if not x_api_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key")
+    """
+    Accept either credential and resolve to the org's OrgContext:
+      - X-API-Key (per-org runtime key — teacher app)
+      - X-Admin-Session (admin session UUID — dashboard)
 
-    api_key_hash = hashlib.sha256(x_api_key.encode("utf-8")).hexdigest()
-    row = await conn.fetchrow(
-        """
-        SELECT id, name, curriculum_id, default_teacher_id
-        FROM organizations
-        WHERE api_key_hash = $1
-        """,
-        api_key_hash,
-    )
-    if row is None:
-        log.info("get_current_org: invalid API key (prefix=%s)", x_api_key[:8])
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    The dashboard never displays the raw API key after signup, so admin
+    actions that need an OrgContext (curriculum/book/breakdown reads,
+    today/calendar etc.) must work via the admin session too.
+    """
+    if x_api_key:
+        api_key_hash = hashlib.sha256(x_api_key.encode("utf-8")).hexdigest()
+        row = await conn.fetchrow(
+            """
+            SELECT id, name, curriculum_id, default_teacher_id
+            FROM organizations
+            WHERE api_key_hash = $1
+            """,
+            api_key_hash,
+        )
+        if row is None:
+            log.info("get_current_org: invalid API key (prefix=%s)", x_api_key[:8])
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+        return OrgContext(
+            id=row["id"], name=row["name"],
+            curriculum_id=row["curriculum_id"],
+            default_teacher_id=row["default_teacher_id"],
+        )
 
-    return OrgContext(
-        id=row["id"],
-        name=row["name"],
-        curriculum_id=row["curriculum_id"],
-        default_teacher_id=row["default_teacher_id"],
+    if x_admin_session:
+        try:
+            session_id = UUID(x_admin_session)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Malformed admin session",
+            )
+        from datetime import datetime, timezone
+        row = await conn.fetchrow(
+            """
+            SELECT o.id, o.name, o.curriculum_id, o.default_teacher_id,
+                   s.expires_at, s.revoked_at
+            FROM admin_sessions s
+            JOIN org_admins oa ON oa.id = s.org_admin_id
+            JOIN organizations o ON o.id = oa.org_id
+            WHERE s.id = $1
+            """,
+            session_id,
+        )
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+        if row["revoked_at"] is not None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
+        if row["expires_at"] < datetime.now(timezone.utc):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
+        return OrgContext(
+            id=row["id"], name=row["name"],
+            curriculum_id=row["curriculum_id"],
+            default_teacher_id=row["default_teacher_id"],
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing X-API-Key or X-Admin-Session",
     )
 
 
@@ -108,3 +151,5 @@ def require_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin token required",
         )
+
+

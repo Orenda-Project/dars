@@ -86,7 +86,7 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 
 ## Step 5 — Current state
 
-**As of last update: 2026-05-18 — Phase 4 close-out PR in flight**
+**As of last update: 2026-05-18 — Phase 5 close-out PR in flight (v1 rebuild complete)**
 
 | Item | Status |
 |---|---|
@@ -95,8 +95,8 @@ These are the user's preferred reaction phrases. Not forced — use when somethi
 | Phase 1 (Foundation) | ✅ shipped; bead `feat-v2-phase-1-foundation` closed |
 | Phase 2 (Breakdown Engine) | ✅ shipped (F2.1..F2.16); bead `feat-v2-phase-2-breakdown` closed (PR #58 merged 2026-05-16) |
 | Phase 3 (Generation Pipeline) | ✅ shipped (F3.1..F3.13); PRs #59, #60, #61, #62 all merged + deployed |
-| Phase 4 (Teacher App) | 🟡 close-out PR in flight: F4.1..F4.11 merged (PRs #64, #65, #66); F4.12..F4.15 + mastery backend + quick endpoints bundled in this branch |
-| Phase 5 (Dashboard) | ⏳ blocked by Phase 4 |
+| Phase 4 (Teacher App) | ✅ shipped (F4.1..F4.15); PRs #64, #65, #66, #67 merged |
+| Phase 5 (Dashboard) | 🟡 close-out PR in flight: F5.1..F5.17 bundled in this branch (admin auth, sessions, tenancy CRUD, curriculum browser, breakdown editor, generation status, failures, SLO coverage, usage, holidays) |
 | Seed (Dars Curriculum × English × G1) | ✅ frozen on staging: 21 SLOs, 71 sub-SLOs, 10 chapters, 31 topics, 1 demo org + Aisha + G1-A CST; seed now publishes global + org + class breakdowns |
 | Staging DB | ✅ on v2 schema; legacy v1 code deleted in PR #47 |
 | Demo org API key | `dk_demo_dars_eng_g1_2dc7e0b8408142fa` (see `server/src/dars/seeds/tenancy_demo.py`) |
@@ -115,10 +115,13 @@ PR #50 (F2.1+F2.2+F2.3 services) · PR #51 (F2.4 breakdown CRUD) · PR #54 (F2.5
 PR #59 (F3.1 lp_tagging) · PR #60 (F3.2+F3.3 LP Assistant + UG_EG clients + D-61 mapping) · PR #61 (F3.4+F3.5 generated LP + Exam cache) · PR #62 (F3.6..F3.13 webhooks + refresh + tagging + revision + batch publish + usage + failure surface — close-out)
 
 **Phase 4 PR history (chronological):**
-PR #64 (F4.1+F4.2+F4.3+F4.4+F4.5 clean slate + dars-api.ts client + shell + /today + /classes) · PR #65 (CST shape fix) · PR #66 (F4.6..F4.11 class detail 5 tabs + calendar) · this branch (F4.12..F4.15 + mastery backend + quick endpoints — close-out)
+PR #64 (F4.1+F4.2+F4.3+F4.4+F4.5 clean slate + dars-api.ts client + shell + /today + /classes) · PR #65 (CST shape fix) · PR #66 (F4.6..F4.11 class detail 5 tabs + calendar) · PR #67 (F4.12..F4.15 + mastery backend + quick endpoints — close-out)
+
+**Phase 5 PR history (chronological):**
+This branch (F5.1..F5.17 — admin auth + dashboard shell + tenancy CRUD + curriculum browser + breakdown editor + generation status + failures + SLO coverage + usage + holidays — single close-out PR).
 
 **Next thing to do unless the user says otherwise:**
-Close bead `feat-v2-phase-4-teacher-app` once this PR merges. Open `feat-v2-phase-5-dashboard`, branch off `staging`, start Phase 5 with F5.1 per [docs/plans/2026-05-15-dars-v2-rebuild/07-phase-5-dashboard.md](docs/plans/2026-05-15-dars-v2-rebuild/07-phase-5-dashboard.md).
+Close bead `feat-v2-phase-5-dashboard` once this PR merges. v1 of the Dars rebuild is complete on staging. Next: production migration plan + manual end-to-end QA + go-live. v2 backlog at the bottom of [07-phase-5-dashboard.md](docs/plans/2026-05-15-dars-v2-rebuild/07-phase-5-dashboard.md).
 
 **State update protocol:** every time a phase completes and ships to staging, edit this section to reflect the new state. Don't forget. If you're unsure whether a previous agent updated this section, cross-check with [.beads/status.jsonl](.beads/status.jsonl). **The bead is the source of truth for what's currently in flight; REBUILD.md is the human-readable summary.** If they disagree, the bead wins and REBUILD.md is stale — fix REBUILD.md.
 
