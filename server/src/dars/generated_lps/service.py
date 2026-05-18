@@ -1,0 +1,439 @@
+"""
+F3.4 — Generated-LP cache lookup/insert + class-scope branching.
+
+Per D-46 + D-56 + D-57:
+  - Global lesson LPs are cached by (curriculum, topic, lp_type) so the
+    same global breakdown slot is generated once across all CSTs.
+  - When a CST's slot has a topic combo the global breakdown didn't have
+    (custom-added by the teacher), we cache class-scoped instead.
+
+This module only does cache + persistence + outbound dispatch. The
+webhook (F3.6) fills in `content`, `cost_usd`, etc.
+
+Lifecycle for a slot's LP:
+  - lookup row by cache_key (or class-scope key)
+  - if found+READY: link to slot, return
+  - if found+PENDING/IN_FLIGHT: caller waits (webhook will finish it)
+  - if found+ERROR: treat as miss (re-request)
+  - if not found: insert row at PENDING, dispatch to LP Assistant, set
+    IN_FLIGHT + job_id in a single follow-up update
+
+Revision LPs (F3.10) use a different keying with revision_topic_set_hash;
+they go through `get_or_generate_revision_lp` (TODO in F3.10).
+"""
+import logging
+from dataclasses import dataclass
+from typing import Awaitable, Callable
+from uuid import UUID
+
+import asyncpg
+
+from dars.config import settings
+from dars.generated_lps.lp_assistant_client import (
+    LPRequest,
+    request_lp_generation as default_request_lp_generation,
+)
+
+log = logging.getLogger("generated_lps.service")
+
+DispatchCallable = Callable[[LPRequest], Awaitable[str]]
+
+
+@dataclass
+class GeneratedLP:
+    """A row in `generated_lps`, populated by lookup or fresh insert."""
+    id: UUID
+    cache_key: str | None
+    scope: str
+    scope_ref_id: UUID | None
+    curriculum_id: UUID
+    grade_id: UUID
+    subject_id: UUID
+    topic_id: UUID | None
+    lp_type: str
+    status: str
+    job_id: str | None
+    content: str | None
+
+
+def _build_cache_key_global(curriculum_id: UUID, topic_id: UUID, lp_type: str) -> str:
+    """`{curriculum_id}:{topic_id}:{lp_type}` per spec."""
+    return f"{curriculum_id}:{topic_id}:{lp_type}"
+
+
+def _build_cache_key_class(
+    curriculum_id: UUID, cst_id: UUID, topic_id: UUID, lp_type: str
+) -> str:
+    """`{curriculum_id}:{cst_id}:{topic_id}:{lp_type}` per spec."""
+    return f"{curriculum_id}:{cst_id}:{topic_id}:{lp_type}"
+
+
+def _build_callback_url(job_id: UUID) -> str:
+    """Public webhook URL for a given (yet-to-be-known) LP-Assistant job_id.
+
+    Note: at request-time we don't yet have LP Assistant's job_id, so we
+    use our `generated_lps.id` as the path segment. The webhook handler
+    in F3.6 looks the row up by that UUID and matches the `job_id` body.
+    """
+    return f"{settings.dars_base_url.rstrip('/')}/api/v1/webhooks/lp/{job_id}"
+
+
+async def _load_lesson_slot_context(
+    conn: asyncpg.Connection, lesson_slot_id: UUID
+) -> asyncpg.Record:
+    """Load everything we need to build the LP request for a lesson slot.
+
+    Returns a row with: cst_id, topic_id, lp_type, slot_type, anchor_date,
+    curriculum_id, grade_id, grade_code, subject_id, subject_code,
+    topic_text.
+
+    Raises ValueError if the slot is missing, has no topic, or is a
+    revision slot (those go through F3.10).
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT
+            cls.id            AS lesson_slot_id,
+            cls.cst_id        AS cst_id,
+            cls.topic_id      AS topic_id,
+            cls.lp_type       AS lp_type,
+            cls.slot_type     AS slot_type,
+            cls.generated_lp_id AS generated_lp_id,
+            cst.curriculum_id AS curriculum_id,
+            cst.grade_id      AS grade_id,
+            cst.subject_id    AS subject_id,
+            g.code            AS grade_code,
+            s.code            AS subject_code,
+            t.topic_text      AS topic_text
+        FROM class_lesson_slots cls
+        JOIN class_subject_teachers cst ON cst.id = cls.cst_id
+        JOIN grades g                   ON g.id = cst.grade_id
+        JOIN subjects s                 ON s.id = cst.subject_id
+        LEFT JOIN topics t              ON t.id = cls.topic_id
+        WHERE cls.id = $1
+        """,
+        lesson_slot_id,
+    )
+    if row is None:
+        raise ValueError(f"lesson_slot_id={lesson_slot_id} not found")
+    if row["slot_type"] == "revision":
+        raise ValueError(
+            f"lesson_slot_id={lesson_slot_id} is a revision slot — use F3.10"
+        )
+    if row["topic_id"] is None:
+        raise ValueError(
+            f"lesson_slot_id={lesson_slot_id} has no topic_id; cannot build LP request"
+        )
+    if not row["lp_type"]:
+        raise ValueError(
+            f"lesson_slot_id={lesson_slot_id} has no lp_type set on the slot"
+        )
+    if not row["topic_text"] or not row["topic_text"].strip():
+        raise ValueError(
+            f"topic_id={row['topic_id']} has empty topic_text — LP Assistant would fall back to DB lookup"
+        )
+    return row
+
+
+async def _load_curriculum_code(conn: asyncpg.Connection, curriculum_id: UUID) -> str:
+    code = await conn.fetchval(
+        "SELECT code FROM curriculums WHERE id = $1", curriculum_id
+    )
+    if not code:
+        raise ValueError(f"curriculum_id={curriculum_id} not found")
+    return code
+
+
+async def _find_existing(
+    conn: asyncpg.Connection, *, scope: str, cache_key: str
+) -> asyncpg.Record | None:
+    return await conn.fetchrow(
+        """
+        SELECT id, cache_key, scope, scope_ref_id, curriculum_id, grade_id,
+               subject_id, topic_id, lp_type, status, job_id, content
+        FROM generated_lps
+        WHERE cache_key = $1 AND scope = $2
+        """,
+        cache_key, scope,
+    )
+
+
+def _record_to_dataclass(row: asyncpg.Record) -> GeneratedLP:
+    return GeneratedLP(
+        id=row["id"],
+        cache_key=row["cache_key"],
+        scope=row["scope"],
+        scope_ref_id=row["scope_ref_id"],
+        curriculum_id=row["curriculum_id"],
+        grade_id=row["grade_id"],
+        subject_id=row["subject_id"],
+        topic_id=row["topic_id"],
+        lp_type=row["lp_type"],
+        status=row["status"],
+        job_id=row["job_id"],
+        content=row["content"],
+    )
+
+
+async def _link_slot_to_lp(
+    conn: asyncpg.Connection, lesson_slot_id: UUID, generated_lp_id: UUID
+) -> None:
+    """Idempotent: only update if not already pointing at this LP."""
+    await conn.execute(
+        """
+        UPDATE class_lesson_slots
+        SET generated_lp_id = $1, updated_at = now()
+        WHERE id = $2 AND COALESCE(generated_lp_id::text, '') <> $1::text
+        """,
+        generated_lp_id, lesson_slot_id,
+    )
+
+
+async def _insert_pending_lp(
+    conn: asyncpg.Connection,
+    *,
+    scope: str,
+    scope_ref_id: UUID | None,
+    cache_key: str,
+    curriculum_id: UUID,
+    grade_id: UUID,
+    subject_id: UUID,
+    topic_id: UUID,
+    lp_type: str,
+) -> UUID:
+    """Insert a row at PENDING and return its UUID."""
+    new_id = await conn.fetchval(
+        """
+        INSERT INTO generated_lps (
+            cache_key, scope, scope_ref_id,
+            curriculum_id, grade_id, subject_id,
+            topic_id, lp_type, status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING')
+        RETURNING id
+        """,
+        cache_key, scope, scope_ref_id,
+        curriculum_id, grade_id, subject_id,
+        topic_id, lp_type,
+    )
+    return new_id
+
+
+async def _mark_in_flight(
+    conn: asyncpg.Connection, generated_lp_id: UUID, job_id: str
+) -> None:
+    await conn.execute(
+        """
+        UPDATE generated_lps
+        SET status = 'IN_FLIGHT', job_id = $1, updated_at = now()
+        WHERE id = $2
+        """,
+        job_id, generated_lp_id,
+    )
+
+
+async def _mark_error(
+    conn: asyncpg.Connection, generated_lp_id: UUID, error_message: str
+) -> None:
+    await conn.execute(
+        """
+        UPDATE generated_lps
+        SET status = 'ERROR', error_message = $1, updated_at = now()
+        WHERE id = $2
+        """,
+        error_message[:2000], generated_lp_id,
+    )
+
+
+async def _dispatch_and_mark(
+    conn: asyncpg.Connection,
+    *,
+    generated_lp_id: UUID,
+    curriculum_code: str,
+    grade_code: str,
+    subject_code: str,
+    topic_text: str,
+    lp_type: str,
+    dispatcher: DispatchCallable,
+) -> str | None:
+    """Send to LP Assistant and update the row to IN_FLIGHT (or ERROR).
+
+    Returns the LP Assistant job_id on success, None on dispatch failure.
+    """
+    payload = LPRequest(
+        curriculum_code=curriculum_code,
+        grade=_parse_grade_int(grade_code),
+        subject=subject_code,
+        page_content=topic_text,
+        lp_type=lp_type,
+        callback_url=_build_callback_url(generated_lp_id),
+    )
+    try:
+        job_id = await dispatcher(payload)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("dispatch_lp_generation: failed generated_lp_id=%s", generated_lp_id)
+        await _mark_error(conn, generated_lp_id, f"dispatch failed: {exc}")
+        return None
+    await _mark_in_flight(conn, generated_lp_id, job_id)
+    return job_id
+
+
+def _parse_grade_int(grade_code: str) -> int:
+    """Map `grades.code` (e.g. 'G1', 'G5') to LP Assistant's int grade.
+
+    The seed uses codes G1..G5. Anything else raises so we never silently
+    send a bogus grade.
+    """
+    if not grade_code or not grade_code.startswith("G"):
+        raise ValueError(f"grade_code={grade_code!r} doesn't match expected 'G<n>' pattern")
+    try:
+        return int(grade_code[1:])
+    except ValueError as e:
+        raise ValueError(f"grade_code={grade_code!r} is not 'G<int>'") from e
+
+
+async def get_or_generate_lp(
+    conn: asyncpg.Connection,
+    lesson_slot_id: UUID,
+    *,
+    dispatcher: DispatchCallable | None = None,
+) -> GeneratedLP:
+    """
+    Global-cache path for a class lesson slot.
+
+    Looks up `generated_lps` keyed on (curriculum, topic, lp_type) at
+    global scope. Returns the row if found (READY / PENDING / IN_FLIGHT);
+    re-requests on ERROR; otherwise inserts a fresh PENDING row and
+    dispatches to LP Assistant.
+
+    The slot's `generated_lp_id` is updated to point at the (existing or
+    newly-inserted) row.
+    """
+    log.info("get_or_generate_lp: entry lesson_slot_id=%s", lesson_slot_id)
+
+    ctx = await _load_lesson_slot_context(conn, lesson_slot_id)
+    curriculum_id = ctx["curriculum_id"]
+    topic_id = ctx["topic_id"]
+    lp_type = ctx["lp_type"]
+
+    cache_key = _build_cache_key_global(curriculum_id, topic_id, lp_type)
+    existing = await _find_existing(conn, scope="global", cache_key=cache_key)
+
+    if existing is not None and existing["status"] != "ERROR":
+        log.info(
+            "get_or_generate_lp: cache hit lesson_slot_id=%s gen_lp_id=%s status=%s",
+            lesson_slot_id, existing["id"], existing["status"],
+        )
+        await _link_slot_to_lp(conn, lesson_slot_id, existing["id"])
+        return _record_to_dataclass(existing)
+
+    # Cache miss or ERROR — fresh insert + dispatch.
+    if existing is not None and existing["status"] == "ERROR":
+        log.info(
+            "get_or_generate_lp: prior ERROR for cache_key=%s — re-requesting",
+            cache_key,
+        )
+
+    new_id = await _insert_pending_lp(
+        conn,
+        scope="global", scope_ref_id=None, cache_key=cache_key,
+        curriculum_id=curriculum_id, grade_id=ctx["grade_id"],
+        subject_id=ctx["subject_id"], topic_id=topic_id,
+        lp_type=lp_type,
+    )
+    await _link_slot_to_lp(conn, lesson_slot_id, new_id)
+
+    curriculum_code = await _load_curriculum_code(conn, curriculum_id)
+    await _dispatch_and_mark(
+        conn,
+        generated_lp_id=new_id,
+        curriculum_code=curriculum_code,
+        grade_code=ctx["grade_code"],
+        subject_code=ctx["subject_code"],
+        topic_text=ctx["topic_text"],
+        lp_type=lp_type,
+        dispatcher=dispatcher or default_request_lp_generation,
+    )
+
+    fresh = await _find_existing(conn, scope="global", cache_key=cache_key)
+    assert fresh is not None
+    log.info(
+        "get_or_generate_lp: inserted lesson_slot_id=%s gen_lp_id=%s status=%s",
+        lesson_slot_id, fresh["id"], fresh["status"],
+    )
+    return _record_to_dataclass(fresh)
+
+
+async def get_or_generate_class_specific_lp(
+    conn: asyncpg.Connection,
+    lesson_slot_id: UUID,
+    *,
+    dispatcher: DispatchCallable | None = None,
+) -> GeneratedLP:
+    """
+    Class-scope path. Used when a teacher's slot has a topic combo the
+    global breakdown didn't have (custom-added at the CST level — D-57).
+
+    cache_key includes `cst_id` so two CSTs with the same topic+lp_type
+    still get separate rows; this prevents collisions with the global
+    cache.
+    """
+    log.info("get_or_generate_class_specific_lp: entry lesson_slot_id=%s", lesson_slot_id)
+
+    ctx = await _load_lesson_slot_context(conn, lesson_slot_id)
+    curriculum_id = ctx["curriculum_id"]
+    cst_id = ctx["cst_id"]
+    topic_id = ctx["topic_id"]
+    lp_type = ctx["lp_type"]
+
+    cache_key = _build_cache_key_class(curriculum_id, cst_id, topic_id, lp_type)
+    # Class-scoped rows are not in the partial unique index (only `global`
+    # is enforced UNIQUE). We do best-effort dedup at the service layer.
+    existing = await conn.fetchrow(
+        """
+        SELECT id, cache_key, scope, scope_ref_id, curriculum_id, grade_id,
+               subject_id, topic_id, lp_type, status, job_id, content
+        FROM generated_lps
+        WHERE scope = 'class' AND scope_ref_id = $1 AND cache_key = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        cst_id, cache_key,
+    )
+    if existing is not None and existing["status"] != "ERROR":
+        await _link_slot_to_lp(conn, lesson_slot_id, existing["id"])
+        log.info(
+            "get_or_generate_class_specific_lp: cache hit gen_lp_id=%s status=%s",
+            existing["id"], existing["status"],
+        )
+        return _record_to_dataclass(existing)
+
+    new_id = await _insert_pending_lp(
+        conn,
+        scope="class", scope_ref_id=cst_id, cache_key=cache_key,
+        curriculum_id=curriculum_id, grade_id=ctx["grade_id"],
+        subject_id=ctx["subject_id"], topic_id=topic_id,
+        lp_type=lp_type,
+    )
+    await _link_slot_to_lp(conn, lesson_slot_id, new_id)
+
+    curriculum_code = await _load_curriculum_code(conn, curriculum_id)
+    await _dispatch_and_mark(
+        conn,
+        generated_lp_id=new_id,
+        curriculum_code=curriculum_code,
+        grade_code=ctx["grade_code"],
+        subject_code=ctx["subject_code"],
+        topic_text=ctx["topic_text"],
+        lp_type=lp_type,
+        dispatcher=dispatcher or default_request_lp_generation,
+    )
+
+    fresh = await conn.fetchrow(
+        "SELECT id, cache_key, scope, scope_ref_id, curriculum_id, grade_id, "
+        "subject_id, topic_id, lp_type, status, job_id, content "
+        "FROM generated_lps WHERE id = $1",
+        new_id,
+    )
+    assert fresh is not None
+    return _record_to_dataclass(fresh)

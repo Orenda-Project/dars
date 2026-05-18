@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     lp_assistant_api_key: str = ""
     eg_assistant_url: str = "https://exam-generator.taleemabad.com"
     eg_assistant_api_key: str = ""
+    # Public base URL for this dars instance — used to build webhook callback URLs
+    # sent to LP Assistant and UG_EG. Must be reachable from those services.
+    dars_base_url: str = "https://dars.taleemabad.com"
     cors_origins: str = "http://localhost:3000,https://truthful-renewal-production-c9ce.up.railway.app"
 
     @property
