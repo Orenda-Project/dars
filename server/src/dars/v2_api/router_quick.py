@@ -44,12 +44,15 @@ router = APIRouter(prefix="/api/v1", tags=["quick"])
 
 
 class QuickLPBody(BaseModel):
-    curriculum_code: str
-    grade: int = Field(ge=1, le=5)
+    """Quick LP request. Curriculum is inherited from the calling org.
+
+    `page_number` is forwarded to LP Assistant which fetches the book
+    content from its own DB (string like "5" or "5-7").
+    """
+    grade: int = Field(ge=1, le=12)
     subject: str
-    page_content: str
+    page_number: str
     lp_type: str
-    class_strength: int = 30
     generate_bilingual: bool = False
 
 
@@ -69,17 +72,17 @@ async def quick_lp(
 
     Returns immediately with the new generated_lps.id. The client polls
     `/api/v1/generated-lps/{id}/refresh` or waits for the webhook.
+    Curriculum is resolved from the calling org — no client input.
     """
-    # Look up curriculum/grade/subject ids for the row (FK constraints
-    # require these). The values surface back via the row only; we
-    # don't need them for the LP Assistant call.
-    cur_id = await conn.fetchval(
-        "SELECT id FROM curriculums WHERE code = $1", payload.curriculum_code,
+    # Resolve caller's curriculum_code from the org row.
+    curriculum_code = await conn.fetchval(
+        "SELECT code FROM curriculums WHERE id = $1", org.curriculum_id,
     )
-    if cur_id is None:
-        raise HTTPException(status_code=422, detail=f"unknown curriculum_code={payload.curriculum_code!r}")
+    if curriculum_code is None:
+        raise HTTPException(status_code=500, detail="org curriculum_id is unresolvable")
+
     grade_id = await conn.fetchval(
-        "SELECT id FROM grades WHERE code = $1", f"G{payload.grade}",
+        "SELECT id FROM grades WHERE code = $1", payload.grade,
     )
     if grade_id is None:
         raise HTTPException(status_code=422, detail=f"grade={payload.grade} not seeded")
@@ -90,10 +93,8 @@ async def quick_lp(
         raise HTTPException(status_code=422, detail=f"unknown subject={payload.subject!r}")
 
     # Insert PENDING row with cache_key=NULL so it never satisfies a
-    # cache lookup. Belongs to this org via scope_ref_id under 'class'
-    # scope? No — `class` requires a cst_id and we don't have one. Use
-    # 'global' + null cache_key (the partial unique index only enforces
-    # uniqueness when cache_key IS NOT NULL).
+    # cache lookup. Use 'global' scope + null cache_key (the partial
+    # unique index only enforces uniqueness when cache_key IS NOT NULL).
     new_id = await conn.fetchval(
         """
         INSERT INTO generated_lps (
@@ -103,19 +104,18 @@ async def quick_lp(
         ) VALUES (NULL, 'global', NULL, $1, $2, $3, NULL, $4, 'PENDING')
         RETURNING id
         """,
-        cur_id, grade_id, subject_id, payload.lp_type,
+        org.curriculum_id, grade_id, subject_id, payload.lp_type,
     )
 
     callback_url = f"{settings.dars_base_url.rstrip('/')}/api/v1/webhooks/lp/{new_id}"
     try:
         req = LPRequest(
-            curriculum_code=payload.curriculum_code,
+            curriculum_code=curriculum_code,
             grade=payload.grade,
             subject=payload.subject,
-            page_content=payload.page_content,
+            page_number=payload.page_number,
             lp_type=payload.lp_type,
             callback_url=callback_url,
-            class_strength=payload.class_strength,
             generate_bilingual=payload.generate_bilingual,
         )
         job_id = await request_lp_generation(req)
@@ -141,10 +141,14 @@ async def quick_lp(
 
 
 class QuickExamBody(BaseModel):
-    curriculum_code: str
-    grade: int = Field(ge=1, le=5)
+    """Quick exam request. Curriculum inherited from the calling org.
+
+    `page_ranges` is forwarded to UG_EG which fetches the book content
+    from its own DB (string like "5" or "5-7" or "1, 3, 5-7").
+    """
+    grade: int = Field(ge=1, le=12)
     subject: str
-    page_content: str
+    page_ranges: str
     generation_type: str = "exam"
     question_types: list[str] = Field(default_factory=lambda: ["unseen"])
     unseen_categories: list[str] = Field(default_factory=list)
@@ -162,13 +166,15 @@ async def quick_exam(
     org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> QuickGenerationCreated:
-    cur_id = await conn.fetchval(
-        "SELECT id FROM curriculums WHERE code = $1", payload.curriculum_code,
+    # Resolve caller's curriculum_code from the org row.
+    curriculum_code = await conn.fetchval(
+        "SELECT code FROM curriculums WHERE id = $1", org.curriculum_id,
     )
-    if cur_id is None:
-        raise HTTPException(status_code=422, detail=f"unknown curriculum_code={payload.curriculum_code!r}")
+    if curriculum_code is None:
+        raise HTTPException(status_code=500, detail="org curriculum_id is unresolvable")
+
     grade_id = await conn.fetchval(
-        "SELECT id FROM grades WHERE code = $1", f"G{payload.grade}",
+        "SELECT id FROM grades WHERE code = $1", payload.grade,
     )
     if grade_id is None:
         raise HTTPException(status_code=422, detail=f"grade={payload.grade} not seeded")
@@ -188,16 +194,16 @@ async def quick_exam(
         ) VALUES (NULL, 'global', NULL, $1, $2, $3, '', $4, '', 'PENDING')
         RETURNING id
         """,
-        cur_id, grade_id, subject_id, payload.generation_type,
+        org.curriculum_id, grade_id, subject_id, payload.generation_type,
     )
 
     callback_url = f"{settings.dars_base_url.rstrip('/')}/api/v1/webhooks/exam/{new_id}"
     try:
         req = ExamRequest(
-            curriculum_code=payload.curriculum_code,
+            curriculum_code=curriculum_code,
             grade=payload.grade,
             subject=payload.subject,
-            page_content=payload.page_content,
+            page_ranges=payload.page_ranges,
             callback_url=callback_url,
             generation_type=payload.generation_type,
             question_types=payload.question_types,

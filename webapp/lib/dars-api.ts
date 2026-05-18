@@ -936,8 +936,8 @@ export const today = {
 };
 
 export const calendar = {
-  /** week_start: a Monday in ISO date format. Defaults to "this week" on the server. */
-  get: (week_start?: ISODate) =>
+  /** week_start: a Monday in ISO date format. Required by the server (no default). */
+  get: (week_start: ISODate) =>
     request<CalendarResponse>("/api/v2/me/calendar", { query: { week_start } }),
 };
 
@@ -1021,20 +1021,17 @@ export const mastery = {
 // ---------------------------------------------------------------------------
 
 export interface QuickLPBody {
-  curriculum_code: string;
   grade: number;
   subject: string;
-  page_content: string;
+  page_number: string;       // "5" or "5-7"
   lp_type: string;
-  class_strength?: number;
   generate_bilingual?: boolean;
 }
 
 export interface QuickExamBody {
-  curriculum_code: string;
   grade: number;
   subject: string;
-  page_content: string;
+  page_ranges: string;       // "5" or "5-7" or "1, 3, 5-7"
   generation_type?: "exam" | "class_assessment";
   question_types?: ("seen" | "unseen")[];
   unseen_categories?: ("objective" | "subjective")[];

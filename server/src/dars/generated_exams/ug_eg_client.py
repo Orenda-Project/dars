@@ -17,7 +17,7 @@ maps to Sindh anyway, but this is the future-proof failure mode).
 import logging
 
 import httpx
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from dars.breakdown.curriculum_mapping import map_curriculum_for_ug_eg
 from dars.config import settings
@@ -40,12 +40,21 @@ class ExamRequest(BaseModel):
 
     `curriculum_code` is dars's internal code (DARS / NCP / SNC); it
     gets mapped to UG_EG's enum value at send time.
+
+    UG_EG's /api/v2/generate-exam requires `page_ranges` (e.g. "5" or
+    "5-7"); it fetches book content from its own DB. We keep `page_content`
+    as a Dars-side convenience field — the batch breakdown path computes
+    page_content from book_chapters.chapter_text and we still want a way
+    to send pre-extracted text — but if `page_content` is set we extract
+    a synthetic page_ranges string by passing through as-is. In practice
+    callers should set `page_ranges` directly.
     """
 
     curriculum_code: str
     grade: int = Field(ge=1, le=5)
     subject: str
-    page_content: str
+    page_content: str | None = None
+    page_ranges: str | None = None
     callback_url: str
     generation_type: str = "exam"
     question_types: list[str] = Field(default_factory=lambda: ["unseen"])
@@ -91,26 +100,37 @@ class ExamRequest(BaseModel):
             raise ValueError(f"unseen_categories contains unknown values: {bad}")
         return v
 
-    @field_validator("page_content")
-    @classmethod
-    def _page_content_nonempty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("page_content is empty — UG_EG would fall back to DB lookup")
-        return v
+    @model_validator(mode="after")
+    def _exactly_one_source(self) -> "ExamRequest":
+        has_content = bool(self.page_content and self.page_content.strip())
+        has_ranges = bool(self.page_ranges and self.page_ranges.strip())
+        if not has_content and not has_ranges:
+            raise ValueError(
+                "either page_content or page_ranges must be provided"
+            )
+        return self
 
 
 def _build_body(req: ExamRequest) -> dict:
-    """Build the v2 request body. Only fields the reference doc lists."""
+    """Build the v2 request body. Only fields the reference doc lists.
+
+    UG_EG accepts page_ranges (its own page-DB lookup). When the Dars
+    caller supplies page_content directly, we pass it through too; UG_EG
+    treats page_ranges as authoritative when both are present.
+    """
     body: dict = {
         "callback_url": req.callback_url,
         "generation_type": req.generation_type,
         "curriculum": map_curriculum_for_ug_eg(req.curriculum_code),
         "grade": req.grade,
         "subject": req.subject,
-        "page_content": req.page_content,
         "question_types": list(req.question_types),
         "include_answer_key": req.include_answer_key,
     }
+    if req.page_ranges and req.page_ranges.strip():
+        body["page_ranges"] = req.page_ranges
+    if req.page_content and req.page_content.strip():
+        body["page_content"] = req.page_content
     if "unseen" in req.question_types:
         body["unseen_categories"] = list(req.unseen_categories)
         if "objective" in req.unseen_categories:

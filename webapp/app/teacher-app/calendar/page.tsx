@@ -23,12 +23,12 @@ function isoFromOffsetWeeks(weeks: number): string {
 }
 
 export default function CalendarPage() {
-  const [weekStart, setWeekStart] = useState<string | undefined>(undefined);
+  const [weekStart, setWeekStart] = useState<string>(() => isoFromOffsetWeeks(0));
   const [data, setData] = useState<CalendarResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (start?: string) => {
+  const load = useCallback(async (start: string) => {
     setLoading(true);
     setError(null);
     try {

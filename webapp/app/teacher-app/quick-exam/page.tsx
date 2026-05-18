@@ -4,19 +4,41 @@
  * Single-screen form. Defaults match the seed (English FA: MCQs +
  * True/False + Fill in the Blanks). Generates a fresh exam off-cache;
  * displays status in a slide-over.
+ *
+ * Curriculum is read from the calling org (admin.me().curriculum_code)
+ * — never asked. User picks grade + subject + page range + question
+ * config.
  */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SlideOver } from "@/components/molecules/slide-over";
-import { DarsApiError, generations, quick } from "@/lib/dars-api";
+import {
+  DarsApiError,
+  admin,
+  curriculum as curriculumApi,
+  generations,
+  quick,
+  type Grade,
+  type Subject,
+} from "@/lib/dars-api";
+
+function buildPageRange(startPage: number, endPage: number): string {
+  if (startPage === endPage) return String(startPage);
+  return `${startPage}-${endPage}`;
+}
 
 export default function QuickExamPage() {
-  const [curriculumCode, setCurriculumCode] = useState("DARS");
+  const [curriculumCode, setCurriculumCode] = useState<string>("");
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [grade, setGrade] = useState<number>(1);
   const [subject, setSubject] = useState<string>("Eng");
-  const [pageContent, setPageContent] = useState("");
+  const [startPage, setStartPage] = useState<number>(1);
+  const [endPage, setEndPage] = useState<number>(1);
 
   // Default config = English G1 FA
   const [mcqs, setMcqs] = useState<number>(5);
@@ -28,16 +50,43 @@ export default function QuickExamPage() {
   const [resultId, setResultId] = useState<string | null>(null);
   const [resultStatus, setResultStatus] = useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [me, { items: gs }, { items: ss }] = await Promise.all([
+          admin.me(),
+          curriculumApi.getGrades(),
+          curriculumApi.getSubjects(),
+        ]);
+        if (cancelled) return;
+        setCurriculumCode(me.curriculum_code);
+        setGrades(gs);
+        setSubjects(ss);
+        if (gs[0]) setGrade(gs[0].code);
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(formatErr(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (endPage < startPage) {
+      setError("End page must be ≥ start page.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await quick.exam({
-        curriculum_code: curriculumCode,
         grade,
         subject,
-        page_content: pageContent,
+        page_ranges: buildPageRange(startPage, endPage),
         question_types: ["unseen"],
         unseen_categories: ["objective"],
         unseen_objective_types: ["MCQs", "True/False", "Fill in the Blanks"],
@@ -49,21 +98,17 @@ export default function QuickExamPage() {
       });
       setResultId(res.id);
       setResultStatus(res.status);
-
-      // Light poll loop while the user has the panel open.
       pollExam(res.id, (s) => setResultStatus(s));
     } catch (err) {
-      setError(
-        err instanceof DarsApiError
-          ? `${err.status}: ${typeof err.detail === "string" ? err.detail : "request failed"}`
-          : err instanceof Error
-          ? err.message
-          : "Failed",
-      );
+      setError(formatErr(err));
     } finally {
       setBusy(false);
     }
   }
+
+  const subjectCodes = subjects.length > 0
+    ? subjects.map((s) => s.code)
+    : ["Eng", "Urdu", "Maths"];
 
   return (
     <>
@@ -76,30 +121,31 @@ export default function QuickExamPage() {
             Generate a one-off exam. Defaults reproduce the seed's formative
             assessment configuration.
           </p>
+          {curriculumCode ? (
+            <p className="text-xs text-dars-muted-light mt-1">
+              Curriculum: <code className="font-mono">{curriculumCode}</code>
+            </p>
+          ) : null}
         </header>
 
+        {loadError ? (
+          <p className="text-sm text-dars-terra" role="alert">{loadError}</p>
+        ) : null}
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <Field label="Curriculum">
-              <select
-                value={curriculumCode}
-                onChange={(e) => setCurriculumCode(e.target.value)}
-                className="select"
-              >
-                <option value="DARS">DARS</option>
-                <option value="NCP">NCP</option>
-                <option value="SNC">SNC</option>
-              </select>
-            </Field>
+          <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
             <Field label="Grade">
               <select
                 value={grade}
                 onChange={(e) => setGrade(Number(e.target.value))}
                 className="select"
               >
-                {[1, 2, 3, 4, 5].map((g) => (
-                  <option key={g} value={g}>
-                    {g}
+                {(grades.length > 0
+                  ? grades.map((g) => ({ code: g.code, label: g.display_name }))
+                  : [1, 2, 3, 4, 5].map((g) => ({ code: g, label: `Grade ${g}` }))
+                ).map((g) => (
+                  <option key={g.code} value={g.code}>
+                    {g.label}
                   </option>
                 ))}
               </select>
@@ -110,7 +156,7 @@ export default function QuickExamPage() {
                 onChange={(e) => setSubject(e.target.value)}
                 className="select"
               >
-                {["Eng", "Urdu", "Maths"].map((s) => (
+                {subjectCodes.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
@@ -119,16 +165,35 @@ export default function QuickExamPage() {
             </Field>
           </div>
 
-          <Field label="Page content">
-            <textarea
-              value={pageContent}
-              onChange={(e) => setPageContent(e.target.value)}
-              rows={8}
-              required
-              placeholder="Paste the source text the exam should cover."
-              className="w-full px-3 py-2 rounded-md border border-dars-rule-light bg-white text-sm font-mono"
-            />
-          </Field>
+          <fieldset className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3">
+            <legend className="text-xs font-semibold text-dars-ink-soft px-1">
+              Pages
+            </legend>
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <Field label="Start page">
+                <input
+                  type="number"
+                  min={1}
+                  value={startPage}
+                  onChange={(e) => setStartPage(Number(e.target.value))}
+                  className="px-2 py-1 rounded border border-dars-rule-light bg-white text-sm"
+                />
+              </Field>
+              <Field label="End page">
+                <input
+                  type="number"
+                  min={startPage}
+                  value={endPage}
+                  onChange={(e) => setEndPage(Number(e.target.value))}
+                  className="px-2 py-1 rounded border border-dars-rule-light bg-white text-sm"
+                />
+              </Field>
+            </div>
+            <p className="text-[11px] text-dars-muted mt-2">
+              UG_EG fetches book content from its DB. For a single page set
+              start = end.
+            </p>
+          </fieldset>
 
           <fieldset className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3">
             <legend className="text-xs font-semibold text-dars-ink-soft px-1">
@@ -146,7 +211,7 @@ export default function QuickExamPage() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={busy || !pageContent.trim()}
+              disabled={busy || !curriculumCode}
               className="px-4 py-2 rounded-md bg-dars-terra text-dars-parchment text-sm font-semibold hover:opacity-90 disabled:opacity-50"
             >
               {busy ? "Submitting…" : "Generate Exam →"}
@@ -257,4 +322,12 @@ function CountField({
       />
     </label>
   );
+}
+
+function formatErr(err: unknown): string {
+  if (err instanceof DarsApiError) {
+    return `${err.status}: ${typeof err.detail === "string" ? err.detail : "request failed"}`;
+  }
+  if (err instanceof Error) return err.message;
+  return "Failed";
 }
