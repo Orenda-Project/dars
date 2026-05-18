@@ -5,8 +5,9 @@ DB-gated (mirrors test_v2_smoke.py): only runs when DATABASE_URL points
 at a migrated + seeded Postgres. The AsyncClient fixture triggers
 lifespan which migrates + seeds.
 
-We set DARS_ADMIN_TOKEN here for the test process; the require_admin
-dep reads it via settings.admin_secret.
+Auth: these endpoints now use get_current_org (per-org), so we send the
+seeded demo org's API key. This replaces the previous X-Admin-Token
+contract.
 """
 import os
 import uuid
@@ -14,21 +15,11 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-ADMIN_TOKEN = "test-admin-token-f24"
-os.environ.setdefault("DARS_ADMIN_TOKEN", ADMIN_TOKEN)
-# Re-import settings to pick up the env override before app routes resolve
-# their dependency. pydantic-settings reads env at instantiation time, so we
-# clear the cached singleton if needed.
-from dars.config import settings  # noqa: E402
-
-if settings.admin_secret != ADMIN_TOKEN:
-    # Settings was already instantiated before this test module loaded.
-    # Patch the field directly for the test run.
-    object.__setattr__(settings, "admin_secret", ADMIN_TOKEN)
+DEMO_API_KEY = "dk_demo_dars_eng_g1_2dc7e0b8408142fa"
 
 
 def admin_headers() -> dict[str, str]:
-    return {"X-Admin-Token": ADMIN_TOKEN}
+    return {"X-API-Key": DEMO_API_KEY}
 
 
 @pytest.mark.skipif(
@@ -63,15 +54,15 @@ class TestBreakdownAPI:
             "topic_id_1": topic_id,
         }
 
-    async def test_admin_token_required(self, client: AsyncClient):
+    async def test_auth_required(self, client: AsyncClient):
         r = await client.get("/api/v2/breakdowns")
-        assert r.status_code == 403, r.text
+        assert r.status_code == 401, r.text
 
         r = await client.get(
             "/api/v2/breakdowns",
-            headers={"X-Admin-Token": "wrong-token"},
+            headers={"X-API-Key": "wrong-key"},
         )
-        assert r.status_code == 403, r.text
+        assert r.status_code == 401, r.text
 
     async def test_create_list_get_breakdown(self, client: AsyncClient):
         refs = await self._seed_refs(client)

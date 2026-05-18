@@ -13,6 +13,7 @@ import { DashboardShell } from "@/components/templates/dashboard-shell";
 import {
   admin,
   clearAdminSession,
+  clearApiKey,
   DarsApiError,
   getAdminSession,
   type AdminMeResponse,
@@ -47,6 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (cancelled) return;
         if (err instanceof DarsApiError && err.status === 401) {
           clearAdminSession();
+          clearApiKey();
           router.replace("/dashboard/login");
           return;
         }
@@ -88,6 +90,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       // ignore — token may already be invalid
     }
     clearAdminSession();
+    clearApiKey();
     router.replace("/dashboard/login");
   }
 

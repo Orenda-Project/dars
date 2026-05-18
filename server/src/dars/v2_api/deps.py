@@ -127,67 +127,28 @@ async def get_current_org(
 
 
 # ---------------------------------------------------------------------------
-# Admin auth (D-66): admin-only endpoints accept EITHER
-#   - X-Admin-Token  (legacy: env-var-based shared secret, used by seed /
-#                     setup scripts; settings.admin_secret via DARS_ADMIN_TOKEN
-#                     / ADMIN_SECRET / admin_secret)
-#   - X-Admin-Session (per-admin session UUID issued by /api/v1/admin/login,
-#                      used by the dashboard webapp — F5)
-# Comparison of the static token uses hmac.compare_digest per Critical Rule #5.
-# Missing/wrong → 403.
+# Operator auth (D-66): for cross-org operator actions (seed/setup scripts).
+# Dashboard + per-org admin endpoints use get_current_org instead (which
+# accepts X-API-Key OR X-Admin-Session). require_admin is reserved for
+# the legacy shared-secret path; no v2 routers currently use it.
+# Comparison uses hmac.compare_digest per Critical Rule #5.
 # ---------------------------------------------------------------------------
 
 
-async def require_admin(
+def require_admin(
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
-    x_admin_session: str | None = Header(default=None, alias="X-Admin-Session"),
-    conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> None:
-    # Path 1: shared admin token (seed / setup scripts).
-    if x_admin_token:
-        expected = settings.admin_secret
-        if not expected or expected == "dev-secret":
-            log.warning("require_admin: admin_secret is unset or default; denying")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin auth is not configured on this server",
-            )
-        if not hmac.compare_digest(x_admin_token, expected):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin token required",
-            )
-        return
-
-    # Path 2: admin session (dashboard).
-    if x_admin_session:
-        try:
-            session_id = UUID(x_admin_session)
-        except (TypeError, ValueError):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Malformed admin session",
-            )
-        from datetime import datetime, timezone
-        row = await conn.fetchrow(
-            """
-            SELECT s.expires_at, s.revoked_at
-            FROM admin_sessions s
-            WHERE s.id = $1
-            """,
-            session_id,
+    expected = settings.admin_secret
+    if not expected or expected == "dev-secret":
+        log.warning("require_admin: admin_secret is unset or default; denying")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin auth is not configured on this server",
         )
-        if row is None:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid session")
-        if row["revoked_at"] is not None:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session revoked")
-        if row["expires_at"] < datetime.now(timezone.utc):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session expired")
-        return
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Admin token or session required",
-    )
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin token required",
+        )
 
 
