@@ -114,15 +114,14 @@ export interface Curriculum {
 
 export interface Grade {
   id: UUID;
-  code: string;        // 'G1'..'G5'
-  label: string;
-  grade_order: number;
+  code: number;        // 1..12
+  display_name: string; // 'Grade 1'..'Grade 12'
 }
 
 export interface Subject {
   id: UUID;
-  code: string;        // 'Eng' | 'Urdu' | 'Maths' | 'Science' | 'GK'
-  name: string;
+  code: string;        // 'Eng' | 'Urdu' | 'Maths' | 'Science' | 'GK' | …
+  display_name: string;
 }
 
 export interface SLO {

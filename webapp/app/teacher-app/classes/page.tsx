@@ -64,7 +64,7 @@ export default function ClassesPage() {
             cst_id: cst.id,
             className: klass?.name ?? `Class ${cst.school_class_id.slice(0, 8)}`,
             subjectCode: subject?.code ?? "—",
-            gradeCode: grade?.code ?? "—",
+            gradeCode: grade?.code != null ? String(grade.code) : "—",
             schoolName: school?.name ?? "—",
           } satisfies ClassListItem;
         }),
