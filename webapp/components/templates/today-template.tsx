@@ -38,7 +38,7 @@ export function TodayTemplate(props: TodayTemplateProps) {
     return (
       <EmptyState
         title="No classes assigned to you yet"
-        body="When an org admin assigns you to a class, today’s lesson will appear here."
+        body="Add a class from My classes, or reach out to your administrator."
       />
     );
   }

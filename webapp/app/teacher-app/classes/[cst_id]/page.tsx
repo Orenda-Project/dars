@@ -504,7 +504,7 @@ export default function ClassDetailPage() {
           ) : bookChapters.length === 0 ? (
             <TabEmpty
               title="No book linked"
-              body="A book hasn’t been wired to this class’s breakdown yet."
+              body="No book is set up for this class yet. Reach out to your administrator."
             />
           ) : (
             <ClassBookTab

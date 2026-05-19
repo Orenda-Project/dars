@@ -21,7 +21,7 @@ export function ClassAssessmentsTab({ items, onView }: AssessmentsTabProps) {
       <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
         <p className="text-sm font-medium text-dars-ink">No assessments yet</p>
         <p className="text-xs text-dars-muted mt-1">
-          When the breakdown is published with FA/SA slots they'll appear here.
+          No assessments are set up for this class yet. Reach out to your administrator.
         </p>
       </div>
     );

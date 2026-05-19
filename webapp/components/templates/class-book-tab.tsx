@@ -54,7 +54,7 @@ export function ClassBookTab({
       <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
         <p className="text-sm font-medium text-dars-ink">No book linked</p>
         <p className="text-xs text-dars-muted mt-1">
-          A book hasn’t been wired to this class’s breakdown yet.
+          No book is set up for this class yet. Reach out to your administrator.
         </p>
       </div>
     );

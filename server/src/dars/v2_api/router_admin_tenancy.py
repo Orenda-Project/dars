@@ -365,10 +365,16 @@ async def create_cst(
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> CSTWritten:
     """Create a CST (class × subject × teacher). Accepts X-Admin-Session
-    or X-API-Key — client apps can self-serve."""
+    or X-API-Key — client apps can self-serve.
+
+    Also auto-forks the breakdown chain so the new CST has a schedule
+    immediately when prerequisites exist (org breakdown, or a global
+    fallback). Failure of the auto-fork doesn't fail the CST creation —
+    the teacher just sees a "reach out to your administrator" hint.
+    """
     # tenancy + tie-ups
     klass = await conn.fetchrow(
-        "SELECT org_id, school_id FROM school_classes WHERE id = $1",
+        "SELECT org_id, school_id, grade_id FROM school_classes WHERE id = $1",
         payload.school_class_id,
     )
     if klass is None or klass["org_id"] != org.id:
@@ -387,7 +393,122 @@ async def create_cst(
         payload.teacher_id, payload.book_id,
     )
     log.info("create_cst: org=%s class=%s cst=%s", org.id, payload.school_class_id, row["id"])
+
+    # Best-effort: auto-fork → publish → realize so the teacher's class
+    # has a schedule out of the box. Never raises.
+    await _auto_fork_breakdown_for_cst(
+        conn,
+        org_id=org.id,
+        curriculum_id=org.curriculum_id,
+        grade_id=klass["grade_id"],
+        subject_id=payload.subject_id,
+        cst_id=row["id"],
+        book_id=payload.book_id,
+    )
+
     return CSTWritten(**dict(row))
+
+
+async def _auto_fork_breakdown_for_cst(
+    conn: asyncpg.Connection,
+    *,
+    org_id: UUID,
+    curriculum_id: UUID,
+    grade_id: UUID,
+    subject_id: UUID,
+    cst_id: UUID,
+    book_id: UUID | None,
+) -> None:
+    """Materialise the (global → org → class) breakdown chain for a new CST.
+
+    Steps:
+      1. If the CST has no book, skip — auto-build needs a book.
+      2. Look for a published org breakdown matching (org, curriculum,
+         grade, subject). If found, fork it to class scope and publish.
+      3. Otherwise, look for a published global breakdown matching
+         (curriculum, grade, subject). If found, fork it to org and
+         publish, then fork that to class and publish.
+      4. Realize the class breakdown.
+
+    All exceptions are caught and logged — CST creation must not fail
+    because the breakdown chain can't be built. The teacher app will
+    show a "reach out to your administrator" hint when no class
+    breakdown is present.
+    """
+    # Local imports to avoid a top-level cycle (router_admin_tenancy is
+    # imported very early in app startup; breakdown.* pulls in heavier
+    # service modules).
+    from dars.breakdown.fork_service import fork_breakdown
+    from dars.breakdown.realize_service import realize_class_breakdown
+
+    if book_id is None:
+        log.info(
+            "auto_fork_for_cst: cst=%s skipped — no book for "
+            "(curriculum=%s grade=%s subject=%s)",
+            cst_id, curriculum_id, grade_id, subject_id,
+        )
+        return
+
+    try:
+        # Step 1: org-scope published breakdown for the same (curriculum, grade, subject)?
+        org_breakdown_id = await conn.fetchval(
+            """
+            SELECT id FROM breakdowns
+            WHERE scope = 'org' AND status = 'published'
+              AND scope_ref_id = $1
+              AND curriculum_id = $2 AND grade_id = $3 AND subject_id = $4
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            org_id, curriculum_id, grade_id, subject_id,
+        )
+
+        if org_breakdown_id is None:
+            # Step 2: fall back to global → org → class.
+            global_id = await conn.fetchval(
+                """
+                SELECT id FROM breakdowns
+                WHERE scope = 'global' AND status = 'published'
+                  AND curriculum_id = $1 AND grade_id = $2 AND subject_id = $3
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                curriculum_id, grade_id, subject_id,
+            )
+            if global_id is None:
+                log.info(
+                    "auto_fork_for_cst: cst=%s no global breakdown for "
+                    "(curriculum=%s grade=%s subject=%s) — admin must seed one",
+                    cst_id, curriculum_id, grade_id, subject_id,
+                )
+                return
+            log.info("auto_fork_for_cst: cst=%s forking global=%s → org", cst_id, global_id)
+            org_breakdown_id, _, _ = await fork_breakdown(
+                conn, source_id=global_id, new_scope="org", scope_ref_id=org_id,
+            )
+            await conn.execute(
+                "UPDATE breakdowns SET status='published', updated_at=now() WHERE id=$1",
+                org_breakdown_id,
+            )
+
+        # Step 3: fork org → class and publish.
+        log.info("auto_fork_for_cst: cst=%s forking org=%s → class", cst_id, org_breakdown_id)
+        class_breakdown_id, _, _ = await fork_breakdown(
+            conn, source_id=org_breakdown_id, new_scope="class", scope_ref_id=cst_id,
+        )
+        await conn.execute(
+            "UPDATE breakdowns SET status='published', updated_at=now() WHERE id=$1",
+            class_breakdown_id,
+        )
+
+        # Step 4: realize.
+        await realize_class_breakdown(conn, class_breakdown_id)
+        log.info(
+            "auto_fork_for_cst: cst=%s done class_breakdown=%s",
+            cst_id, class_breakdown_id,
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("auto_fork_for_cst: cst=%s failed (CST stays without breakdown)", cst_id)
 
 
 @router.patch("/csts/{cst_id}", response_model=CSTWritten)
