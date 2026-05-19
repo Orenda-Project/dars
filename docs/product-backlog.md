@@ -37,6 +37,7 @@ When we drop class-scope from the breakdowns index, teachers/admins still need a
 
 ## Closed
 
+- **Teachers self-serve class creation.** `POST /api/v1/classes` and `POST /api/v1/csts` now accept `X-API-Key` via `get_current_org` (in addition to `X-Admin-Session`). `/teacher-app/classes` has an "+ Add class" panel that picks school + AY + grade + section + subject, reuses an existing `school_class` if one matches, and creates a CST bound to `org.default_teacher_id`. 2026-05-19.
 - **1 slot = 1 teaching day (D-74).** Auto-build now produces exactly `total_teaching_days` slots per breakdown. Uniform-per-topic lesson distribution; consecutive same-topic slots share `lp_type`. Projector becomes a 1:1 walk over working days. One-shot SQL migration invalidates the demo org's pre-D-74 breakdowns so the next seed pass rebuilds with the new shape. Breakdown detail UI groups consecutive identical slots into "Days N–M" runs. 2026-05-19.
 - **Breakdowns page → org-scope only with derived labels.** Dashboard `/breakdowns` now lists only the org's own master plans, labelled `{curriculum} · {grade} · {subject}`. Global breakdowns moved to a new "Templates" tab under `/dashboard/curriculum` where they can be forked. 2026-05-19.
 - **LP UI shows covered SLOs.** The lesson-plan viewer (`components/molecules/lp-viewer.tsx`) now renders a "Covered SLOs" chip group above the LP HTML, fetching sub-SLO statements via `/api/v2/sub-slos/{id}`. Handles `pending`/`failed` tagging states. 2026-05-19.
