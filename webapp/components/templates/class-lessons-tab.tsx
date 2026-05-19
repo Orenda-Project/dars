@@ -35,8 +35,7 @@ export function ClassLessonsTab({
       <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
         <p className="text-sm font-medium text-dars-ink">No lessons yet</p>
         <p className="text-xs text-dars-muted mt-1">
-          Once a breakdown is published for this class, lesson slots will
-          appear here.
+          No lessons are set up for this class yet. Reach out to your administrator.
         </p>
       </div>
     );

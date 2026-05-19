@@ -39,8 +39,7 @@ export function ClassesTemplate({ items, loading, error }: ClassesTemplateProps)
       <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
         <p className="text-sm font-medium text-dars-ink">No classes assigned</p>
         <p className="text-xs text-dars-muted mt-1">
-          An org admin needs to set you as a teacher on a class before it
-          shows here.
+          Add a class above, or reach out to your administrator.
         </p>
       </div>
     );

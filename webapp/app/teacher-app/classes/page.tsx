@@ -53,7 +53,7 @@ export default function ClassesPage() {
       const org = await tenancyApi.getMyOrg();
       const teacherId = org.default_teacher_id;
       if (!teacherId) {
-        setError("This org has no default teacher set — wire one in the dashboard.");
+        setError("No default teacher is set up yet. Reach out to your administrator.");
         setItems([]);
         return;
       }
