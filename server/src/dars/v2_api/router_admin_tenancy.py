@@ -2,9 +2,12 @@
 F5.5+F5.6+F5.7+F5.8 — admin tenancy CRUD.
 
 Create / update endpoints for schools, teachers, academic years,
-classes, and CSTs. All gated by X-Admin-Session via
-get_current_admin. Org scope is implicit from the session's
-org_id — admins can only create/edit inside their own org.
+classes, and CSTs. Most endpoints are gated by X-Admin-Session via
+get_current_admin (admin-only setup actions).
+
+Two endpoints — POST /classes and POST /csts — accept either
+X-Admin-Session or X-API-Key via get_current_org so client apps
+(teacher apps, B2B integrators) can self-serve class creation.
 
 Read endpoints (list/get) already exist in router_tenancy.py and are
 gated by X-API-Key. The teacher app uses those; the dashboard uses
@@ -18,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 
 from dars.v2_api.admin_auth import AdminContext, get_current_admin
-from dars.v2_api.deps import get_db_conn
+from dars.v2_api.deps import OrgContext, get_current_org, get_db_conn
 
 log = logging.getLogger("v2_api.admin_tenancy")
 
@@ -298,22 +301,23 @@ class SchoolClassWritten(BaseModel):
 @router.post("/classes", response_model=SchoolClassWritten, status_code=status.HTTP_201_CREATED)
 async def create_school_class(
     payload: SchoolClassCreate,
-    admin: AdminContext = Depends(get_current_admin),
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> SchoolClassWritten:
-    await _ensure_school_in_org(conn, payload.school_id, admin.org_id)
-    await _ensure_ay_in_org(conn, payload.academic_year_id, admin.org_id)
+    """Create a school_class. Accepts X-Admin-Session or X-API-Key —
+    client apps (teacher apps, B2B integrators) can self-serve."""
+    await _ensure_school_in_org(conn, payload.school_id, org.id)
+    await _ensure_ay_in_org(conn, payload.academic_year_id, org.id)
 
-    # Auto-name "Grade {N} — {section}" if not given.
+    # Auto-name "Grade {N} — {section}" if not given. grades.code is an int.
     name = payload.name
     if not name:
         grade_code = await conn.fetchval(
             "SELECT code FROM grades WHERE id = $1", payload.grade_id
         )
-        if not grade_code:
+        if grade_code is None:
             raise HTTPException(status_code=422, detail="grade not found")
-        grade_num = grade_code.lstrip("G") or grade_code
-        name = f"Grade {grade_num} — {payload.section}"
+        name = f"Grade {grade_code} — {payload.section}"
 
     row = await conn.fetchrow(
         """
@@ -321,10 +325,10 @@ async def create_school_class(
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, org_id, school_id, academic_year_id, grade_id, section, name
         """,
-        admin.org_id, payload.school_id, payload.academic_year_id,
+        org.id, payload.school_id, payload.academic_year_id,
         payload.grade_id, payload.section, name,
     )
-    log.info("create_school_class: school=%s class=%s", payload.school_id, row["id"])
+    log.info("create_school_class: org=%s school=%s class=%s", org.id, payload.school_id, row["id"])
     return SchoolClassWritten(**dict(row))
 
 
@@ -357,17 +361,19 @@ class CSTWritten(BaseModel):
 @router.post("/csts", response_model=CSTWritten, status_code=status.HTTP_201_CREATED)
 async def create_cst(
     payload: CSTCreate,
-    admin: AdminContext = Depends(get_current_admin),
+    org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> CSTWritten:
+    """Create a CST (class × subject × teacher). Accepts X-Admin-Session
+    or X-API-Key — client apps can self-serve."""
     # tenancy + tie-ups
     klass = await conn.fetchrow(
         "SELECT org_id, school_id FROM school_classes WHERE id = $1",
         payload.school_class_id,
     )
-    if klass is None or klass["org_id"] != admin.org_id:
+    if klass is None or klass["org_id"] != org.id:
         raise HTTPException(status_code=404, detail="class not found")
-    await _ensure_teacher_in_org(conn, payload.teacher_id, admin.org_id)
+    await _ensure_teacher_in_org(conn, payload.teacher_id, org.id)
 
     row = await conn.fetchrow(
         """
@@ -377,10 +383,10 @@ async def create_cst(
         VALUES ($1, $2, $3, $4, $5)
         RETURNING id, org_id, school_class_id, subject_id, teacher_id, book_id
         """,
-        admin.org_id, payload.school_class_id, payload.subject_id,
+        org.id, payload.school_class_id, payload.subject_id,
         payload.teacher_id, payload.book_id,
     )
-    log.info("create_cst: class=%s cst=%s", payload.school_class_id, row["id"])
+    log.info("create_cst: org=%s class=%s cst=%s", org.id, payload.school_class_id, row["id"])
     return CSTWritten(**dict(row))
 
 

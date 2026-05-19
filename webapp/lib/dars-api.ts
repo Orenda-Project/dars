@@ -1169,6 +1169,8 @@ export const admin = {
       method: "PATCH", body, auth: "admin",
     }),
 
+  // Accepts either X-Admin-Session (dashboard) or X-API-Key (teacher app /
+  // B2B integrator) — server's get_current_org resolves either to an org.
   createClass: (body: {
     school_id: UUID;
     academic_year_id: UUID;
@@ -1177,7 +1179,7 @@ export const admin = {
     name?: string;
   }) =>
     request<SchoolClass>("/api/v1/classes", {
-      method: "POST", body, auth: "admin",
+      method: "POST", body, auth: "org",
     }),
 
   createCST: (body: {
@@ -1187,7 +1189,7 @@ export const admin = {
     book_id?: UUID;
   }) =>
     request<CST>("/api/v1/csts", {
-      method: "POST", body, auth: "admin",
+      method: "POST", body, auth: "org",
     }),
   updateCST: (id: UUID, body: { teacher_id?: UUID; book_id?: UUID }) =>
     request<CST>(`/api/v1/csts/${id}`, {
