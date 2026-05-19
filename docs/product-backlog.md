@@ -8,31 +8,9 @@ Not to be confused with `.claude/improvements.md`, which captures harness/agent 
 
 ## Dashboard
 
-### 🟢 Breakdowns page should be org-scope only
+### 🟡 Class-detail breakdown view (deferred)
 
-**Symptom:** `/dashboard/breakdowns` lists every breakdown the org owns — global, org, and class. For a school with 30 classes × 5 subjects that's 150+ rows, mostly class-scope auto-realized copies that admins never edit.
-
-**Why it matters:** the dashboard is for the *client* (school admin / developer). They author at the org level. Class-scope is teachers' surface, reachable from the class detail page.
-
-**Proposed:**
-- `/dashboard/breakdowns` → org-scope only.
-- Global breakdowns ("templates to fork") move to the Curriculum tab where books and SLOs already live.
-- Class breakdowns reachable from `/dashboard/schools/{school}/classes/{class}` (read-only summary + "this class follows org breakdown; overrides shown here").
-
-**Open:** confirm class-detail page treats its breakdown as read-only vs. allowing slot/anchor tweaks. Real admin edits at class scope are rare; teachers do it implicitly via mark-taught/skip.
-
-### 🟢 Breakdowns need human-readable labels
-
-**Symptom:** the list shows raw `scope` tags ("global", "org", "class") with no name. No `name` column exists on the `breakdowns` table.
-
-**Proposed:** derive a label from the joins:
-```
-{curriculum_code} · {grade.display_name} · {subject.code} ({scope})
-e.g. "DARS · Grade 1 · Eng (org)"
-```
-Class-scope appends `{school} {class.name}-{section}`.
-
-No schema change needed; this is a webapp render fix (and the server may want to surface joined fields on the list endpoint to save N+1 lookups).
+When we drop class-scope from the breakdowns index, teachers/admins still need a way to inspect what a specific CST is following. Should land on the class detail page as a read-only summary ("this class follows org breakdown X; overrides shown here"). Not yet built; revisit after the slot-per-day model change so we're not building UI we'll throw away.
 
 ### 🟢 One slot = one teaching day (model change)
 
@@ -73,28 +51,6 @@ No schema change needed; this is a webapp render fix (and the server may want to
 
 **Open:** does generation tie to a specific slot (so the result lands on a CST schedule), or is it freeform and the teacher pastes/uses it ad-hoc? Probably both modes — slot-bound regenerate vs. ad-hoc quick-LP.
 
-### 🟢 LP UI doesn't show covered SLOs / sub-SLOs
-
-**Symptom:** When a teacher (or admin) views a generated LP, the rendered output shows the lesson content but doesn't surface which sub-SLOs the LP actually covers. The backend already tags this (`generated_lps.covered_sub_slo_ids`, surfaced on slot detail as `lp_covered_sub_slo_ids`), but the UI ignores it.
-
-**Why it matters:** teachers should know what learning outcomes the lesson is hitting — otherwise the SLO framework is invisible to the people actually teaching. Also useful for the dashboard admin to verify coverage.
-
-**Proposed:** at the top of every rendered LP (teacher app + dashboard), show a "Covered SLOs" chip group. Click a chip → see the sub-SLO statement. Read directly from the slot detail response; no new endpoint needed.
-
-**Note:** tagging is async — `lp_tagging_status` is `pending` → `done` (or `failed`). UI should handle the in-flight state ("SLO tags pending…") gracefully.
-
-### 🟢 No navigation between dashboard and teacher app
-
-**Symptom:** A user on `/dashboard/*` has no way to jump to `/teacher-app/*`, and vice versa. They're two distinct surfaces (admin vs. teacher demo) but share the same session/org, and during demos / QA we constantly need to switch between them.
-
-**Why it matters:** the teacher app exists to show clients "this is what a teacher's experience could look like" — but if they can't even find it from the dashboard, the demo value disappears. Same in reverse: a teacher demoing the app may want to glance back at the dashboard.
-
-**Proposed:** add a top-bar entry (or footer link) on each shell that links to the other:
-- Dashboard shell → "View teacher app demo →" (deep-links to `/teacher-app/today`)
-- Teacher app shell → "← Back to dashboard"
-
-Both should reuse the existing session — no re-auth required.
-
 ---
 
 ## Conventions for this file
@@ -102,3 +58,11 @@ Both should reuse the existing session — no re-auth required.
 - Add entries as you find them; don't wait for a session retrospect.
 - Set status: 🟢 next up · 🟡 known, deferred · ⚪ open question.
 - When something ships, move it to a `## Closed` section at the bottom with PR # and date.
+
+---
+
+## Closed
+
+- **Breakdowns page → org-scope only with derived labels.** Dashboard `/breakdowns` now lists only the org's own master plans, labelled `{curriculum} · {grade} · {subject}`. Global breakdowns moved to a new "Templates" tab under `/dashboard/curriculum` where they can be forked. 2026-05-19.
+- **LP UI shows covered SLOs.** The lesson-plan viewer (`components/molecules/lp-viewer.tsx`) now renders a "Covered SLOs" chip group above the LP HTML, fetching sub-SLO statements via `/api/v2/sub-slos/{id}`. Handles `pending`/`failed` tagging states. 2026-05-19.
+- **Dashboard ↔ teacher-app nav.** Dashboard header has a "Teacher app demo →" link; teacher-app top bar has "← Dashboard". 2026-05-19.

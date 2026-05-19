@@ -93,13 +93,21 @@ export function DashboardShell({
             <span className="text-dars-muted-light mx-2">·</span>
             <span className="text-dars-muted">{adminName}</span>
           </div>
-          <button
-            type="button"
-            onClick={onLogout}
-            className="text-xs text-dars-muted hover:text-dars-terra px-2 py-1 rounded hover:bg-dars-parchment-deep"
-          >
-            Log out
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/teacher-app/today"
+              className="text-xs text-dars-muted hover:text-dars-terra px-2 py-1 rounded hover:bg-dars-parchment-deep"
+            >
+              Teacher app demo →
+            </Link>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="text-xs text-dars-muted hover:text-dars-terra px-2 py-1 rounded hover:bg-dars-parchment-deep"
+            >
+              Log out
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 p-6 overflow-x-auto">{children}</main>
