@@ -78,6 +78,12 @@ export function TeacherAppShell({ activeHref, children }: TeacherAppShellProps) 
               />
             ))}
           </nav>
+          <Link
+            href="/dashboard/overview"
+            className="shrink-0 text-xs text-dars-muted hover:text-dars-terra px-2 py-1 rounded hover:bg-dars-parchment-deep whitespace-nowrap"
+          >
+            ← Dashboard
+          </Link>
         </div>
       </header>
 

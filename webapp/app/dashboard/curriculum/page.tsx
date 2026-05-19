@@ -10,18 +10,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   books as booksApi,
+  breakdowns as breakdownsApi,
   curriculum as curriculumApi,
   DarsApiError,
   admin,
   type AdminMeResponse,
   type Book,
+  type Breakdown,
   type Grade,
   type SLO,
   type SubSLO,
   type Subject,
 } from "@/lib/dars-api";
 
-type Tab = "slos" | "books";
+type Tab = "slos" | "books" | "templates";
 
 export default function CurriculumPage() {
   const [me, setMe] = useState<AdminMeResponse | null>(null);
@@ -33,6 +35,9 @@ export default function CurriculumPage() {
   const [slos, setSlos] = useState<SLO[]>([]);
   const [subSlosBySlo, setSubSlosBySlo] = useState<Record<string, SubSLO[]>>({});
   const [books, setBooks] = useState<Book[]>([]);
+  const [templates, setTemplates] = useState<Breakdown[]>([]);
+  const [orgBreakdowns, setOrgBreakdowns] = useState<Breakdown[]>([]);
+  const [busyForkId, setBusyForkId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -69,13 +74,34 @@ export default function CurriculumPage() {
             subject_id: subjectId,
           });
           if (!cancelled) setSlos(items);
-        } else {
+        } else if (tab === "books") {
           const { items } = await booksApi.getBooks({
             curriculum_id: me.curriculum_id,
             grade_id: gradeId,
             subject_id: subjectId,
           });
           if (!cancelled) setBooks(items);
+        } else {
+          // templates — global breakdowns + the org's existing org-scope
+          // ones (so we can mark a template "Already forked").
+          const [globalList, orgList] = await Promise.all([
+            breakdownsApi.getBreakdowns({ scope: "global" }),
+            breakdownsApi.getBreakdowns({ scope: "org" }),
+          ]);
+          if (cancelled) return;
+          setTemplates(
+            globalList.items
+              .filter(
+                (b) =>
+                  b.curriculum_id === me.curriculum_id &&
+                  b.grade_id === gradeId &&
+                  b.subject_id === subjectId &&
+                  b.status === "published",
+              ),
+          );
+          setOrgBreakdowns(
+            orgList.items.filter((b) => b.curriculum_id === me.curriculum_id),
+          );
         }
       } catch (err) {
         if (!cancelled) setError(formatErr(err));
@@ -85,6 +111,22 @@ export default function CurriculumPage() {
       cancelled = true;
     };
   }, [tab, me, gradeId, subjectId]);
+
+  async function handleForkOrg(globalId: string) {
+    if (!me) return;
+    setBusyForkId(globalId);
+    setError(null);
+    try {
+      await breakdownsApi.forkOrg(globalId, { org_id: me.org_id });
+      // refresh the org list so the "Already forked" hint flips on
+      const orgList = await breakdownsApi.getBreakdowns({ scope: "org" });
+      setOrgBreakdowns(orgList.items.filter((b) => b.curriculum_id === me.curriculum_id));
+    } catch (err) {
+      setError(formatErr(err));
+    } finally {
+      setBusyForkId(null);
+    }
+  }
 
   async function toggleSlo(sloId: string) {
     if (subSlosBySlo[sloId]) {
@@ -132,7 +174,7 @@ export default function CurriculumPage() {
       </div>
 
       <nav className="border-b border-dars-rule-light mb-4 flex gap-1">
-        {(["slos", "books"] as const).map((t) => (
+        {(["slos", "books", "templates"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -144,7 +186,7 @@ export default function CurriculumPage() {
                 : "border-transparent text-dars-muted hover:text-dars-ink")
             }
           >
-            {t === "slos" ? "SLOs" : "Books"}
+            {t === "slos" ? "SLOs" : t === "books" ? "Books" : "Templates"}
           </button>
         ))}
       </nav>
@@ -183,7 +225,7 @@ export default function CurriculumPage() {
             ))
           )}
         </ul>
-      ) : (
+      ) : tab === "books" ? (
         <ul className="space-y-2">
           {books.length === 0 ? (
             <li className="text-sm text-dars-muted">No books for this combination.</li>
@@ -201,6 +243,65 @@ export default function CurriculumPage() {
             ))
           )}
         </ul>
+      ) : (
+        <div>
+          <p className="text-sm text-dars-muted mb-2">
+            Published global breakdowns for {me?.curriculum_code}. Fork one
+            into your org to start customising.
+          </p>
+          {templates.length === 0 ? (
+            <p className="text-sm text-dars-muted">
+              No templates for this combination yet.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {templates.map((t) => {
+                const alreadyForked = orgBreakdowns.some(
+                  (o) =>
+                    o.parent_breakdown_id === t.id ||
+                    (o.grade_id === t.grade_id && o.subject_id === t.subject_id),
+                );
+                return (
+                  <li
+                    key={t.id}
+                    className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-dars-ink truncate">
+                        Global template
+                      </p>
+                      <p className="text-[10px] font-mono text-dars-muted-light mt-0.5">
+                        {t.id.slice(0, 8)}…
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <Link
+                        href={`/dashboard/breakdowns/${t.id}`}
+                        className="text-xs text-dars-terra hover:underline"
+                      >
+                        View
+                      </Link>
+                      {alreadyForked ? (
+                        <span className="text-xs text-dars-muted italic">
+                          Already in your org
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleForkOrg(t.id)}
+                          disabled={busyForkId === t.id}
+                          className="text-xs text-dars-ink hover:underline disabled:opacity-50"
+                        >
+                          {busyForkId === t.id ? "Forking…" : "Fork to org"}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

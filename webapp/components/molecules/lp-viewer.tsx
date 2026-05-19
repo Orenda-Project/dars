@@ -9,7 +9,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { slots, type ClassLessonSlotDetail, DarsApiError } from "@/lib/dars-api";
+import {
+  curriculum as curriculumApi,
+  slots,
+  type ClassLessonSlotDetail,
+  type SubSLO,
+  DarsApiError,
+} from "@/lib/dars-api";
 
 interface LPViewerProps {
   slotId: string;
@@ -103,13 +109,98 @@ export function LPViewer({ slotId }: LPViewerProps) {
 
   // READY
   return (
-    <article
-      className="prose prose-sm max-w-none text-dars-ink leading-relaxed"
-      // The HTML comes from LP Assistant; we trust the source (it's our
-      // own service). XSS risk is bounded by the dars→LP Assistant trust
-      // boundary already enforced via api-key + webhook secret.
-      dangerouslySetInnerHTML={{ __html: detail.lp_content ?? "" }}
-    />
+    <div className="space-y-4">
+      <CoveredSLOs
+        subSloIds={detail.lp_covered_sub_slo_ids}
+        taggingStatus={detail.lp_tagging_status}
+      />
+      <article
+        className="prose prose-sm max-w-none text-dars-ink leading-relaxed"
+        // The HTML comes from LP Assistant; we trust the source (it's our
+        // own service). XSS risk is bounded by the dars→LP Assistant trust
+        // boundary already enforced via api-key + webhook secret.
+        dangerouslySetInnerHTML={{ __html: detail.lp_content ?? "" }}
+      />
+    </div>
+  );
+}
+
+function CoveredSLOs({
+  subSloIds,
+  taggingStatus,
+}: {
+  subSloIds: string[];
+  taggingStatus: ClassLessonSlotDetail["lp_tagging_status"];
+}) {
+  const [subSlos, setSubSlos] = useState<SubSLO[] | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  // Stabilise array identity across poll cycles so we don't refetch on
+  // every parent re-render.
+  const idKey = subSloIds.join(",");
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = idKey ? idKey.split(",") : [];
+    if (ids.length === 0) {
+      setSubSlos([]);
+      return;
+    }
+    (async () => {
+      try {
+        const fetched = await Promise.all(
+          ids.map((id) => curriculumApi.getSubSLO(id)),
+        );
+        if (!cancelled) setSubSlos(fetched);
+      } catch {
+        if (!cancelled) setSubSlos([]); // fail soft — chips disappear
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [idKey]);
+
+  // Hide entirely if the LP is past tagging and no SLOs were tagged.
+  if (taggingStatus === "done" && subSloIds.length === 0) return null;
+
+  return (
+    <section className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3">
+      <p className="text-[10px] uppercase tracking-wider text-dars-muted font-semibold mb-2">
+        Covered SLOs
+      </p>
+      {taggingStatus === "pending" ? (
+        <p className="text-xs text-dars-muted italic">SLO tags pending…</p>
+      ) : taggingStatus === "failed" ? (
+        <p className="text-xs text-dars-muted italic">SLO tagging failed.</p>
+      ) : subSlos === null ? (
+        <p className="text-xs text-dars-muted italic">Loading…</p>
+      ) : subSlos.length === 0 ? (
+        <p className="text-xs text-dars-muted italic">No SLOs tagged.</p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {subSlos.map((s) => {
+            const isOpen = expanded === s.id;
+            return (
+              <li key={s.id} className="w-full">
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isOpen ? null : s.id)}
+                  className="text-left text-xs font-mono px-2 py-1 rounded bg-dars-parchment border border-dars-rule-light hover:bg-dars-parchment-deep transition-colors"
+                >
+                  {s.code}
+                  <span className="ml-1 text-dars-muted">{isOpen ? "▾" : "▸"}</span>
+                </button>
+                {isOpen ? (
+                  <p className="mt-1 text-xs text-dars-ink-soft pl-2 border-l-2 border-dars-terra/40">
+                    {s.statement}
+                  </p>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
