@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     # requests when unset (avoids accidentally accepting unsigned traffic).
     lp_assistant_webhook_secret: str = ""
     ug_eg_webhook_secret: str = ""
+
+    # When False (default), publishing a breakdown does NOT auto-queue LP /
+    # exam generation. The dashboard's manual triggers still work. Flip on
+    # via env DARS_PUBLISH_AUTO_ENQUEUE=1 once we're confident the upstream
+    # services can handle the fanout (publishing a class-scope breakdown
+    # under the D-74 slot-per-day model fans out one job per teaching day).
+    publish_auto_enqueue: bool = False
     cors_origins: str = "http://localhost:3000,https://truthful-renewal-production-c9ce.up.railway.app"
 
     @property
