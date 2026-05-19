@@ -6,6 +6,10 @@ into a list of ProjectedSlot by walking teaching days within the
 academic year, skipping holidays and non-timetable days, and honouring
 admin-set anchors.
 
+Since D-74 (1 slot = 1 teaching day), the algorithm is straight 1:1:
+slot N consumes teaching day N (skipping holidays/weekends). Anchors
+still let admins pin specific slots to specific dates.
+
 The pure function `project_schedule(slots, teaching_days, holidays)`
 exposes the algorithm for unit testing without DB.
 

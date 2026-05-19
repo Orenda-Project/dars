@@ -31,6 +31,7 @@ from dars.breakdown.auto_build_service import (
     AutoBuildRequest,
     auto_build_breakdown,
 )
+from dars.config import settings
 from dars.breakdown.fork_service import fork_breakdown
 from dars.breakdown.realize_service import realize_class_breakdown
 from dars.breakdown.slo_breakdown_service import (
@@ -516,7 +517,17 @@ async def publish_breakdown(
     log.info("publish_breakdown: id=%s now published", breakdown_id)
 
     # F3.11 — fire batch generation as a background task so publish stays fast.
-    background_tasks.add_task(_bg_enqueue_breakdown, row["id"])
+    # Gated on settings.publish_auto_enqueue (default False): under the D-74
+    # slot-per-day model, publishing a class-scope breakdown would fan out
+    # one upstream job per teaching day (~180). Set DARS_PUBLISH_AUTO_ENQUEUE=1
+    # to re-enable.
+    if settings.publish_auto_enqueue:
+        background_tasks.add_task(_bg_enqueue_breakdown, row["id"])
+    else:
+        log.info(
+            "publish_breakdown: id=%s — auto-enqueue disabled (settings.publish_auto_enqueue=False)",
+            breakdown_id,
+        )
 
     return await _hydrate_breakdown(conn, row)
 

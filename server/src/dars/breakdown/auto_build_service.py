@@ -5,24 +5,27 @@ Endpoint shape (caller in router_breakdown.py):
     POST /api/v2/breakdowns/auto-build
     body: AutoBuildRequest
 
-Algorithm (per phase doc 04-phase-2 §F2.5):
-    1. Compute per-chapter teaching-day budget proportional to topic count.
-    2. For each chapter, walk topics and emit:
-         - 1 lesson slot per topic (we don't have a length signal yet;
-           D-68 says "1-2 lessons" but for v1 keep it deterministic).
-         - lp_type via lp_type_heuristics.pick_lp_type().
-         - Every `fa_cadence` lesson slots, emit a formative_assessment
-           slot that covers the recent `fa_cadence` topics.
-         - At chapter end (after the last topic / last FA), emit
-           `sa_per_chapter` summative_assessment slot(s) covering
-           all topics in the chapter.
-         - End each chapter with a `revision` slot.
-    3. Persist as breakdown (status='draft'), breakdown_chapters, and
-       breakdown_slots in one transaction.
+Model: **1 slot = 1 teaching day** (D-74). The number of breakdown_slots
+rows for a breakdown equals breakdowns.total_teaching_days exactly.
 
-The number of slots is intentionally not pinned to total_teaching_days —
-total_teaching_days is stored on the breakdown row for the projector
-(F2.8). Slot counts come from the book's topic count + cadence.
+Algorithm:
+    1. Per chapter, allocate a day budget proportional to topic count
+       (compute_chapter_day_budget — sums to total_teaching_days).
+    2. Within each chapter, decide the per-day sequence:
+         a. Reserve `sa_per_chapter` days for SA + 1 day for revision.
+         b. Of the remaining lesson_days, every `fa_cadence`-th day is
+            a formative_assessment. fa_count is computed so that
+            lesson_days + fa_count + sa_count + revision_count == chapter_days.
+         c. Distribute lesson_days uniformly across topics.
+         d. Walk the lessons one day at a time; after every `fa_cadence`
+            lessons, slot an FA covering the recent topics. Then SA(s)
+            at the chapter end (covering all chapter topics) and one
+            revision slot.
+
+Properties:
+    - count(breakdown_slots WHERE breakdown_id = X) == total_teaching_days
+    - Consecutive same-topic lesson slots share lp_type (Identical, D-74).
+    - lp_type per topic comes from lp_type_heuristics.pick_lp_type().
 """
 import logging
 from dataclasses import dataclass, field
@@ -37,8 +40,7 @@ log = logging.getLogger("breakdown.auto_build")
 
 
 # ---------------------------------------------------------------------------
-# Request / result dataclasses (kept independent of pydantic so the service
-# can be called from a test harness without going through FastAPI).
+# Request / result dataclasses
 # ---------------------------------------------------------------------------
 
 
@@ -51,7 +53,6 @@ class AutoBuildRequest:
     total_teaching_days: int = 180
     fa_cadence: int = 5
     sa_per_chapter: int = 1
-    # Optional override; if None, scope='global' is assumed.
     scope: str = "global"
     scope_ref_id: UUID | None = None
 
@@ -79,23 +80,230 @@ def compute_chapter_day_budget(
 ) -> list[int]:
     """
     Split `total_teaching_days` across chapters proportional to topic count.
-    Returns one budget per chapter; sum may differ by ±N due to rounding.
-    Every chapter gets at least 1 day.
+    Returns one budget per chapter. Every chapter gets at least 1 day.
+    Sum is guaranteed to equal total_teaching_days.
     """
     total_topics = sum(topic_counts_in_order)
     if total_topics <= 0:
-        # No topics anywhere — give each chapter one day so something exists.
         return [1 for _ in topic_counts_in_order]
     raw = [
         (count / total_topics) * total_teaching_days for count in topic_counts_in_order
     ]
     rounded = [max(1, round(x)) for x in raw]
-    # Best-effort reconciliation: nudge the largest chapter to absorb drift.
     drift = total_teaching_days - sum(rounded)
     if drift != 0 and rounded:
         idx = rounded.index(max(rounded))
         rounded[idx] = max(1, rounded[idx] + drift)
     return rounded
+
+
+@dataclass(frozen=True)
+class ChapterDayAllocation:
+    """How a chapter's day budget is split into slot kinds."""
+
+    lesson_days: int           # number of lesson slots
+    fa_count: int              # number of FA slots
+    sa_count: int              # number of SA slots
+    revision_count: int        # 0 or 1
+    days_per_topic: list[int]  # length == topic_count; sum == lesson_days
+
+
+def allocate_chapter_days(
+    chapter_days: int,
+    topic_count: int,
+    fa_cadence: int,
+    sa_per_chapter: int,
+) -> ChapterDayAllocation:
+    """
+    Decide how the chapter's day budget splits into lesson/FA/SA/revision
+    slots, and how lesson days distribute across topics.
+
+    Invariant: lesson_days + fa_count + sa_count + revision_count == chapter_days.
+
+    Priority when the chapter is small:
+        1. SA(s) and revision are reserved first (1 day each).
+        2. Remaining days are split into lesson_days + fa_count, with
+           fa_count = floor(lesson_days / fa_cadence).
+        3. If even that's impossible (chapter_days too small), drop
+           revision then SAs until everything fits.
+
+    Lesson days distribute uniformly across topics: each topic gets
+    floor(lesson_days / topic_count) days; the first `remainder` topics
+    get one extra. If topic_count == 0, days_per_topic is empty and
+    lesson_days is 0.
+    """
+    if chapter_days < 1:
+        raise ValueError(f"chapter_days must be >= 1, got {chapter_days}")
+    if fa_cadence < 1:
+        raise ValueError(f"fa_cadence must be >= 1, got {fa_cadence}")
+    if sa_per_chapter < 0:
+        raise ValueError(f"sa_per_chapter must be >= 0, got {sa_per_chapter}")
+    if topic_count < 0:
+        raise ValueError(f"topic_count must be >= 0, got {topic_count}")
+
+    sa_count = sa_per_chapter
+    revision_count = 1
+    remaining = chapter_days - sa_count - revision_count
+
+    if remaining < 0:
+        revision_count = 0
+        remaining = chapter_days - sa_count
+        while remaining < 0 and sa_count > 0:
+            sa_count -= 1
+            remaining += 1
+        # remaining is now >= 0.
+
+    if topic_count == 0:
+        # No topics → no lessons, no FAs. Dump leftover into extra SAs to
+        # preserve the count == chapter_days invariant.
+        return ChapterDayAllocation(
+            lesson_days=0,
+            fa_count=0,
+            sa_count=sa_count + remaining,
+            revision_count=revision_count,
+            days_per_topic=[],
+        )
+
+    # Solve lesson_days + fa_count == remaining with fa_count == lesson_days // fa_cadence.
+    # Closed form: lesson_days = remaining - remaining // (fa_cadence + 1) ... but iterating
+    # is easier to read and converges in <= 2 steps.
+    lesson_days = remaining
+    fa_count = 0
+    for _ in range(64):
+        new_lessons = remaining - fa_count
+        new_fa = new_lessons // fa_cadence
+        if new_fa == fa_count and new_lessons == lesson_days:
+            break
+        lesson_days = new_lessons
+        fa_count = new_fa
+
+    # Sanity: enforce the invariant.
+    if lesson_days + fa_count != remaining:
+        # Off by one due to recurrence corner — eat the diff into fa_count.
+        fa_count = remaining - lesson_days
+
+    base = lesson_days // topic_count
+    rem = lesson_days % topic_count
+    days_per_topic = [base + (1 if i < rem else 0) for i in range(topic_count)]
+
+    return ChapterDayAllocation(
+        lesson_days=lesson_days,
+        fa_count=fa_count,
+        sa_count=sa_count,
+        revision_count=revision_count,
+        days_per_topic=days_per_topic,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Slot sequence planner (pure)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PlannedSlot:
+    slot_type: str           # 'lesson' | 'formative_assessment' | 'summative_assessment' | 'revision'
+    topic_id: UUID | None    # for lessons
+    lp_type: str | None      # for lessons; 'revision' for revision; None for FA/SA
+    covered_topic_ids: tuple[UUID, ...]  # for FA/SA: the topics this assessment covers
+
+
+def plan_chapter_slots(
+    topic_ids: list[UUID],
+    topic_lp_types: list[str],
+    allocation: ChapterDayAllocation,
+    fa_cadence: int,
+) -> list[PlannedSlot]:
+    """
+    Materialise the day-by-day sequence for one chapter.
+
+    Order: lessons (with FAs interleaved every `fa_cadence` lessons) →
+    SA(s) → revision. Returns exactly chapter_days slots.
+
+    For each topic, emit `allocation.days_per_topic[i]` consecutive
+    lesson slots with the same lp_type. After every `fa_cadence` lesson
+    days, slot an FA whose `covered_topic_ids` lists the topics touched
+    since the previous FA.
+    """
+    slots: list[PlannedSlot] = []
+    if len(topic_ids) != len(topic_lp_types):
+        raise ValueError("topic_ids and topic_lp_types length mismatch")
+    if len(topic_ids) != len(allocation.days_per_topic):
+        raise ValueError("topic count mismatch with allocation.days_per_topic")
+
+    # Walk lessons one day at a time, interleaving FAs.
+    fas_left = allocation.fa_count
+    lessons_since_last_fa = 0
+    recent_topic_ids: list[UUID] = []
+
+    for i, t_id in enumerate(topic_ids):
+        n = allocation.days_per_topic[i]
+        if n <= 0:
+            continue
+        lp_type = topic_lp_types[i]
+        for _ in range(n):
+            slots.append(
+                PlannedSlot(
+                    slot_type="lesson",
+                    topic_id=t_id,
+                    lp_type=lp_type,
+                    covered_topic_ids=(),
+                )
+            )
+            lessons_since_last_fa += 1
+            if t_id not in recent_topic_ids:
+                recent_topic_ids.append(t_id)
+            if lessons_since_last_fa >= fa_cadence and fas_left > 0:
+                slots.append(
+                    PlannedSlot(
+                        slot_type="formative_assessment",
+                        topic_id=None,
+                        lp_type=None,
+                        covered_topic_ids=tuple(recent_topic_ids),
+                    )
+                )
+                fas_left -= 1
+                lessons_since_last_fa = 0
+                recent_topic_ids = []
+
+    # If there are still FAs to emit (lesson_days % fa_cadence > 0 path,
+    # or no FAs were placed due to a small chapter), tack remaining FAs
+    # onto the end of the lesson sequence to preserve count parity.
+    while fas_left > 0:
+        slots.append(
+            PlannedSlot(
+                slot_type="formative_assessment",
+                topic_id=None,
+                lp_type=None,
+                covered_topic_ids=tuple(recent_topic_ids) if recent_topic_ids else tuple(topic_ids),
+            )
+        )
+        fas_left -= 1
+        recent_topic_ids = []
+
+    # SA(s) at chapter end — cover all chapter topics.
+    for _ in range(allocation.sa_count):
+        slots.append(
+            PlannedSlot(
+                slot_type="summative_assessment",
+                topic_id=None,
+                lp_type=None,
+                covered_topic_ids=tuple(topic_ids),
+            )
+        )
+
+    # Revision.
+    for _ in range(allocation.revision_count):
+        slots.append(
+            PlannedSlot(
+                slot_type="revision",
+                topic_id=None,
+                lp_type="revision",
+                covered_topic_ids=(),
+            )
+        )
+
+    return slots
 
 
 # ---------------------------------------------------------------------------
@@ -122,14 +330,12 @@ async def auto_build_breakdown(
     if request.total_teaching_days < 1:
         raise ValueError("total_teaching_days must be >= 1")
 
-    # Load subject code for lp_type validation.
     subject_code = await conn.fetchval(
         "SELECT code FROM subjects WHERE id = $1", request.subject_id
     )
     if subject_code is None:
         raise ValueError(f"subject_id {request.subject_id} not found")
 
-    # Verify the book matches curriculum/grade/subject.
     book = await conn.fetchrow(
         """
         SELECT id, curriculum_id, grade_id, subject_id
@@ -145,11 +351,8 @@ async def auto_build_breakdown(
         or book["grade_id"] != request.grade_id
         or book["subject_id"] != request.subject_id
     ):
-        raise ValueError(
-            "book does not match (curriculum_id, grade_id, subject_id)"
-        )
+        raise ValueError("book does not match (curriculum_id, grade_id, subject_id)")
 
-    # Load chapters + topics.
     chapters = await conn.fetch(
         """
         SELECT id, chapter_number, title
@@ -176,9 +379,6 @@ async def auto_build_breakdown(
     for tr in topic_rows:
         topics_by_chapter.setdefault(tr["book_chapter_id"], []).append(tr)
 
-    # For each topic, look up the parent SLO's recommended_lp_type (via
-    # topic_sub_slos → sub_slos → slos). Take the first non-null value we
-    # see for the topic; ordering by sub_slo position keeps it stable.
     topic_recommended_lp: dict[UUID, str | None] = {}
     if topic_rows:
         rec_rows = await conn.fetch(
@@ -196,14 +396,12 @@ async def auto_build_breakdown(
         for r in rec_rows:
             topic_recommended_lp.setdefault(r["topic_id"], r["recommended_lp_type"])
 
-    # Compute per-chapter day budget.
     topic_counts = [len(topics_by_chapter.get(c["id"], [])) for c in chapters]
     chapter_days = compute_chapter_day_budget(topic_counts, request.total_teaching_days)
 
     result = AutoBuildResult(breakdown_id=UUID(int=0))
 
     async with conn.transaction():
-        # 1. Insert the breakdown row.
         breakdown_id = await conn.fetchval(
             """
             INSERT INTO breakdowns
@@ -218,17 +416,17 @@ async def auto_build_breakdown(
         )
         result.breakdown_id = breakdown_id
 
-        global_position = 0  # incremented per slot inserted
+        global_position = 0
 
         for idx, chapter in enumerate(chapters):
             chapter_topics = topics_by_chapter.get(chapter["id"], [])
             if not chapter_topics:
+                # No topics — still emit a placeholder chapter row + fill
+                # its days with SAs/revision so total count parity holds.
                 result.warnings.append(
-                    f"chapter {chapter['chapter_number']} has no topics — skipping"
+                    f"chapter {chapter['chapter_number']} has no topics"
                 )
-                continue
 
-            # 1a. Insert the breakdown_chapter row.
             bd_chapter_id = await conn.fetchval(
                 """
                 INSERT INTO breakdown_chapters
@@ -240,15 +438,21 @@ async def auto_build_breakdown(
             )
             result.chapter_count += 1
 
-            # 2. Walk topics + emit lesson + FA slots.
-            chapter_position = 0
-            recent_topic_ids: list[UUID] = []  # for the next FA
-            chapter_topic_ids: list[UUID] = []  # for the chapter's SA(s)
-            lesson_count_in_chapter = 0
+            allocation = allocate_chapter_days(
+                chapter_days=chapter_days[idx],
+                topic_count=len(chapter_topics),
+                fa_cadence=request.fa_cadence,
+                sa_per_chapter=request.sa_per_chapter,
+            )
 
+            if chapter_topics and allocation.lesson_days == 0:
+                result.warnings.append(
+                    f"chapter {chapter['chapter_number']} budget too small for any lesson slots"
+                )
+
+            # Resolve lp_type per topic up front.
+            topic_lp_types: list[str] = []
             for topic in chapter_topics:
-                chapter_position += 1
-                global_position += 1
                 lp_type = pick_lp_type(
                     subject_code=subject_code,
                     topic_title=topic["title"],
@@ -260,108 +464,55 @@ async def auto_build_breakdown(
                         f"topic {topic['id']} got invalid lp_type {lp_type!r}; defaulting"
                     )
                     lp_type = "revision"
+                topic_lp_types.append(lp_type)
 
-                await conn.execute(
+            planned = plan_chapter_slots(
+                topic_ids=[t["id"] for t in chapter_topics],
+                topic_lp_types=topic_lp_types,
+                allocation=allocation,
+                fa_cadence=request.fa_cadence,
+            )
+
+            # Sanity invariant: planned slots match chapter_days.
+            if len(planned) != chapter_days[idx]:
+                result.warnings.append(
+                    f"chapter {chapter['chapter_number']}: planner produced "
+                    f"{len(planned)} slots for {chapter_days[idx]} days"
+                )
+
+            chapter_position = 0
+            for plan in planned:
+                chapter_position += 1
+                global_position += 1
+                slot_id = await conn.fetchval(
                     """
                     INSERT INTO breakdown_slots
                       (breakdown_id, breakdown_chapter_id, position, chapter_position,
                        slot_type, lp_type, topic_id)
-                    VALUES ($1, $2, $3, $4, 'lesson', $5, $6)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id
                     """,
-                    breakdown_id, bd_chapter_id, global_position,
-                    chapter_position, lp_type, topic["id"],
+                    breakdown_id, bd_chapter_id, global_position, chapter_position,
+                    plan.slot_type, plan.lp_type, plan.topic_id,
                 )
-                result.lesson_slot_count += 1
-                recent_topic_ids.append(topic["id"])
-                chapter_topic_ids.append(topic["id"])
-                lesson_count_in_chapter += 1
+                if plan.slot_type == "lesson":
+                    result.lesson_slot_count += 1
+                elif plan.slot_type == "formative_assessment":
+                    result.fa_slot_count += 1
+                elif plan.slot_type == "summative_assessment":
+                    result.sa_slot_count += 1
+                elif plan.slot_type == "revision":
+                    result.revision_slot_count += 1
 
-                # FA every `fa_cadence` lessons.
-                if lesson_count_in_chapter % request.fa_cadence == 0:
-                    chapter_position += 1
-                    global_position += 1
-                    fa_slot_id = await conn.fetchval(
-                        """
-                        INSERT INTO breakdown_slots
-                          (breakdown_id, breakdown_chapter_id, position, chapter_position,
-                           slot_type, lp_type, topic_id)
-                        VALUES ($1, $2, $3, $4, 'formative_assessment', NULL, NULL)
-                        RETURNING id
-                        """,
-                        breakdown_id, bd_chapter_id, global_position, chapter_position,
-                    )
-                    for i, t_id in enumerate(recent_topic_ids, start=1):
+                if plan.covered_topic_ids:
+                    for i, t_id in enumerate(plan.covered_topic_ids, start=1):
                         await conn.execute(
                             """
                             INSERT INTO breakdown_slot_topics (breakdown_slot_id, topic_id, position)
                             VALUES ($1, $2, $3)
                             """,
-                            fa_slot_id, t_id, i,
+                            slot_id, t_id, i,
                         )
-                    result.fa_slot_count += 1
-                    recent_topic_ids = []
-
-            # If there are recent topics not yet covered by an FA, do one final FA.
-            if recent_topic_ids:
-                chapter_position += 1
-                global_position += 1
-                fa_slot_id = await conn.fetchval(
-                    """
-                    INSERT INTO breakdown_slots
-                      (breakdown_id, breakdown_chapter_id, position, chapter_position,
-                       slot_type, lp_type, topic_id)
-                    VALUES ($1, $2, $3, $4, 'formative_assessment', NULL, NULL)
-                    RETURNING id
-                    """,
-                    breakdown_id, bd_chapter_id, global_position, chapter_position,
-                )
-                for i, t_id in enumerate(recent_topic_ids, start=1):
-                    await conn.execute(
-                        """
-                        INSERT INTO breakdown_slot_topics (breakdown_slot_id, topic_id, position)
-                        VALUES ($1, $2, $3)
-                        """,
-                        fa_slot_id, t_id, i,
-                    )
-                result.fa_slot_count += 1
-
-            # 3. SA(s) covering all topics in the chapter.
-            for _ in range(request.sa_per_chapter):
-                chapter_position += 1
-                global_position += 1
-                sa_slot_id = await conn.fetchval(
-                    """
-                    INSERT INTO breakdown_slots
-                      (breakdown_id, breakdown_chapter_id, position, chapter_position,
-                       slot_type, lp_type, topic_id)
-                    VALUES ($1, $2, $3, $4, 'summative_assessment', NULL, NULL)
-                    RETURNING id
-                    """,
-                    breakdown_id, bd_chapter_id, global_position, chapter_position,
-                )
-                for i, t_id in enumerate(chapter_topic_ids, start=1):
-                    await conn.execute(
-                        """
-                        INSERT INTO breakdown_slot_topics (breakdown_slot_id, topic_id, position)
-                        VALUES ($1, $2, $3)
-                        """,
-                        sa_slot_id, t_id, i,
-                    )
-                result.sa_slot_count += 1
-
-            # 4. Final revision slot.
-            chapter_position += 1
-            global_position += 1
-            await conn.execute(
-                """
-                INSERT INTO breakdown_slots
-                  (breakdown_id, breakdown_chapter_id, position, chapter_position,
-                   slot_type, lp_type, topic_id)
-                VALUES ($1, $2, $3, $4, 'revision', 'revision', NULL)
-                """,
-                breakdown_id, bd_chapter_id, global_position, chapter_position,
-            )
-            result.revision_slot_count += 1
 
         result.total_slot_count = (
             result.lesson_slot_count
