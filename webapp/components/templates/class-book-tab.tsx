@@ -2,14 +2,18 @@
  * F4.9 — Book tab template.
  *
  * Sidebar of chapters; main area shows the selected chapter's topics
- * with coverage markers. chapter_text rendering is deferred — it's a
- * structured list[dict] OCR slice and rendering it well needs design
- * work beyond what F4.9 specifies. We surface chapter + topic titles +
- * sub-SLO coverage state, which is the v1 acceptance bar.
+ * with coverage markers and per-topic sub-SLO chips. chapter_text
+ * rendering is deferred — it's a structured list[dict] OCR slice and
+ * rendering it well needs design work beyond what F4.9 specifies.
+ *
+ * Per-topic sub-SLOs are lazy: the parent page fetches `getTopicSubSLOs`
+ * only when a topic row is expanded, caching results by topic_id so a
+ * second expansion is instant. Avoids an N+1 storm on tab mount when a
+ * chapter has ~30 topics.
  */
 "use client";
 
-import type { BookChapter, Topic } from "@/lib/dars-api";
+import type { BookChapter, SubSLO, Topic } from "@/lib/dars-api";
 
 export interface BookTabChapter {
   chapter: BookChapter;
@@ -22,13 +26,29 @@ export interface BookTabTopic {
   coverage: number | null;
 }
 
+export type TopicSubSLOState =
+  | { state: "loading" }
+  | { state: "loaded"; items: SubSLO[] }
+  | { state: "error"; error: string };
+
 interface BookTabProps {
   chapters: BookTabChapter[];
   selectedChapterId: string | null;
   onSelectChapter: (chapter_id: string) => void;
+  expandedTopicId: string | null;
+  onToggleTopic: (topic_id: string) => void;
+  /** Cache keyed by topic_id. Missing key = not yet expanded. */
+  topicSubSLOs: Record<string, TopicSubSLOState>;
 }
 
-export function ClassBookTab({ chapters, selectedChapterId, onSelectChapter }: BookTabProps) {
+export function ClassBookTab({
+  chapters,
+  selectedChapterId,
+  onSelectChapter,
+  expandedTopicId,
+  onToggleTopic,
+  topicSubSLOs,
+}: BookTabProps) {
   if (chapters.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
@@ -72,7 +92,15 @@ export function ClassBookTab({ chapters, selectedChapterId, onSelectChapter }: B
           {selected.topics.length === 0 ? (
             <li className="text-xs text-dars-muted">No topics in this chapter.</li>
           ) : (
-            selected.topics.map((t) => <TopicRow key={t.topic.id} entry={t} />)
+            selected.topics.map((t) => (
+              <TopicRow
+                key={t.topic.id}
+                entry={t}
+                expanded={expandedTopicId === t.topic.id}
+                onToggle={() => onToggleTopic(t.topic.id)}
+                subSLOState={topicSubSLOs[t.topic.id]}
+              />
+            ))
           )}
         </ul>
       </section>
@@ -80,21 +108,101 @@ export function ClassBookTab({ chapters, selectedChapterId, onSelectChapter }: B
   );
 }
 
-function TopicRow({ entry }: { entry: BookTabTopic }) {
+function TopicRow({
+  entry,
+  expanded,
+  onToggle,
+  subSLOState,
+}: {
+  entry: BookTabTopic;
+  expanded: boolean;
+  onToggle: () => void;
+  subSLOState: TopicSubSLOState | undefined;
+}) {
   return (
-    <li className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3">
-      <div className="flex items-center gap-2 mb-1">
+    <li className="rounded-md border border-dars-rule-light bg-dars-parchment-mid overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="w-full text-left p-3 hover:bg-dars-parchment-deep/40 transition-colors flex items-center gap-2"
+      >
         <span className="font-mono text-xs text-dars-muted">
           {entry.topic.topic_number}
         </span>
         <span className="text-sm text-dars-ink">{entry.topic.title}</span>
         <CoveragePill coverage={entry.coverage} />
-      </div>
+        <span className="text-dars-muted text-xs ml-1" aria-hidden>
+          {expanded ? "▾" : "▸"}
+        </span>
+      </button>
       {entry.topic.topic_text ? (
-        <p className="text-xs text-dars-muted-light line-clamp-2 whitespace-pre-line">
+        <p className="px-3 pb-2 text-xs text-dars-muted-light line-clamp-2 whitespace-pre-line">
           {entry.topic.topic_text}
         </p>
       ) : null}
+      {expanded ? (
+        <div className="border-t border-dars-rule-light bg-dars-parchment p-3">
+          <SubSLOSection state={subSLOState} />
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function SubSLOSection({ state }: { state: TopicSubSLOState | undefined }) {
+  if (!state || state.state === "loading") {
+    return <p className="text-xs text-dars-muted italic">Loading sub-SLOs…</p>;
+  }
+  if (state.state === "error") {
+    return (
+      <p className="text-xs text-dars-muted-light">
+        Couldn’t load sub-SLOs ({state.error}).
+      </p>
+    );
+  }
+  if (state.items.length === 0) {
+    return (
+      <p className="text-xs text-dars-muted-light italic">
+        No sub-SLOs mapped to this topic.
+      </p>
+    );
+  }
+  return <SubSLOChipList items={state.items} />;
+}
+
+function SubSLOChipList({ items }: { items: SubSLO[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {items.map((s) => (
+        <SubSLOChip key={s.id} subSlo={s} />
+      ))}
+    </ul>
+  );
+}
+
+function SubSLOChip({ subSlo }: { subSlo: SubSLO }) {
+  // Native <details> keeps this leaf widget state-free; group-open:*
+  // variants swap the truncated chip text for the full statement.
+  return (
+    <li>
+      <details className="group">
+        <summary
+          className="cursor-pointer list-none flex items-start gap-2 text-xs px-2 py-1 rounded bg-dars-parchment-mid border border-dars-rule-light hover:bg-dars-parchment-deep transition-colors"
+          aria-label={`Sub-SLO ${subSlo.code}`}
+        >
+          <span className="font-mono text-dars-ink font-semibold whitespace-nowrap">
+            {subSlo.code}
+          </span>
+          <span className="text-dars-ink-soft flex-1 line-clamp-1 group-open:line-clamp-none group-open:whitespace-pre-line">
+            {subSlo.statement}
+          </span>
+          <span className="text-dars-muted pl-1 shrink-0" aria-hidden>
+            <span className="group-open:hidden">▸</span>
+            <span className="hidden group-open:inline">▾</span>
+          </span>
+        </summary>
+      </details>
     </li>
   );
 }

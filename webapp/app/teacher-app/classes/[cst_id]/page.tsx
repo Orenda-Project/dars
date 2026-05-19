@@ -19,6 +19,7 @@ import {
   ClassBookTab,
   type BookTabChapter,
   type BookTabTopic,
+  type TopicSubSLOState,
 } from "@/components/templates/class-book-tab";
 import {
   ClassDetailTemplate,
@@ -134,6 +135,10 @@ export default function ClassDetailPage() {
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [selectedBookChapterId, setSelectedBookChapterId] = useState<string | null>(null);
+  // Lazy per-topic sub-SLO cache. Fetched only when a topic row is
+  // expanded; second expansion is instant from the map.
+  const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
+  const [topicSubSLOs, setTopicSubSLOs] = useState<Record<string, TopicSubSLOState>>({});
   const [holidaysData, setHolidaysData] = useState<{
     items: Holiday[];
     effective_dates: string[];
@@ -236,6 +241,36 @@ export default function ClassDetailPage() {
       setBookError(formatErr(err));
     }
   }, [cstId, header?.bookId, selectedBookChapterId]);
+
+  // Lazy fetch sub-SLOs for a single topic; cached by topic_id so repeat
+  // expansions hit the map instead of the network. Collapse just flips
+  // expandedTopicId; the cache survives so re-expand is instant.
+  const onToggleTopic = useCallback(
+    (topic_id: string) => {
+      setExpandedTopicId((prev) => (prev === topic_id ? null : topic_id));
+      setTopicSubSLOs((prev) => {
+        if (prev[topic_id]) return prev; // already loading / loaded / errored
+        // Kick the fetch outside the setter; the loading marker we
+        // return below guards against StrictMode's double-invoke.
+        (async () => {
+          try {
+            const res = await booksApi.getTopicSubSLOs(topic_id);
+            setTopicSubSLOs((curr) => ({
+              ...curr,
+              [topic_id]: { state: "loaded", items: res.items },
+            }));
+          } catch (err) {
+            setTopicSubSLOs((curr) => ({
+              ...curr,
+              [topic_id]: { state: "error", error: formatErr(err) },
+            }));
+          }
+        })();
+        return { ...prev, [topic_id]: { state: "loading" } };
+      });
+    },
+    [],
+  );
 
   // SLO tab data
   const loadSLOs = useCallback(async () => {
@@ -475,7 +510,15 @@ export default function ClassDetailPage() {
             <ClassBookTab
               chapters={bookChapters}
               selectedChapterId={selectedBookChapterId}
-              onSelectChapter={setSelectedBookChapterId}
+              onSelectChapter={(id) => {
+                setSelectedBookChapterId(id);
+                // Collapse any open topic so the expanded panel doesn't
+                // hang around when the chapter switches under it.
+                setExpandedTopicId(null);
+              }}
+              expandedTopicId={expandedTopicId}
+              onToggleTopic={onToggleTopic}
+              topicSubSLOs={topicSubSLOs}
             />
           )
         ) : null}
