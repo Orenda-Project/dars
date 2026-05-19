@@ -195,33 +195,11 @@ export default function BreakdownEditorPage() {
                     />
                   </label>
                 </header>
-                <ul className="divide-y divide-dars-rule-light text-xs">
-                  {slots.length === 0 ? (
-                    <li className="px-3 py-2 text-dars-muted">No slots.</li>
-                  ) : (
-                    slots.map((s) => (
-                      <li
-                        key={s.id}
-                        className={
-                          "px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-dars-parchment-deep " +
-                          (selectedSlot?.id === s.id ? "bg-dars-parchment-deep" : "")
-                        }
-                        onClick={() => setSelectedSlot(s)}
-                      >
-                        <span className="font-mono text-dars-muted">#{s.position}</span>
-                        <span className="text-dars-ink">{s.slot_type}</span>
-                        {s.lp_type ? (
-                          <span className="text-[10px] text-dars-muted-light">{s.lp_type}</span>
-                        ) : null}
-                        {s.anchor_date ? (
-                          <span className="ml-auto text-[10px] text-dars-terra font-mono">
-                            📌 {s.anchor_date}
-                          </span>
-                        ) : null}
-                      </li>
-                    ))
-                  )}
-                </ul>
+                <SlotList
+                  slots={slots}
+                  selectedSlotId={selectedSlot?.id ?? null}
+                  onSelect={setSelectedSlot}
+                />
               </li>
             );
           })}
@@ -295,4 +273,149 @@ function formatErr(err: unknown): string {
   }
   if (err instanceof Error) return err.message;
   return "Failed";
+}
+
+// ---------------------------------------------------------------------------
+// SlotList — groups consecutive identical slots into "Days N–M" runs so a
+// 180-slot breakdown is browsable. A "run" is a maximal sequence of slots
+// with the same (slot_type, lp_type, topic_id) and no anchor on any slot
+// in the middle. A run of length 1 renders as a single-day row.
+// ---------------------------------------------------------------------------
+
+interface SlotRun {
+  slots: BreakdownSlot[];
+  slot_type: string;
+  lp_type: string | null;
+  topic_id: string | null;
+}
+
+function groupSlotsIntoRuns(slots: BreakdownSlot[]): SlotRun[] {
+  const runs: SlotRun[] = [];
+  for (const s of slots) {
+    const last = runs[runs.length - 1];
+    const canMerge =
+      last &&
+      last.slot_type === s.slot_type &&
+      last.lp_type === s.lp_type &&
+      last.topic_id === s.topic_id &&
+      // Anchors always break a run so the user can see them individually.
+      !s.anchor_date &&
+      !last.slots[last.slots.length - 1].anchor_date;
+    if (canMerge) {
+      last.slots.push(s);
+    } else {
+      runs.push({
+        slots: [s],
+        slot_type: s.slot_type,
+        lp_type: s.lp_type,
+        topic_id: s.topic_id,
+      });
+    }
+  }
+  return runs;
+}
+
+function SlotList({
+  slots,
+  selectedSlotId,
+  onSelect,
+}: {
+  slots: BreakdownSlot[];
+  selectedSlotId: string | null;
+  onSelect: (s: BreakdownSlot) => void;
+}) {
+  const runs = useMemo(() => groupSlotsIntoRuns(slots), [slots]);
+  const [expandedRunIdx, setExpandedRunIdx] = useState<number | null>(null);
+
+  if (slots.length === 0) {
+    return (
+      <ul className="divide-y divide-dars-rule-light text-xs">
+        <li className="px-3 py-2 text-dars-muted">No slots.</li>
+      </ul>
+    );
+  }
+
+  return (
+    <ul className="divide-y divide-dars-rule-light text-xs">
+      {runs.map((run, idx) => {
+        const first = run.slots[0];
+        const last = run.slots[run.slots.length - 1];
+        const isRun = run.slots.length > 1;
+        const expanded = expandedRunIdx === idx;
+        const anyAnchor = run.slots.some((s) => s.anchor_date);
+
+        if (!isRun) {
+          // Single-day row — render the slot directly.
+          return (
+            <li
+              key={first.id}
+              className={
+                "px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-dars-parchment-deep " +
+                (selectedSlotId === first.id ? "bg-dars-parchment-deep" : "")
+              }
+              onClick={() => onSelect(first)}
+            >
+              <span className="font-mono text-dars-muted">#{first.position}</span>
+              <span className="text-dars-ink">{first.slot_type}</span>
+              {first.lp_type ? (
+                <span className="text-[10px] text-dars-muted-light">{first.lp_type}</span>
+              ) : null}
+              {first.anchor_date ? (
+                <span className="ml-auto text-[10px] text-dars-terra font-mono">
+                  📌 {first.anchor_date}
+                </span>
+              ) : null}
+            </li>
+          );
+        }
+
+        return (
+          <li key={`run-${idx}`}>
+            <button
+              type="button"
+              onClick={() => setExpandedRunIdx(expanded ? null : idx)}
+              className="w-full px-3 py-1.5 flex items-center gap-2 text-left hover:bg-dars-parchment-deep"
+            >
+              <span className="font-mono text-dars-muted">
+                #{first.position}–{last.position}
+              </span>
+              <span className="text-dars-ink">{run.slot_type}</span>
+              {run.lp_type ? (
+                <span className="text-[10px] text-dars-muted-light">{run.lp_type}</span>
+              ) : null}
+              <span className="text-[10px] text-dars-muted ml-auto">
+                {run.slots.length} day{run.slots.length === 1 ? "" : "s"}{" "}
+                {expanded ? "▾" : "▸"}
+              </span>
+              {anyAnchor ? (
+                <span className="text-[10px] text-dars-terra font-mono">📌</span>
+              ) : null}
+            </button>
+            {expanded ? (
+              <ul className="divide-y divide-dars-rule-light bg-dars-parchment">
+                {run.slots.map((s) => (
+                  <li
+                    key={s.id}
+                    className={
+                      "pl-6 pr-3 py-1 flex items-center gap-2 cursor-pointer hover:bg-dars-parchment-deep " +
+                      (selectedSlotId === s.id ? "bg-dars-parchment-deep" : "")
+                    }
+                    onClick={() => onSelect(s)}
+                  >
+                    <span className="font-mono text-dars-muted">#{s.position}</span>
+                    <span className="text-[10px] text-dars-muted">{s.slot_type}</span>
+                    {s.anchor_date ? (
+                      <span className="ml-auto text-[10px] text-dars-terra font-mono">
+                        📌 {s.anchor_date}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
