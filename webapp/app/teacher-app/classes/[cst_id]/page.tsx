@@ -34,6 +34,7 @@ import {
 import {
   ClassSLOProgressTab,
   type SLOProgressGroup,
+  type SLOTreeSubSLO,
 } from "@/components/templates/class-slos-tab";
 import { ClassTimetableTab } from "@/components/templates/class-timetable-tab";
 import {
@@ -271,15 +272,14 @@ export default function ClassDetailPage() {
       const groups: SLOProgressGroup[] = await Promise.all(
         slos.map(async (slo: SLO) => {
           const { items: subSlos } = await curriculumApi.getSubSLOs(slo.id);
-          const merged: SubSLOCoverageEntry[] = subSlos.map((ss) => {
+          const merged: SLOTreeSubSLO[] = subSlos.map((ss) => {
             const hit = coverageBySubSLO.get(ss.id);
-            return (
-              hit ?? {
-                sub_slo_id: ss.id,
-                sub_slo_code: ss.code,
-                status: "not_taught",
-              }
-            );
+            return {
+              sub_slo_id: ss.id,
+              sub_slo_code: ss.code,
+              sub_slo_statement: ss.statement,
+              status: hit?.status ?? "not_taught",
+            };
           });
           return {
             slo_id: slo.id,
