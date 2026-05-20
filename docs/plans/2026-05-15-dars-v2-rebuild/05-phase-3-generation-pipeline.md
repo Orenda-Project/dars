@@ -82,9 +82,9 @@
   - `generate_bilingual: bool = False`
   - `callback_url: str` (= `{DARS_BASE_URL}/api/v1/webhooks/lp/{job_id}`)
   - Do NOT send `topic` (Decision: skip)
-  - Do NOT send `custom_prompt` (D)
+  - Do NOT send `custom_prompt` (D) — *Superseded by `docs/features/lp-slo-injection-and-linkage/01-decision-log.md` D-1 on 2026-05-20: `custom_prompt` is now sent for sub-SLO steering when the slot's topic has sub-SLOs. Empty topics still omit it (D-4).*
   - Do NOT send `system_prompt`
-  - Do NOT send `page_number` or `exercise_page_number`
+  - Do NOT send `page_number` or `exercise_page_number` — *Superseded earlier by the quick-LP path, which uses `page_number`. See current `_build_body` in `lp_assistant_client.py`.*
 - Response: 202 with `{ job_id: 'uuid' }`
 - Function signature: `async def request_lp_generation(payload: LPRequest) -> str` → returns job_id
 - Logs entry/exit/errors per Critical Rule #11

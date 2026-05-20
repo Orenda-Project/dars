@@ -7,11 +7,14 @@ the webhook handler in F3.6.
 
 Reference: docs/plans/2026-05-15-dars-v2-rebuild/08-reference-lp-assistant-api.md
 
-We send ONLY the fields the reference doc lists. Anything else (e.g.
-`topic`, `custom_prompt`, `system_prompt`, `page_number`,
-`exercise_page_number`) is intentionally omitted — sending them
-would either change LP Assistant's behavior in ways v1 doesn't want
-or trigger the "regular" lp_type fallback.
+We send the fields the reference doc lists, plus `custom_prompt` when the
+caller provides sub-SLO statements to steer the LLM (D-1 in
+docs/features/lp-slo-injection-and-linkage/01-decision-log.md, which
+supersedes the v2 rebuild plan's "Do NOT send custom_prompt" line in F3.2).
+Other fields (`topic`, `system_prompt`, `page_number`,
+`exercise_page_number`) remain intentionally omitted — sending them would
+either change LP Assistant's behavior in ways v1 doesn't want or trigger
+the "regular" lp_type fallback.
 
 Subject codes are passed through unchanged; they already match LP
 Assistant's enum after the F1.2 lookups seed (`Eng`, `Urdu`, `Maths`,
@@ -56,6 +59,9 @@ class LPRequest(BaseModel):
     callback_url: str
     class_strength: int = 30
     generate_bilingual: bool = False
+    # D-1: sub-SLO statements the LP should cover. If empty/None we omit
+    # `custom_prompt` entirely (D-4 — empty topics dispatch cleanly).
+    sub_slo_statements: list[str] | None = None
 
     @field_validator("subject")
     @classmethod
@@ -88,8 +94,18 @@ class LPRequest(BaseModel):
         return self
 
 
+def _build_custom_prompt(statements: list[str]) -> str:
+    """Format the D-1 sub-SLO coverage instruction. Frozen string."""
+    bullets = "\n".join(f"- {s}" for s in statements)
+    return (
+        "After this lesson plan, the following sub-SLOs should be covered:\n"
+        f"{bullets}"
+    )
+
+
 def _build_body(req: LPRequest) -> dict:
-    """Build the v3 request body — ONLY the fields the reference doc lists."""
+    """Build the v3 request body — fields the reference doc lists plus an
+    optional `custom_prompt` for sub-SLO steering (D-1)."""
     body: dict = {
         "curriculum": map_curriculum_for_lp_assistant(req.curriculum_code),
         "grade": req.grade,
@@ -103,6 +119,8 @@ def _build_body(req: LPRequest) -> dict:
         body["page_content"] = req.page_content
     elif req.page_number and req.page_number.strip():
         body["page_number"] = req.page_number
+    if req.sub_slo_statements:
+        body["custom_prompt"] = _build_custom_prompt(req.sub_slo_statements)
     return body
 
 
@@ -128,10 +146,11 @@ async def request_lp_generation(
     """
     body = _build_body(payload)
 
+    sub_slo_count = len(payload.sub_slo_statements or [])
     log.info(
-        "request_lp_generation: entry curriculum_in=%s curriculum_out=%s grade=%d subject=%s lp_type=%s callback_url=%s",
+        "request_lp_generation: entry curriculum_in=%s curriculum_out=%s grade=%d subject=%s lp_type=%s callback_url=%s sub_slo_count=%d",
         payload.curriculum_code, body["curriculum"], body["grade"],
-        body["subject"], body["lp_type"], payload.callback_url,
+        body["subject"], body["lp_type"], payload.callback_url, sub_slo_count,
     )
 
     if not settings.lp_assistant_api_key:
