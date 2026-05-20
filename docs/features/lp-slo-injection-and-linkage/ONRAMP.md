@@ -59,7 +59,7 @@ If two docs disagree, this is the order. Surface conflicts; don't silently pick 
 
 ## Step 5 — Current state
 
-**As of 2026-05-20 — single PR in flight: F1.1..F1.5 bundled.**
+**As of 2026-05-20 — ✅ Closed. PR #82 merged; Railway dars staging SUCCESS on commit 9f29862.**
 
 | Item | Status |
 |---|---|
@@ -70,10 +70,10 @@ If two docs disagree, this is the order. Surface conflicts; don't silently pick 
 | F1.3 `custom_prompt` in request body | ✅ `LPRequest.sub_slo_statements` + `_build_custom_prompt` |
 | F1.4 Thread requested set through 3 entry points | ✅ global / class / revision |
 | F1.5 Tests + plan cross-references | ✅ 3 new client tests + 1 DB-gated service test; F3.2 spec marked superseded; data-model row added |
-| Staging deployed | 🟡 awaiting Railway after merge |
-| Bead `feat-lp-slo-injection-and-linkage` | 🟡 open; close after staging green |
+| Staging deployed | ✅ deploy `555d6ee9` SUCCESS at 2026-05-20T10:46Z |
+| Bead `feat-lp-slo-injection-and-linkage` | ✅ closed |
 
-**Next thing to do unless the user says otherwise:** wait for the PR to merge, watch Railway server deploy on the parking branch, confirm `requested_sub_slo_ids` populates on a fresh dispatch via the demo API key, then close the bead and move this feature to Closed in `docs/features/README.md`.
+**Feature complete.** A teacher requesting an LP for a slot whose topic has sub-SLOs now gets the LLM steered via `custom_prompt`, and the requested sub-SLO ids are persisted on the `generated_lps` row at insert time, distinct from the F3.8 evidence-based `covered_sub_slo_ids`.
 
 ---
 
