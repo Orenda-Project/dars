@@ -195,6 +195,62 @@ class TestGeneratedLPCache:
         finally:
             await conn.close()
 
+    async def test_requested_sub_slo_ids_populated_and_dispatched(self):
+        """D-1..D-5: requested_sub_slo_ids on the row matches the topic's
+        topic_sub_slos join, and the dispatcher receives the same set as
+        sub_slo_statements (statements only, ordered by sub_slo.code)."""
+        conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+        try:
+            slot = await self._seed_lesson_slot(conn)
+            expected = await conn.fetch(
+                """
+                SELECT ss.id, ss.statement
+                FROM topic_sub_slos tss
+                JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+                WHERE tss.topic_id = $1
+                ORDER BY ss.code
+                """,
+                slot["topic_id"],
+            )
+            expected_ids = [r["id"] for r in expected]
+            expected_statements = [r["statement"] for r in expected]
+
+            captured: list = []
+
+            async def capturing_dispatcher(req) -> str:
+                captured.append(req)
+                return f"fake-job-{uuid4()}"
+
+            lp = await get_or_generate_lp(
+                conn, slot["slot_id"], dispatcher=capturing_dispatcher
+            )
+
+            persisted = await conn.fetchval(
+                "SELECT requested_sub_slo_ids FROM generated_lps WHERE id = $1",
+                lp.id,
+            )
+            assert persisted == expected_ids, (
+                f"persisted requested_sub_slo_ids mismatch: "
+                f"got {persisted}, expected {expected_ids}"
+            )
+
+            assert len(captured) == 1
+            sent = captured[0].sub_slo_statements or []
+            if expected_statements:
+                assert sent == expected_statements
+            else:
+                # D-4: empty topic → no statements sent → no custom_prompt
+                assert sent == [] or sent is None
+
+            # Cleanup
+            await conn.execute(
+                "UPDATE class_lesson_slots SET generated_lp_id = NULL WHERE id = $1",
+                slot["slot_id"],
+            )
+            await conn.execute("DELETE FROM generated_lps WHERE id = $1", lp.id)
+        finally:
+            await conn.close()
+
     async def test_error_state_re_requests(self):
         conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
         try:

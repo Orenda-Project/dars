@@ -128,9 +128,11 @@ async def test_sends_only_v3_fields_and_returns_job_id():
     assert captured["body"]["generate_bilingual"] is False
     assert captured["body"]["callback_url"].endswith("/abc")
 
-    # Forbidden v1/v2 fields must NOT appear. page_number is no longer
-    # forbidden — the quick-LP path uses it; but this test sets
-    # page_content so page_number should still be absent here.
+    # Forbidden v1/v2 fields must NOT appear. `custom_prompt` is now
+    # conditionally sent (D-1) — when no sub_slo_statements are supplied
+    # it must remain absent, as in this test. `page_number` is no longer
+    # universally forbidden (quick-LP path uses it) but should be absent
+    # here because page_content was provided.
     for forbidden in (
         "topic", "custom_prompt", "system_prompt",
         "exercise_page_number",
@@ -172,6 +174,64 @@ async def test_missing_job_id_raises():
     async with httpx.AsyncClient(transport=_mock_transport(handler)) as client:
         with pytest.raises(KeyError, match="job_id"):
             await request_lp_generation(_good_payload(), client=client)
+
+
+# ---------------------------------------------------------------------------
+# D-1 / D-4: custom_prompt is sent iff sub_slo_statements is non-empty.
+# ---------------------------------------------------------------------------
+
+
+async def test_custom_prompt_sent_with_d1_format_when_sub_slos_provided():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(202, json={"job_id": "j-slo"})
+
+    statements = [
+        "Recognise the sound of letter A.",
+        "Match capital and lowercase A.",
+    ]
+    async with httpx.AsyncClient(transport=_mock_transport(handler)) as client:
+        await request_lp_generation(
+            _good_payload(sub_slo_statements=statements), client=client
+        )
+
+    assert captured["body"]["custom_prompt"] == (
+        "After this lesson plan, the following sub-SLOs should be covered:\n"
+        "- Recognise the sound of letter A.\n"
+        "- Match capital and lowercase A."
+    )
+
+
+async def test_custom_prompt_absent_when_sub_slos_empty_list():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(202, json={"job_id": "j-empty"})
+
+    async with httpx.AsyncClient(transport=_mock_transport(handler)) as client:
+        await request_lp_generation(
+            _good_payload(sub_slo_statements=[]), client=client
+        )
+
+    assert "custom_prompt" not in captured["body"]
+
+
+async def test_custom_prompt_absent_when_sub_slos_none():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(202, json={"job_id": "j-none"})
+
+    async with httpx.AsyncClient(transport=_mock_transport(handler)) as client:
+        await request_lp_generation(
+            _good_payload(sub_slo_statements=None), client=client
+        )
+
+    assert "custom_prompt" not in captured["body"]
 
 
 async def test_missing_api_key_raises(monkeypatch):

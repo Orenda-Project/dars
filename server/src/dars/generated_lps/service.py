@@ -150,6 +150,52 @@ async def _load_curriculum_code(conn: asyncpg.Connection, curriculum_id: UUID) -
     return code
 
 
+async def _load_topic_sub_slos(
+    conn: asyncpg.Connection, topic_id: UUID
+) -> list[tuple[UUID, str]]:
+    """Return (sub_slo_id, statement) for a topic, ordered by sub_slos.code.
+
+    D-3: requested sub-SLOs come from the `topic_sub_slos` join, sorted by
+    code for stable ordering (matters for D-1's prompt-string determinism
+    and easier diffing). D-4: empty result is fine — caller dispatches
+    without `custom_prompt`.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT ss.id AS id, ss.statement AS statement
+        FROM topic_sub_slos tss
+        JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+        WHERE tss.topic_id = $1
+        ORDER BY ss.code
+        """,
+        topic_id,
+    )
+    return [(r["id"], r["statement"]) for r in rows]
+
+
+async def _load_union_topic_sub_slos(
+    conn: asyncpg.Connection, topic_ids: list[UUID]
+) -> list[tuple[UUID, str]]:
+    """Union of sub-SLOs across topics (D-5: used by the revision path).
+
+    De-duped by sub_slo.id; ordered by code so the prompt string and the
+    persisted array are stable.
+    """
+    if not topic_ids:
+        return []
+    rows = await conn.fetch(
+        """
+        SELECT DISTINCT ss.id AS id, ss.statement AS statement, ss.code AS code
+        FROM topic_sub_slos tss
+        JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+        WHERE tss.topic_id = ANY($1::uuid[])
+        ORDER BY ss.code
+        """,
+        topic_ids,
+    )
+    return [(r["id"], r["statement"]) for r in rows]
+
+
 async def _find_existing(
     conn: asyncpg.Connection, *, scope: str, cache_key: str
 ) -> asyncpg.Record | None:
@@ -206,21 +252,28 @@ async def _insert_pending_lp(
     subject_id: UUID,
     topic_id: UUID,
     lp_type: str,
+    requested_sub_slo_ids: list[UUID],
 ) -> UUID:
-    """Insert a row at PENDING and return its UUID."""
+    """Insert a row at PENDING and return its UUID.
+
+    D-2: `requested_sub_slo_ids` captures intent at dispatch time; empty
+    list is persisted as `[]` (not NULL) so we can distinguish "we did
+    request, and the topic had no sub-SLOs" from legacy/pre-feature rows
+    where the column is NULL.
+    """
     new_id = await conn.fetchval(
         """
         INSERT INTO generated_lps (
             cache_key, scope, scope_ref_id,
             curriculum_id, grade_id, subject_id,
-            topic_id, lp_type, status
+            topic_id, lp_type, status, requested_sub_slo_ids
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', $9)
         RETURNING id
         """,
         cache_key, scope, scope_ref_id,
         curriculum_id, grade_id, subject_id,
-        topic_id, lp_type,
+        topic_id, lp_type, requested_sub_slo_ids,
     )
     return new_id
 
@@ -260,6 +313,7 @@ async def _dispatch_and_mark(
     subject_code: str,
     topic_text: str,
     lp_type: str,
+    sub_slo_statements: list[str],
     dispatcher: DispatchCallable,
 ) -> str | None:
     """Send to LP Assistant and update the row to IN_FLIGHT (or ERROR).
@@ -273,6 +327,7 @@ async def _dispatch_and_mark(
         page_content=topic_text,
         lp_type=lp_type,
         callback_url=_build_callback_url(generated_lp_id),
+        sub_slo_statements=sub_slo_statements or None,
     )
     try:
         job_id = await dispatcher(payload)
@@ -340,12 +395,17 @@ async def get_or_generate_lp(
             cache_key,
         )
 
+    sub_slo_pairs = await _load_topic_sub_slos(conn, topic_id)
+    requested_ids = [p[0] for p in sub_slo_pairs]
+    sub_slo_statements = [p[1] for p in sub_slo_pairs]
+
     new_id = await _insert_pending_lp(
         conn,
         scope="global", scope_ref_id=None, cache_key=cache_key,
         curriculum_id=curriculum_id, grade_id=ctx["grade_id"],
         subject_id=ctx["subject_id"], topic_id=topic_id,
         lp_type=lp_type,
+        requested_sub_slo_ids=requested_ids,
     )
     await _link_slot_to_lp(conn, lesson_slot_id, new_id)
 
@@ -358,14 +418,15 @@ async def get_or_generate_lp(
         subject_code=ctx["subject_code"],
         topic_text=ctx["topic_text"],
         lp_type=lp_type,
+        sub_slo_statements=sub_slo_statements,
         dispatcher=dispatcher or default_request_lp_generation,
     )
 
     fresh = await _find_existing(conn, scope="global", cache_key=cache_key)
     assert fresh is not None
     log.info(
-        "get_or_generate_lp: inserted lesson_slot_id=%s gen_lp_id=%s status=%s",
-        lesson_slot_id, fresh["id"], fresh["status"],
+        "get_or_generate_lp: inserted lesson_slot_id=%s gen_lp_id=%s status=%s requested_sub_slos=%d",
+        lesson_slot_id, fresh["id"], fresh["status"], len(requested_ids),
     )
     return _record_to_dataclass(fresh)
 
@@ -414,12 +475,17 @@ async def get_or_generate_class_specific_lp(
         )
         return _record_to_dataclass(existing)
 
+    sub_slo_pairs = await _load_topic_sub_slos(conn, topic_id)
+    requested_ids = [p[0] for p in sub_slo_pairs]
+    sub_slo_statements = [p[1] for p in sub_slo_pairs]
+
     new_id = await _insert_pending_lp(
         conn,
         scope="class", scope_ref_id=cst_id, cache_key=cache_key,
         curriculum_id=curriculum_id, grade_id=ctx["grade_id"],
         subject_id=ctx["subject_id"], topic_id=topic_id,
         lp_type=lp_type,
+        requested_sub_slo_ids=requested_ids,
     )
     await _link_slot_to_lp(conn, lesson_slot_id, new_id)
 
@@ -432,6 +498,7 @@ async def get_or_generate_class_specific_lp(
         subject_code=ctx["subject_code"],
         topic_text=ctx["topic_text"],
         lp_type=lp_type,
+        sub_slo_statements=sub_slo_statements,
         dispatcher=dispatcher or default_request_lp_generation,
     )
 
@@ -568,19 +635,26 @@ async def get_or_generate_revision_lp(
         )
         return _record_to_dataclass(existing)
 
+    # D-5: requested sub-SLOs = union over the capped prior topics. Use the
+    # *capped* set so steering matches what we actually sent in page_content.
+    sub_slo_pairs = await _load_union_topic_sub_slos(conn, topic_ids)
+    requested_ids = [p[0] for p in sub_slo_pairs]
+    sub_slo_statements = [p[1] for p in sub_slo_pairs]
+
     # Insert PENDING with topic_id NULL and revision_topic_set_hash set.
     new_id = await conn.fetchval(
         """
         INSERT INTO generated_lps (
             cache_key, scope, scope_ref_id,
             curriculum_id, grade_id, subject_id,
-            topic_id, revision_topic_set_hash, lp_type, status
+            topic_id, revision_topic_set_hash, lp_type, status,
+            requested_sub_slo_ids
         )
-        VALUES ($1, 'global', NULL, $2, $3, $4, NULL, $5, 'revision', 'PENDING')
+        VALUES ($1, 'global', NULL, $2, $3, $4, NULL, $5, 'revision', 'PENDING', $6)
         RETURNING id
         """,
         cache_key, ctx["curriculum_id"], ctx["grade_id"], ctx["subject_id"],
-        topic_ids_hash,
+        topic_ids_hash, requested_ids,
     )
 
     # Persist topic membership so tagging (F3.8) can union sub-SLOs.
@@ -618,6 +692,7 @@ async def get_or_generate_revision_lp(
         subject_code=ctx["subject_code"],
         topic_text=page_content,
         lp_type="revision",
+        sub_slo_statements=sub_slo_statements,
         dispatcher=dispatcher or default_request_lp_generation,
     )
 

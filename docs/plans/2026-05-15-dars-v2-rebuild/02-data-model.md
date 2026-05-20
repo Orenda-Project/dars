@@ -465,6 +465,7 @@ Cached at curriculum-topic-lp_type level (D-46, D-56, D-57).
 | `content` | TEXT NULL | HTML |
 | `content_bilingual` | TEXT NULL | |
 | `covered_sub_slo_ids` | UUID[] NULL | from Schema's lp_tagging post-process (D-22) |
+| `requested_sub_slo_ids` | UUID[] NULL | intent at dispatch — the sub-SLOs we asked LP Assistant to cover via `custom_prompt`. Set on the initial PENDING insert; never changed afterwards. See [features/lp-slo-injection-and-linkage](../../features/lp-slo-injection-and-linkage/README.md). |
 | `tagging_status` | TEXT DEFAULT 'pending' | `pending \| done \| failed` |
 | `cost_usd` | NUMERIC NULL | (D-10) |
 | `tokens_input` | INT NULL | |
