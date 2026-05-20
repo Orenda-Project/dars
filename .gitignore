@@ -4,6 +4,7 @@
 # Claude Code local state (memory lives in ~/.claude, not in repo)
 .claude/projects/
 .claude/worktrees/
+.claude/sessions/
 
 # Environment
 .env
