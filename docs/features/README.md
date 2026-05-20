@@ -6,7 +6,7 @@ The v2 rebuild (`docs/plans/2026-05-15-dars-v2-rebuild/`) predates this conventi
 
 ## Active
 
-_(none)_
+- [breakdown-slot-editing](breakdown-slot-editing/README.md) — let org admins edit slot type/lp_type/topic and add/delete slots in a draft org-scope breakdown. In flight on `feat/breakdown-slot-editing`.
 
 ## Closed
 
