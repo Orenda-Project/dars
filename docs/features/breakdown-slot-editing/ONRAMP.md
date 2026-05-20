@@ -52,21 +52,22 @@ If you find a real conflict, surface it; don't silently pick a side.
 
 ## Step 5 — Current state
 
-**As of 2026-05-20 — PR in flight (F1.1+F1.2+F1.3 implemented, typecheck green).**
+**As of 2026-05-20 — ✅ Closed. PR #84 merged 11:16Z, Railway webapp deploy 25aee0b6 SUCCESS on commit eab2ee2.**
 
 | Item | Status |
 |---|---|
-| Plan written | ✅ README + glossary + decision-log + phase doc committed in-conversation |
+| Plan written | ✅ |
 | Plan reviewed by user | ✅ approved 2026-05-20; D-9 added to capture fork-isolation guarantee |
-| Bead `feat-breakdown-slot-editing` | ✅ opened 2026-05-20 |
+| Bead `feat-breakdown-slot-editing` | ✅ closed 2026-05-20 |
 | F1.1 — dars-api.ts wrappers | ✅ `addSlot`, `patchSlot`, `deleteSlot` on `breakdowns` namespace |
-| F1.2 — side-panel editor | ✅ `SlotEditor` component with slot/lp_type dropdown, topic dropdown, anchor, Save/Cancel, Delete; `slot-types.ts` lib added |
+| F1.2 — side-panel editor | ✅ `SlotEditor` component (slot/lp_type combo dropdown, topic dropdown, atomic PATCH save, Delete); `slot-types.ts` lib |
 | F1.3 — + Add slot per chapter | ✅ button in chapter header (org draft only); auto-selects new slot |
 | Local typecheck | ✅ `tsc --noEmit` clean |
-| PR opened | 🟡 about to push branch + open PR vs staging |
-| F1.4 — post-merge staging E2E | ⬜ |
+| PR | ✅ #84 merged 2026-05-20 11:16Z |
+| Railway webapp deploy | ✅ 25aee0b6 SUCCESS on commit eab2ee2 |
+| F1.4 — staging UI smoke | 🟡 hand-off: page returns HTTP 200; manual click-through pending user session |
 
-**Next thing to do:** push the branch, open the PR against `staging`, wait for merge, then run F1.4 acceptance on `https://dars-fe-stage.up.railway.app`.
+**Status:** shipped to staging. Server was SKIPPED (no watched files changed); webapp deploy green. UI walkthrough by the user on `https://dars-fe-stage.up.railway.app/dashboard/breakdowns/<draft-org-id>` is the only remaining verification.
 
 ## Step 6 — Where to find supporting context
 
