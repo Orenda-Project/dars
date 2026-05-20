@@ -13,6 +13,8 @@ owner: hataf
 | [commands.md](commands.md) | Dev commands, environment setup, Supabase envs |
 | [design-system.md](design-system.md) | Color tokens, typography, visual language |
 | [WRITING_DOCS.md](WRITING_DOCS.md) | How to write and organize docs in this repo |
+| [harness-setup.md](harness-setup.md) | What lives in `.claude/` — hooks, skills, agents, telemetry |
+| [harness-report.md](harness-report.md) | One-page tour: contents + tool-use flow + evolution log |
 | [context/](context/README.md) | Company background, teams, LP assistant API |
 | [adr/](adr/README.md) | Architecture decisions and rationale |
 | [specs/](specs/README.md) | Feature design specs |
