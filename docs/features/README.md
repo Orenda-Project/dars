@@ -6,8 +6,8 @@ The v2 rebuild (`docs/plans/2026-05-15-dars-v2-rebuild/`) predates this conventi
 
 ## Active
 
-- [lp-slo-injection-and-linkage](lp-slo-injection-and-linkage/README.md) — inject topic sub-SLOs into LP Assistant `custom_prompt` and persist the requested set on `generated_lps`. **PR in flight; awaiting staging deploy.**
+_(none)_
 
 ## Closed
 
-_(none yet)_
+- [lp-slo-injection-and-linkage](lp-slo-injection-and-linkage/README.md) — inject topic sub-SLOs into LP Assistant `custom_prompt` and persist the requested set on `generated_lps`. Shipped 2026-05-20 via PR #82.
