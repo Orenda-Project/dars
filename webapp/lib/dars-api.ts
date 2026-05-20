@@ -830,6 +830,43 @@ export const breakdowns = {
       `/api/v2/breakdowns/${breakdownId}/slots/${slotId}/anchor`,
       { method: "PATCH", body },
     ),
+
+  addSlot: (
+    breakdownId: UUID,
+    body: {
+      breakdown_chapter_id: UUID;
+      position: number;
+      chapter_position: number;
+      slot_type: BreakdownSlot["slot_type"];
+      lp_type: string | null;
+      topic_id: UUID | null;
+      anchor_date: ISODate | null;
+      extra_topic_ids?: UUID[];
+    },
+  ) =>
+    request<BreakdownSlot>(`/api/v2/breakdowns/${breakdownId}/slots`, {
+      method: "POST",
+      body,
+    }),
+
+  patchSlot: (
+    breakdownId: UUID,
+    slotId: UUID,
+    body: {
+      slot_type?: BreakdownSlot["slot_type"];
+      lp_type?: string | null;
+      topic_id?: UUID | null;
+    },
+  ) =>
+    request<BreakdownSlot>(
+      `/api/v2/breakdowns/${breakdownId}/slots/${slotId}`,
+      { method: "PATCH", body },
+    ),
+
+  deleteSlot: (breakdownId: UUID, slotId: UUID) =>
+    request<void>(`/api/v2/breakdowns/${breakdownId}/slots/${slotId}`, {
+      method: "DELETE",
+    }),
 };
 
 // ---------------------------------------------------------------------------
