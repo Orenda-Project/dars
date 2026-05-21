@@ -1,8 +1,8 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "172 / 184",
-    "percentage": "93%",
+    "grandTotal": "176 / 180",
+    "percentage": "98%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
@@ -33,17 +33,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan is structurally complete, containing all necessary sections with substantive content. The scope is perfectly tailored for a single 40-minute class period.",
+        "rationale": "The lesson plan is structurally complete, containing all required sections with substantive content. The time allocations sum to a realistic 42 minutes, fitting perfectly into a single-lesson scope.",
         "strengths": [
-          "Clear and actionable SLO with a defined Bloom's level.",
-          "Comprehensive Explanation section with explicit teacher modeling.",
-          "Well-structured Practice section with options for pair and individual work."
+          "The SLO is fully formed, specific, and immediately actionable.",
+          "The Practice and Conclusion sections contain concrete tasks and questions rather than vague placeholders."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "23 / 24",
+        "totalScore": "24 / 24",
         "subCriteria": [
           {
             "name": "Clear, Specific, and Single-Focus SLO",
@@ -59,7 +58,7 @@
           },
           {
             "name": "Aligned with Textbook Content",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "SLO\u2013Assessment Alignment",
@@ -70,17 +69,17 @@
             "rating": "4"
           }
         ],
-        "rationale": "The SLO is highly focused on a single skill (keyword hunting) and is measurable. The activities and assessments align perfectly with this objective and the stated Bloom's level (Apply).",
+        "rationale": "The lesson demonstrates excellent curriculum alignment. The SLO targets a single, specific skill (Keyword Hunting) which is consistently practiced and assessed throughout the lesson. (Note: Textbook alignment scored based on internal plausibility as book content was not provided).",
         "strengths": [
-          "SLO targets a single, specific reading comprehension skill.",
-          "Assessments directly measure the students' ability to locate information using keywords.",
-          "Activities are logically scaffolded from teacher modeling to independent practice."
+          "The SLO is highly focused and avoids skill inflation.",
+          "The final assessment directly measures the specific skill stated in the SLO.",
+          "The Bloom's level [Apply] accurately matches both the SLO verb and the cognitive demand of the tasks."
         ],
         "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "40 / 44",
+        "totalScore": "39 / 44",
         "subCriteria": [
           {
             "name": "Opening Hook Relevant to SLO",
@@ -120,24 +119,32 @@
           },
           {
             "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
-            "rating": "3"
+            "rating": "2"
           },
           {
             "name": "Prior Knowledge Activation",
             "rating": "3"
           }
         ],
-        "rationale": "The instructional flow is excellent, featuring strong teacher modeling (think-aloud) and well-placed Checks for Understanding. The strategy of keyword hunting is highly appropriate for Grade 2.",
+        "rationale": "The instructional flow is generally strong, with excellent explicit modeling and clear teacher instructions. However, the Gradual Release of Responsibility is compromised by presenting the guided (pair) and independent practice tasks as 'options' rather than a sequenced progression.",
         "strengths": [
-          "Exceptional teacher modeling with a clear think-aloud script.",
-          "CFUs are placed logically after the explanation to verify understanding before practice.",
-          "The hook effectively uses an analogy (finding a lost toy) to explain the concept of scanning."
+          "The teacher's modeling includes specific examples of what to write on the board and how to highlight clues.",
+          "CFU questions are well-placed after the core concept has been demonstrated."
         ],
-        "improvements": []
+        "improvements": [
+          {
+            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "MODIFY",
+            "location": "Practice",
+            "instruction": "Structure the practice section as a sequence rather than options: have all students complete Activity 2 in pairs (We Do) first, and then complete Activity 3 independently (You Do) to ensure a gradual release of responsibility."
+          }
+        ]
       },
       {
         "criterion": "Practicality & Teacher Support",
-        "totalScore": "19 / 20",
+        "totalScore": "20 / 20",
         "subCriteria": [
           {
             "name": "Appropriately Timed Sections",
@@ -157,14 +164,13 @@
           },
           {
             "name": "Teacher Flexibility / No Over-Scripting",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "The lesson is highly practical for a Pakistani classroom, requiring minimal resources. Time allocations are realistic, and the teacher support materials (answer keys, notes) are comprehensive.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom context. Timings are realistic, resources are low-cost and accessible, and the teacher is provided with excellent support materials including a comprehensive answer key.",
         "strengths": [
-          "Realistic time allocations that sum to 42 minutes.",
-          "Low-cost resource requirements (whiteboard, textbook).",
-          "Thorough answer keys provided for all practice and assessment questions."
+          "The inclusion of a complete answer key for all textbook exercises ensures the teacher can confidently assess student work.",
+          "The 'Teacher Note' provides valuable pedagogical context for the strategy being taught."
         ],
         "improvements": []
       },
@@ -189,17 +195,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "Differentiation is handled exceptionally well, with specific, named strategies for both struggling students (sentence starters) and advanced learners (writing a new question).",
+        "rationale": "The lesson provides clear, actionable differentiation for both struggling and advanced learners. The instructional language is engaging and age-appropriate for Grade 2 students.",
         "strengths": [
-          "Provides concrete support for struggling students via sentence starters.",
-          "Includes a meaningful challenge task for advanced students.",
-          "Language used in scripts is highly engaging and age-appropriate."
+          "Concrete differentiation strategies are provided (sentence starters for support, question generation for challenge).",
+          "The use of a 'detective' theme makes the language engaging and accessible for young learners."
         ],
         "improvements": []
       },
       {
         "criterion": "Deeper Learning & Student Engagement",
-        "totalScore": "14 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
             "name": "Active Student Participation",
@@ -207,7 +212,7 @@
           },
           {
             "name": "Peer Interaction Opportunities",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Real-World Application",
@@ -218,17 +223,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged throughout the lesson, particularly during the practice phase. The closing assessment effectively consolidates learning using a physical response strategy and specific questions.",
+        "rationale": "Students are actively engaged throughout the lesson, with opportunities for peer interaction and a strong closing assessment that consolidates learning.",
         "strengths": [
-          "Strong closing assessment that directly measures the SLO.",
-          "Active participation required during practice (underlining, coloring).",
-          "Incorporates a fun, physical AFL strategy (Traffic Lights)."
+          "The 'Traffic Lights' AFL strategy provides a quick, effective way to gauge student confidence.",
+          "The final assessment questions directly verify mastery of the SLO."
         ],
         "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
-        "totalScore": "14 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
             "name": "Contextually Relevant Content",
@@ -236,7 +240,7 @@
           },
           {
             "name": "Inclusive & Diverse Representation",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Student Voice & Cultural Connection",
@@ -247,21 +251,20 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses culturally relevant names (Ali, Fatima, Ahmed, Zainab) and references local contexts (snow leopards in Pakistan), making the content relatable for the students.",
+        "rationale": "The lesson incorporates culturally relevant names and references (e.g., snow leopards in Pakistan) that make the content relatable to local students.",
         "strengths": [
-          "Use of local names in examples and practice instructions.",
-          "Reference to Pakistan's geography and wildlife (snow leopards).",
-          "Culturally sensitive and appropriate language throughout."
+          "The use of local names (Ali, Zainab, Ahmed, Fatima) normalizes the context for Pakistani students.",
+          "The reference to snow leopards in Pakistan connects the reading comprehension task to local geography."
         ],
         "improvements": []
       },
       {
         "criterion": "Factual Accuracy & Bias",
-        "totalScore": "11 / 12",
+        "totalScore": "12 / 12",
         "subCriteria": [
           {
-            "name": "Internal Consistency",
-            "rating": "3"
+            "name": "Internal Consistency & Plausible Textbook References",
+            "rating": "4"
           },
           {
             "name": "Academic Content Accuracy",
@@ -272,11 +275,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is academically accurate and free from bias. The textbook references appear plausible and internally consistent, though they could not be verified against actual textbook pages.",
+        "rationale": "The lesson is internally consistent, with accurate academic content and plausible textbook references that align logically across the explanation, practice, and answer key sections.",
         "strengths": [
-          "Accurate explanation of reading comprehension strategies.",
-          "Consistent use of textbook page numbers and activity references.",
-          "Neutral and balanced presentation of content."
+          "The answer key perfectly matches the questions posed in the practice section.",
+          "The explanation of the 'Keyword Hunting' strategy is academically sound and appropriate for the grade level."
         ],
         "improvements": []
       },
@@ -297,11 +299,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson maintains a strong, consistent focus on reading comprehension (scanning/locating information). It explicitly names and models the teaching strategy (keyword hunting) and integrates textbook activities seamlessly.",
+        "rationale": "The lesson maintains a strong, consistent focus on the reading comprehension skill of scanning for specific information. The 'Keyword Hunting' strategy is explicitly named, taught, and practiced.",
         "strengths": [
-          "Clear prioritization of a specific reading skill.",
-          "Explicit teaching and modeling of the 'keyword hunting' strategy.",
-          "Strong integration of textbook exercises into the practice phase."
+          "The lesson prioritizes a single reading skill (scanning/keyword hunting) rather than trying to cover multiple unrelated English skills.",
+          "Textbook activities are integrated seamlessly into the practice phase."
         ],
         "improvements": []
       }
@@ -309,15 +310,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 35.466,
-      "total_time": 35.467
+      "review_time": 41.547,
+      "total_time": 41.548
     },
     "tokens": {
-      "input_tokens": 13495,
-      "output_tokens": 4486,
-      "total_tokens": 17981,
+      "input_tokens": 13401,
+      "output_tokens": 4717,
+      "total_tokens": 18118,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.080822
+      "cost_usd": 0.083406
     }
   }
 }

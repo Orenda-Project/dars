@@ -1,8 +1,8 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "176 / 180",
-    "percentage": "98%",
+    "grandTotal": "178 / 184",
+    "percentage": "97%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
@@ -33,16 +33,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan is structurally complete, with all required sections present, well-detailed, and appropriately scoped for a single 40-minute class period.",
+        "rationale": "The lesson plan is structurally complete, containing all required sections with substantive, actionable content. It is perfectly scoped for a single 40-minute class period targeting one specific SLO.",
         "strengths": [
-          "All sections contain substantive, actionable content.",
-          "The lesson is perfectly scoped for a 40-minute class, with timings adding up exactly."
+          "All sections contain detailed, actionable instructions rather than generic placeholders.",
+          "The lesson is realistically scoped for a 40-minute period with clear time allocations."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "24 / 24",
+        "totalScore": "23 / 24",
         "subCriteria": [
           {
             "name": "Clear, specific, and single-focus SLO",
@@ -58,7 +58,7 @@
           },
           {
             "name": "Aligned with textbook content",
-            "rating": "4"
+            "rating": "3"
           },
           {
             "name": "SLO\u2013assessment alignment",
@@ -69,17 +69,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "The SLO is highly specific, measurable, and accurately aligned with Bloom's taxonomy. The activities scaffold logically from understanding vocabulary to applying it in sentences.",
+        "rationale": "The SLO is clear, measurable, and accurately aligned with Bloom's 'Understand & Apply'. Activities scaffold logically from physical vocabulary introduction to sentence construction. Textbook alignment is plausible (references page 15), though exact text was not provided for full verification.",
         "strengths": [
-          "The SLO targets a clear, measurable outcome (defining words and constructing sentences).",
-          "Assessments in the Conclusion directly measure the stated SLO.",
-          "Activities are well-scaffolded, moving from physical gestures to sentence construction."
+          "Activities scaffold beautifully from TPR vocabulary learning to a structured sentence formula.",
+          "The assessment tasks (writing sentences, defining words) perfectly match the stated SLO."
         ],
         "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "39 / 44",
+        "totalScore": "42 / 44",
         "subCriteria": [
           {
             "name": "Opening hook relevant to SLO",
@@ -103,7 +102,7 @@
           },
           {
             "name": "Appropriately placed and spaced CFU questions",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Grade-appropriate strategies aligned with SLO",
@@ -111,7 +110,7 @@
           },
           {
             "name": "Higher-order thinking opportunities",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Visual aid effectiveness",
@@ -119,18 +118,18 @@
           },
           {
             "name": "Gradual release of responsibility (I Do \u2192 We Do \u2192 You Do)",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Prior knowledge activation",
             "rating": "3"
           }
         ],
-        "rationale": "The instructional flow is excellent, featuring strong modeling, explicit teacher instructions, and grade-appropriate strategies like TPR. Minor areas like prior knowledge activation and guided practice for sentence making are present but could be slightly more pronounced.",
+        "rationale": "The instructional flow is excellent, utilizing Grade 2-appropriate strategies like TPR and a 'secret recipe' formula for sentence writing. The GRR model is clearly followed, and CFUs are well-placed. Visual aids are described effectively, though no actual images were provided. Prior knowledge activation is present but slightly superficial.",
         "strengths": [
-          "Excellent use of a 'think-aloud' strategy for modeling sentence construction.",
-          "Incorporation of Total Physical Response (TPR) to teach vocabulary meanings.",
-          "Clear, step-by-step instructions for the teacher."
+          "Excellent use of Total Physical Response (TPR) to make abstract vocabulary concrete for young learners.",
+          "Clear teacher modeling using a 'think-aloud' approach for the sentence formula.",
+          "Strong Gradual Release of Responsibility from teacher modeling to pair work to independent writing."
         ],
         "improvements": []
       },
@@ -159,11 +158,11 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is highly practical for a Pakistani classroom. Timings are realistic, resources are low-cost, and the teacher is provided with excellent support notes and flexible practice options.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom. Resources are low-cost (flashcards, board), timings are realistic, and the inclusion of multiple practice options gives the teacher excellent flexibility based on class dynamics.",
         "strengths": [
-          "Provides multiple practice options, allowing the teacher to adapt to the class's needs.",
-          "Resources required (whiteboard, markers, lunchbox) are easily accessible.",
-          "Teacher notes and CFU answer keys are provided."
+          "Provides multiple practice options, empowering the teacher to choose what works best for their specific class.",
+          "Resources required are minimal, low-cost, and easily accessible.",
+          "Includes helpful teacher notes and answer keys for CFUs."
         ],
         "improvements": []
       },
@@ -188,11 +187,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "Differentiation is explicitly addressed with concrete strategies for both struggling and advanced learners. The language used for both teachers and students is clear and appropriate.",
+        "rationale": "Differentiation is explicitly addressed with concrete strategies for both struggling students (sentence starters) and advanced students (complex sentence challenge). The language used is highly engaging and age-appropriate.",
         "strengths": [
-          "Includes specific sentence starters for struggling students.",
-          "Provides a clear challenge task (using two focus words in one sentence) for advanced learners.",
-          "Teacher instructions are exceptionally clear and empowering."
+          "Provides specific, named differentiation strategies (sentence starters and a multi-word challenge).",
+          "Uses engaging, child-friendly language ('magical lunchbox', 'secret recipe')."
         ],
         "improvements": []
       },
@@ -217,11 +215,11 @@
             "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged throughout the lesson via physical movements, board work, and peer interaction. The closing assessment effectively consolidates learning.",
+        "rationale": "Students are actively engaged throughout the lesson via physical movements, pair brainstorming, and sentence writing. The closing assessment effectively consolidates learning. Real-world application is present through the relatable context of sharing food, though it remains relatively basic.",
         "strengths": [
-          "High level of active participation through TPR and interactive board activities.",
+          "High level of active participation required from students, moving beyond passive listening.",
           "Structured peer interaction included in the practice options.",
-          "The 1-2-3 finger check and specific questions provide a strong closing assessment."
+          "The conclusion includes a quick self-assessment and oral checks that directly measure the SLO."
         ],
         "improvements": []
       },
@@ -246,11 +244,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses culturally familiar names and a relatable context (lunchtime/sharing food). Representation is inclusive and appropriate for the target demographic.",
+        "rationale": "The lesson uses culturally familiar names (Zainab, Ali, Ahmed, Fatima) and a relatable context (lunchboxes and sharing). Representation is inclusive of both genders. Students are invited to share their thoughts, though cultural connection could be slightly deeper.",
         "strengths": [
-          "Uses familiar local names (Ali, Zainab, Ahmed, Fatima).",
-          "The context of sharing lunch is highly relatable for young students.",
-          "Both male and female characters are represented in the examples."
+          "Uses familiar, local names to make the examples relatable.",
+          "The theme of sharing food is culturally resonant and appropriate for the age group."
         ],
         "improvements": []
       },
@@ -271,10 +268,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan is internally consistent, academically accurate, and free from bias. Timings, instructions, and examples all align perfectly.",
+        "rationale": "The lesson is internally consistent, with timings that add up correctly and instructions that align with the stated objectives. The academic content (sentence structure formula) is accurate and well-adapted for Grade 2.",
         "strengths": [
-          "No internal contradictions; timings and activities align.",
-          "Sentence structure formula (Who + Action + Description) is accurate and age-appropriate."
+          "The sentence formula (Who/What + Action + Description) is an accurate and highly effective simplification for Grade 2 grammar.",
+          "No internal contradictions; the lesson flows logically from start to finish."
         ],
         "improvements": []
       },
@@ -295,10 +292,10 @@
             "rating": "3"
           }
         ],
-        "rationale": "The lesson maintains a strong focus on vocabulary acquisition and sentence writing. It employs effective ESL strategies like TPR and visual word webs.",
+        "rationale": "The lesson maintains a clear focus on vocabulary acquisition and writing (sentence construction). It employs strong ESL/primary English strategies like TPR and word webs. Textbook usage is referenced (page 15), though exact integration cannot be fully verified without the source text.",
         "strengths": [
-          "Clear focus on vocabulary and writing skills.",
-          "Effective use of named strategies like TPR (physical movements) and Word Webs to teach meaning."
+          "Excellent integration of vocabulary learning with practical sentence writing.",
+          "Uses highly effective, named teaching strategies (TPR, Word Webs) suited for early language learners."
         ],
         "improvements": []
       }
@@ -306,15 +303,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 30.186,
-      "total_time": 30.186
+      "review_time": 48.833,
+      "total_time": 48.836
     },
     "tokens": {
-      "input_tokens": 13338,
-      "output_tokens": 4087,
-      "total_tokens": 17425,
+      "input_tokens": 13435,
+      "output_tokens": 6049,
+      "total_tokens": 19484,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.07572
+      "cost_usd": 0.099458
     }
   }
 }

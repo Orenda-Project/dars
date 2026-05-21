@@ -1,31 +1,31 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "173 / 184",
-    "percentage": "94%",
+    "grandTotal": "170 / 184",
+    "percentage": "92%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
         "totalScore": "24 / 24",
         "subCriteria": [
           {
-            "name": "SLO Present and Non-Empty",
+            "name": "SLO present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Hook Present and Non-Empty",
+            "name": "Hook present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Explanation Present and Non-Empty",
+            "name": "Explanation present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Practice Present and Non-Empty",
+            "name": "Practice present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Conclusion Present and Non-Empty",
+            "name": "Conclusion present and non-empty",
             "rating": "4"
           },
           {
@@ -33,19 +33,19 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan is structurally complete, containing all required sections with substantive, actionable content. It is clearly scoped for a single 42-minute lesson targeting one specific SLO.",
+        "rationale": "The lesson plan is structurally complete. All required sections are present, well-developed, and contain actionable content for the teacher. The scope is perfectly tailored for a single 40-minute class period.",
         "strengths": [
-          "All sections contain detailed, usable content rather than placeholders.",
-          "The time allocations are realistic and fit perfectly into a single class period."
+          "All sections contain substantive, teacher-usable content.",
+          "The time allocations sum up perfectly to a realistic 40-minute lesson."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "22 / 24",
+        "totalScore": "19 / 24",
         "subCriteria": [
           {
-            "name": "Clear, Specific, and Single-Focus SLO",
+            "name": "Clear, specific, and single-focus SLO",
             "rating": "3"
           },
           {
@@ -53,123 +53,132 @@
             "rating": "4"
           },
           {
-            "name": "Scaffolded Activities",
+            "name": "Scaffolded activities",
             "rating": "4"
           },
           {
-            "name": "Aligned with Textbook Content",
-            "rating": "4"
-          },
-          {
-            "name": "SLO\u2013Assessment Alignment",
+            "name": "Aligned with textbook content",
             "rating": "3"
           },
           {
-            "name": "Bloom's Level Accuracy",
-            "rating": "4"
-          }
-        ],
-        "rationale": "The SLO is measurable and aligned with the textbook content. The activities are well-scaffolded. The assessment in the conclusion mixes reading comprehension questions with a fluency check, which slightly dilutes the focus on the fluency SLO, but remains acceptable.",
-        "strengths": [
-          "Activities build logically from syllable breakdown to fluent reading practice.",
-          "Bloom's level (Application) accurately matches the task of reading with expression."
-        ],
-        "improvements": []
-      },
-      {
-        "criterion": "Instructional Flow",
-        "totalScore": "36 / 44",
-        "subCriteria": [
-          {
-            "name": "Opening Hook Relevant to SLO",
-            "rating": "3"
-          },
-          {
-            "name": "Explicit Instructions in Explanation",
-            "rating": "3"
-          },
-          {
-            "name": "Modeling/Demonstration by Teacher",
-            "rating": "4"
-          },
-          {
-            "name": "Smooth Transitions Across Steps",
-            "rating": "4"
-          },
-          {
-            "name": "Practice Opportunities for Students",
-            "rating": "4"
-          },
-          {
-            "name": "Appropriately Placed and Spaced CFU Questions",
-            "rating": "3"
-          },
-          {
-            "name": "Grade-Appropriate Strategies Aligned with SLO",
-            "rating": "4"
-          },
-          {
-            "name": "Higher-Order Thinking Opportunities",
-            "rating": "3"
-          },
-          {
-            "name": "Visual Aid Effectiveness",
-            "rating": "3"
-          },
-          {
-            "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "name": "SLO\u2013assessment alignment",
             "rating": "2"
           },
           {
-            "name": "Prior Knowledge Activation",
+            "name": "Bloom's level accuracy",
             "rating": "3"
           }
         ],
-        "rationale": "The instructional flow is generally strong, with excellent teacher modeling and varied practice options. However, the Gradual Release of Responsibility is missing a clear 'We Do' phase, jumping from teacher modeling directly to independent/pair practice.",
+        "rationale": "The lesson aligns well with the stated SLO of reading with expression and decoding multi-syllable words. However, the final assessment questions focus heavily on reading comprehension rather than the fluency and decoding skills targeted in the SLO.",
         "strengths": [
-          "Teacher modeling is highly specific, detailing exactly how to use tone and pacing.",
-          "Transitions between the hook, explanation, and practice are logical and smooth."
+          "Activities are logically scaffolded from teacher modeling to student practice.",
+          "The SLO is highly measurable through observable reading behaviors."
         ],
         "improvements": [
           {
-            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "subCriterion": "SLO\u2013assessment alignment",
             "currentScore": "2",
             "targetScore": "4",
-            "action": "ADD",
-            "location": "Explanation",
-            "instruction": "Add a 'We Do' phase after the teacher's modeling, where the teacher and students read a short paragraph together (choral reading) or practice clapping out syllables together before students move to independent practice."
+            "action": "MODIFY",
+            "location": "Conclusion",
+            "instruction": "Replace the reading comprehension questions with tasks that directly assess the SLO, such as asking students to identify where they would pause or change their tone in a specific sentence, or having them decode a new multi-syllable word from the text."
+          }
+        ]
+      },
+      {
+        "criterion": "Instructional Flow",
+        "totalScore": "39 / 44",
+        "subCriteria": [
+          {
+            "name": "Opening hook relevant to SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Explicit instructions in Explanation",
+            "rating": "4"
+          },
+          {
+            "name": "Modeling/demonstration by teacher",
+            "rating": "4"
+          },
+          {
+            "name": "Smooth transitions across steps",
+            "rating": "4"
+          },
+          {
+            "name": "Practice opportunities for students",
+            "rating": "4"
+          },
+          {
+            "name": "Appropriately placed and spaced CFU questions",
+            "rating": "3"
+          },
+          {
+            "name": "Grade-appropriate strategies aligned with SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Higher-order thinking opportunities",
+            "rating": "3"
+          },
+          {
+            "name": "Visual aid effectiveness",
+            "rating": "3"
+          },
+          {
+            "name": "Gradual release of responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "rating": "4"
+          },
+          {
+            "name": "Prior knowledge activation",
+            "rating": "2"
+          }
+        ],
+        "rationale": "The instructional flow is strong, featuring excellent teacher modeling, clear instructions, and a well-structured gradual release of responsibility. However, the prior knowledge activation question is isolated in the teacher notes rather than integrated into the lesson delivery.",
+        "strengths": [
+          "Teacher modeling is explicit, demonstrating exactly how to read with expression.",
+          "The Gradual Release of Responsibility is clearly structured through I Do, We Do, and You Do phases."
+        ],
+        "improvements": [
+          {
+            "subCriterion": "Prior knowledge activation",
+            "currentScore": "2",
+            "targetScore": "4",
+            "action": "MODIFY",
+            "location": "Introduction",
+            "instruction": "Move the prior knowledge question ('Have you ever lost sight of your parents...') from the Teacher Note into the Introduction section, instructing the teacher to ask students to briefly share their experiences before introducing the story."
           }
         ]
       },
       {
         "criterion": "Practicality & Teacher Support",
-        "totalScore": "20 / 20",
+        "totalScore": "19 / 20",
         "subCriteria": [
           {
-            "name": "Appropriately Timed Sections",
+            "name": "Appropriately timed sections",
             "rating": "4"
           },
           {
-            "name": "Adequate Time for Practice and Explanation",
+            "name": "Adequate time for Practice and Explanation",
             "rating": "4"
           },
           {
-            "name": "Teacher Support Materials",
+            "name": "Teacher support materials",
             "rating": "4"
           },
           {
-            "name": "Resource Requirements",
+            "name": "Resource requirements",
             "rating": "4"
           },
           {
-            "name": "Teacher Flexibility / No Over-Scripting",
-            "rating": "4"
+            "name": "Teacher flexibility / no over-scripting",
+            "rating": "3"
           }
         ],
-        "rationale": "The lesson is highly practical for a Pakistani classroom. Timings are realistic, resources are minimal (whiteboard and textbook), and the teacher is provided with excellent support notes and flexible practice options.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom, requiring minimal resources while providing excellent support for the teacher, including answers to CFUs and clear pedagogical notes.",
         "strengths": [
-          "Provides multiple options for the practice phase, allowing the teacher to choose what works best for their class.",
-          "Includes a clear visual anchor ('Word Staircase') that requires no special materials."
+          "Time allocations are realistic and provide ample time for student practice.",
+          "Resources required (whiteboard, textbook) are low-cost and readily available."
         ],
         "improvements": []
       },
@@ -178,82 +187,82 @@
         "totalScore": "16 / 16",
         "subCriteria": [
           {
-            "name": "Suggestions for Struggling or Advanced Students",
+            "name": "Suggestions for struggling or advanced students",
             "rating": "4"
           },
           {
-            "name": "Named Differentiation Strategies with Instructions",
+            "name": "Named differentiation strategies with instructions",
             "rating": "4"
           },
           {
-            "name": "Instructional Language for Students",
+            "name": "Instructional language for students",
             "rating": "4"
           },
           {
-            "name": "Instructional Language for Teachers",
+            "name": "Instructional language for teachers",
             "rating": "4"
           }
         ],
-        "rationale": "Differentiation is handled exceptionally well, with specific, named strategies provided for both struggling readers (echo reading, finger tracking) and advanced readers (character voice).",
+        "rationale": "The lesson excels in accessibility, providing specific, named differentiation strategies (echo reading, finger tracking) for struggling students, as well as a clear challenge for advanced learners.",
         "strengths": [
-          "Concrete strategies are provided for both ends of the learning spectrum.",
-          "Instructional language is simple, engaging, and age-appropriate."
+          "Differentiation addresses both struggling and advanced students with concrete tasks.",
+          "Instructional language is simple, clear, and age-appropriate."
         ],
         "improvements": []
       },
       {
         "criterion": "Deeper Learning & Student Engagement",
-        "totalScore": "15 / 16",
+        "totalScore": "16 / 16",
         "subCriteria": [
           {
-            "name": "Active Student Participation",
+            "name": "Active student participation",
             "rating": "4"
           },
           {
-            "name": "Peer Interaction Opportunities",
-            "rating": "3"
-          },
-          {
-            "name": "Real-World Application",
+            "name": "Peer interaction opportunities",
             "rating": "4"
           },
           {
-            "name": "Closing Assessment / Lesson Consolidation",
+            "name": "Real-world application",
+            "rating": "4"
+          },
+          {
+            "name": "Closing assessment / lesson consolidation",
             "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged throughout the lesson, acting as 'Word Detectives' and participating in reading practice. The real-world application of knowing one's address and phone number is seamlessly integrated.",
+        "rationale": "Students are actively engaged throughout the lesson via varied reading strategies (popcorn, pair reading). The lesson concludes with a meaningful real-world connection regarding memorizing parents' phone numbers.",
         "strengths": [
-          "The 'Word Detective' activity keeps students actively listening during the teacher's reading.",
-          "The closing assessment effectively uses a Traffic Lights AFL strategy alongside comprehension checks."
+          "Multiple peer interaction opportunities are provided, such as pair reading with peer feedback.",
+          "The real-world application is highly relevant to the story's context and students' safety."
         ],
         "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
-        "totalScore": "16 / 16",
+        "totalScore": "14 / 16",
         "subCriteria": [
           {
-            "name": "Contextually Relevant Content",
+            "name": "Contextually relevant content",
             "rating": "4"
           },
           {
-            "name": "Inclusive & Diverse Representation",
-            "rating": "4"
+            "name": "Inclusive & diverse representation",
+            "rating": "3"
           },
           {
-            "name": "Student Voice & Cultural Connection",
-            "rating": "4"
+            "name": "Student voice & cultural connection",
+            "rating": "3"
           },
           {
-            "name": "Language & Cultural Sensitivity",
+            "name": "Language & cultural sensitivity",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses culturally relevant names (Mama, Abbu, Pinky, Ali, Sana) and relatable scenarios (getting lost in a market). It invites students to share their own experiences in the hook.",
+        "rationale": "The lesson uses culturally relevant names (Pinky, Abbu, Ali, Sana) and a relatable scenario (getting lost in a grocery store). It is culturally sensitive and appropriate for the context.",
         "strengths": [
-          "Familiar cultural terms (Abbu, Mama) make the text relatable.",
-          "The hook effectively connects the lesson's theme to the students' own lived experiences."
+          "Local names and familial terms (Abbu) make the content relatable.",
+          "The scenario of getting lost in a busy market/store is a universal and contextually relevant experience."
         ],
         "improvements": []
       },
@@ -262,28 +271,28 @@
         "totalScore": "12 / 12",
         "subCriteria": [
           {
-            "name": "Internal Consistency",
+            "name": "Internal consistency & Plausible Textbook References",
             "rating": "4"
           },
           {
-            "name": "Academic Content Accuracy",
+            "name": "Academic content accuracy",
             "rating": "4"
           },
           {
-            "name": "Bias and Balance",
+            "name": "Bias and balance",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is internally consistent, academically accurate regarding phonics and syllable breakdown, and free from bias.",
+        "rationale": "The lesson is internally consistent, factually accurate, and free from bias. The pedagogical approach to teaching phonics and reading fluency is academically sound.",
         "strengths": [
-          "Phonics and syllable breakdowns (e.g., but-ter-fly) are accurate.",
-          "Timings and instructions align perfectly across sections."
+          "The explanation of syllables and compound words is accurate.",
+          "Instructions, timings, and activities align logically without contradictions."
         ],
         "improvements": []
       },
       {
         "criterion": "Subject Specific Review - English",
-        "totalScore": "12 / 12",
+        "totalScore": "11 / 12",
         "subCriteria": [
           {
             "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
@@ -295,13 +304,13 @@
           },
           {
             "name": "Evidence of Textbook Material Usage",
-            "rating": "4"
+            "rating": "3"
           }
         ],
-        "rationale": "The lesson maintains a strong, consistent focus on reading fluency and decoding. It employs effective, named ESL/reading strategies and integrates the textbook material seamlessly.",
+        "rationale": "The lesson maintains a strong, prioritized focus on reading fluency and decoding. It effectively employs named teaching strategies like popcorn reading, pair reading, and echo reading to support ESL learners.",
         "strengths": [
-          "Clear prioritization of reading fluency without getting bogged down in unrelated grammar tasks.",
-          "Effective use of named strategies like echo reading, popcorn reading, and syllable clapping."
+          "Clear and consistent focus on reading skills throughout the lesson.",
+          "Excellent use of named, effective reading strategies (e.g., Word Staircase, echo reading) suitable for the grade level."
         ],
         "improvements": []
       }
@@ -309,15 +318,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 41.593,
-      "total_time": 41.593
+      "review_time": 42.575,
+      "total_time": 42.576
     },
     "tokens": {
-      "input_tokens": 13486,
-      "output_tokens": 5358,
-      "total_tokens": 18844,
+      "input_tokens": 13544,
+      "output_tokens": 4809,
+      "total_tokens": 18353,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.091268
+      "cost_usd": 0.084796
     }
   }
 }
