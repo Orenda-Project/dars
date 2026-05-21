@@ -7,6 +7,7 @@ The v2 rebuild (`docs/plans/2026-05-15-dars-v2-rebuild/`) predates this conventi
 ## Active
 
 - [ncp-english-g1-seed](ncp-english-g1-seed/README.md) — real NCP curriculum data (English × G1) alongside the synthetic Dars seed: SLOs from `fde_staging.slo_ncpslo`, sub-SLOs via Schema-style breakdown, lp_type via Claude, book 1171 prose from `book.book_text`. Phase 1 in flight.
+- [lp-showcase-multigrade](lp-showcase-multigrade/README.md) — add 2–3 multi-grade LPs to the public showcase via LP Assistant `/api/v1/generate-lp-multigrade` (poll-not-callback; Python renderer for the JSON response). Single phase. In flight.
 
 ## Closed
 

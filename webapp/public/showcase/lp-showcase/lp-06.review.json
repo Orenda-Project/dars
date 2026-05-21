@@ -1,8 +1,8 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "161 / 180",
-    "percentage": "89%",
+    "grandTotal": "174 / 184",
+    "percentage": "95%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
@@ -35,18 +35,18 @@
         ],
         "rationale": "The lesson plan is structurally complete, containing all required sections with substantive, actionable content. The scope is perfectly tailored for a single 40-minute class period.",
         "strengths": [
-          "All sections are fully developed with clear instructions.",
-          "Time allocations are realistic and sum to 42 minutes, fitting a standard period."
+          "All sections contain detailed, usable instructions rather than placeholders.",
+          "The time allocations (42 minutes total) are highly realistic for a single lesson."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "19 / 24",
+        "totalScore": "22 / 24",
         "subCriteria": [
           {
             "name": "Clear, specific, and single-focus SLO",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Measurable SLOs",
@@ -54,48 +54,39 @@
           },
           {
             "name": "Scaffolded activities",
-            "rating": "3"
+            "rating": "4"
           },
           {
-            "name": "Aligned with the textbook's content",
-            "rating": "3"
+            "name": "Aligned with textbook content",
+            "rating": "4"
           },
           {
             "name": "SLO\u2013assessment alignment",
-            "rating": "2"
+            "rating": "3"
           },
           {
             "name": "Bloom's level accuracy",
-            "rating": "4"
+            "rating": "3"
           }
         ],
-        "rationale": "The SLO is clear and measurable, focusing on reading fluency and expression. However, the assessments (CFUs and Conclusion questions) heavily focus on reading comprehension rather than the stated SLO of chunking multisyllabic words and reading with expression.",
+        "rationale": "The SLO is highly specific, focusing on reading fluency (pace/expression) and decoding. Activities are well-scaffolded from word-level decoding to paragraph-level reading. The written CFUs lean slightly more toward comprehension than the stated fluency SLO, but the performance tasks align well.",
         "strengths": [
-          "The SLO is highly specific and measurable.",
-          "Bloom's taxonomy level (Application) accurately matches the task of applying expression and chunking strategies."
+          "The SLO clearly targets observable reading behaviors (pace, expression, decoding).",
+          "Activities build logically from teacher modeling to guided and independent practice."
         ],
-        "improvements": [
-          {
-            "subCriterion": "SLO\u2013assessment alignment",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Conclusion",
-            "instruction": "Replace the reading comprehension questions with an assessment that directly measures the SLO, such as having students read a short sentence containing multisyllabic words to demonstrate chunking and expression."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "34 / 44",
+        "totalScore": "41 / 44",
         "subCriteria": [
           {
             "name": "Opening hook relevant to SLO",
-            "rating": "2"
+            "rating": "4"
           },
           {
             "name": "Explicit instructions in Explanation",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Modeling/demonstration by teacher",
@@ -103,7 +94,7 @@
           },
           {
             "name": "Smooth transitions across steps",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Practice opportunities for students",
@@ -119,7 +110,7 @@
           },
           {
             "name": "Higher-order thinking opportunities",
-            "rating": "2"
+            "rating": "3"
           },
           {
             "name": "Visual aid effectiveness",
@@ -127,40 +118,24 @@
           },
           {
             "name": "Gradual release of responsibility (I Do \u2192 We Do \u2192 You Do)",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Prior knowledge activation",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "The instructional flow is generally strong, with excellent modeling and practice opportunities. However, the hook connects to the story's plot rather than the reading strategy, and the lesson lacks higher-order thinking opportunities related to the reading skills.",
+        "rationale": "The instructional flow is excellent, featuring strong teacher modeling of both decoding (Word Mountain) and expressive reading. The Gradual Release of Responsibility is clearly evident. CFUs are well-placed, though they focus heavily on comprehension rather than checking the specific decoding skills taught.",
         "strengths": [
-          "Teacher modeling of expression and chunking is explicit and effective.",
-          "Multiple varied practice options (popcorn, pair, individual) are provided."
+          "The 'Word Mountain' provides a concrete, visual way to model chunking multisyllabic words.",
+          "The teacher explicitly models how to change voice pitch and pace to reflect character emotions.",
+          "Multiple varied practice options (Popcorn, Pair, Individual) keep students engaged."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Opening hook relevant to SLO",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Introduction",
-            "instruction": "Connect the tangled string analogy directly to the reading strategy by explaining that just like we untangle knots in string step-by-step, we untangle long, difficult words by breaking them into smaller chunks."
-          },
-          {
-            "subCriterion": "Higher-order thinking opportunities",
-            "currentScore": "2",
-            "targetScore": "3",
-            "action": "ADD",
-            "location": "Practice",
-            "instruction": "Add a prompt during pair reading asking students to analyze why the author chose specific multisyllabic words and how emphasizing them changes the mood of the story."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Practicality & Teacher Support",
-        "totalScore": "20 / 20",
+        "totalScore": "19 / 20",
         "subCriteria": [
           {
             "name": "Appropriately timed sections",
@@ -180,13 +155,13 @@
           },
           {
             "name": "Teacher flexibility / no over-scripting",
-            "rating": "4"
+            "rating": "3"
           }
         ],
-        "rationale": "The lesson is highly practical for a Pakistani classroom. Timings are realistic, resources are low-cost and accessible, and the teacher notes provide excellent guidance without over-scripting.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom, requiring only a whiteboard and the textbook. Time allocations allow sufficient room for both teaching and student practice. Answer keys are provided for all questions.",
         "strengths": [
-          "Resources required (string, whiteboard) are simple and universally available.",
-          "The 'Word Mountain' visual anchor provides excellent, easy-to-implement teacher support."
+          "Resource requirements are minimal and universally available.",
+          "The 20-minute practice block ensures students actually spend time reading, rather than just listening to the teacher."
         ],
         "improvements": []
       },
@@ -211,24 +186,24 @@
             "rating": "4"
           }
         ],
-        "rationale": "Differentiation is exceptionally well-handled, with specific, named strategies provided for both struggling and advanced learners. The language used is clear and accessible.",
+        "rationale": "Differentiation is handled exceptionally well, with specific, named strategies provided for both ends of the spectrum (echo reading/finger tracking for struggling students, character voices for advanced students).",
         "strengths": [
-          "Provides 'echo reading' for struggling students and 'character voices' for advanced students.",
-          "Instructional language is highly engaging and age-appropriate."
+          "Concrete strategies (echo reading) are provided rather than vague advice to 'help struggling students'.",
+          "Advanced students are given a meaningful challenge (character voices) that directly aligns with the expression SLO."
         ],
         "improvements": []
       },
       {
         "criterion": "Deeper Learning & Student Engagement",
-        "totalScore": "11 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
             "name": "Active student participation",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Peer interaction opportunities",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Real-world application",
@@ -236,24 +211,15 @@
           },
           {
             "name": "Closing assessment / lesson consolidation",
-            "rating": "2"
+            "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged through various reading formats. However, the closing assessment relies on comprehension questions that do not consolidate the specific fluency and chunking skills taught in the lesson.",
+        "rationale": "Students are actively engaged throughout, acting as 'Word Detectives' during the explanation and participating in pair reading. The lesson concludes with a solid self-assessment (Traffic Lights) and a real-world connection question.",
         "strengths": [
-          "Pair reading provides a structured opportunity for peer feedback.",
-          "The lesson connects the story's theme of responsibility to students' real lives."
+          "Pair reading with peer feedback encourages active listening and collaboration.",
+          "The Traffic Lights strategy provides a quick, visual formative assessment of student confidence."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Closing assessment / lesson consolidation",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Conclusion",
-            "instruction": "Change the closing assessment to a fluency check, such as an exit ticket where students mark the syllable breaks in two multisyllabic words from the text and read them aloud to the teacher."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
@@ -276,10 +242,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses familiar local names (Ali, Sana, Ahmed, Sara) and relatable contexts (pets, siblings). The language is culturally sensitive and appropriate.",
+        "rationale": "The theme of pet care is universally relatable. The lesson incorporates local names (Ahmed, Sana, Ali, Sara) in the conclusion to ground the generic story characters in the students' reality. Students are invited to connect the concept of responsibility to their own lives.",
         "strengths": [
-          "Uses local names to make the pair work instructions relatable.",
-          "Invites students to connect the concept of responsibility to their own homes."
+          "Uses familiar local names during the interactive portions of the lesson.",
+          "Prompts students to reflect on their own responsibilities at home or school."
         ],
         "improvements": []
       },
@@ -300,10 +266,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is factually accurate, internally consistent, and free from bias. The syllable breakdown provided for 'infection' is correct.",
+        "rationale": "The lesson is internally consistent, with timings that add up correctly and instructions that align with the stated SLO. The syllable breakdown of 'responsibility' is accurate.",
         "strengths": [
-          "Accurate linguistic breakdown of syllables.",
-          "Consistent narrative details throughout the lesson."
+          "Accurate phonics/syllable instruction.",
+          "Seamless alignment between the stated objectives, the teaching phase, and the practice activities."
         ],
         "improvements": []
       },
@@ -324,10 +290,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson maintains a strong, consistent focus on reading fluency. It employs effective, named reading strategies and clearly integrates the textbook text and vocabulary.",
+        "rationale": "The lesson maintains a laser focus on reading fluency and decoding. It employs excellent, named ESL/Reading strategies like chunking, echo reading, and pair reading. It clearly integrates specific vocabulary and plot points from the textbook story.",
         "strengths": [
-          "Clear prioritization of reading fluency and expression.",
-          "Excellent use of named strategies like 'Word Mountain', chunking, and echo reading."
+          "Strong integration of specific reading strategies (chunking, echo reading, popcorn reading).",
+          "Clear focus on a single primary skill (reading fluency) without getting distracted by unrelated grammar or writing tasks."
         ],
         "improvements": []
       }
@@ -335,15 +301,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 37.516,
-      "total_time": 37.517
+      "review_time": 39.932,
+      "total_time": 39.932
     },
     "tokens": {
-      "input_tokens": 13304,
-      "output_tokens": 4466,
-      "total_tokens": 17770,
+      "input_tokens": 13542,
+      "output_tokens": 5298,
+      "total_tokens": 18840,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.0802
+      "cost_usd": 0.09066
     }
   }
 }

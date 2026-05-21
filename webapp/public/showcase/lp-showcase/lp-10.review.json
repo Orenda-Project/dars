@@ -1,7 +1,7 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "175 / 184",
+    "grandTotal": "176 / 184",
     "percentage": "95%",
     "evaluation": [
       {
@@ -33,20 +33,20 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan includes all required sections with substantive, actionable content. The scope is perfectly tailored for a single 40-minute class.",
+        "rationale": "The lesson plan is structurally complete, containing all required sections with substantive, actionable content. The scope is perfectly tailored for a single 42-minute class period.",
         "strengths": [
-          "Clear and specific SLO that is immediately usable.",
-          "Well-structured sections with actionable teacher instructions."
+          "All sections are fully developed with clear instructions.",
+          "The time allocations are realistic and sum up to a single lesson."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "23 / 24",
+        "totalScore": "22 / 24",
         "subCriteria": [
           {
             "name": "Clear, specific, and single-focus SLO",
-            "rating": "4"
+            "rating": "3"
           },
           {
             "name": "Measurable SLOs",
@@ -69,16 +69,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "The SLO is highly specific, measurable, and accurately aligned with the 'Create' Bloom's level. Activities and assessments directly support the SLO. Textbook alignment is plausible based on the provided references.",
+        "rationale": "The SLO is highly measurable and the activities are well-scaffolded to build towards it. The SLO bundles a few elements (paragraph writing, syllables, capitalization) but they form a cohesive writing task. Textbook alignment is plausible based on the provided references.",
         "strengths": [
-          "SLO clearly defines the expected output (5 sentences, 3-syllable words, capitalization).",
-          "Strong alignment between the SLO and the practice/conclusion tasks."
+          "The SLO provides extremely clear, measurable criteria (5 sentences, three 3-syllable words, capitalization).",
+          "Assessments in the practice and conclusion directly measure the specific components of the SLO."
         ],
         "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "40 / 44",
+        "totalScore": "41 / 44",
         "subCriteria": [
           {
             "name": "Opening hook relevant to SLO",
@@ -117,33 +117,33 @@
             "rating": "3"
           },
           {
-            "name": "Gradual release of responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
-            "rating": "3"
+            "name": "Gradual release of responsibility (I Do \u2192 We Do \u2192 You Do)",
+            "rating": "4"
           },
           {
             "name": "Prior knowledge activation",
             "rating": "2"
           }
         ],
-        "rationale": "The lesson flows logically with a strong hook, clear modeling, and well-placed CFUs. However, prior knowledge activation is relegated to a teacher note rather than integrated into the instructional script.",
+        "rationale": "The instructional flow is excellent, featuring strong teacher modeling (think-aloud) and a clear gradual release of responsibility. However, the lesson misses an opportunity to explicitly activate prior knowledge regarding syllables or capitalization before diving into the new task.",
         "strengths": [
-          "Excellent use of teacher modeling (mind map and clapping).",
-          "CFUs are specific and well-placed after the explanation."
+          "The think-aloud modeling in the Explanation section is highly effective for teaching writing.",
+          "The Gradual Release of Responsibility is clearly structured, moving from teacher modeling to collaborative brainstorming, then independent writing."
         ],
         "improvements": [
           {
             "subCriterion": "Prior knowledge activation",
             "currentScore": "2",
             "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Explanation",
-            "instruction": "Integrate the question 'Who remembers what a syllable is?' from the Teacher Note directly into the beginning of the Explanation script, and have the class clap out a familiar 1- or 2-syllable word to actively recall the concept before introducing 3-syllable words."
+            "action": "ADD",
+            "location": "Hook",
+            "instruction": "Add a brief question asking students to recall what a syllable is or to demonstrate clapping out a familiar word to activate prior knowledge before introducing the new 3-syllable requirement."
           }
         ]
       },
       {
         "criterion": "Practicality & Teacher Support",
-        "totalScore": "20 / 20",
+        "totalScore": "19 / 20",
         "subCriteria": [
           {
             "name": "Appropriately timed sections",
@@ -163,13 +163,13 @@
           },
           {
             "name": "Teacher flexibility / no over-scripting",
-            "rating": "4"
+            "rating": "3"
           }
         ],
-        "rationale": "Timings are realistic for a 40-minute class. The lesson provides excellent teacher support, including a sample paragraph and word lists, using low-cost resources.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom, requiring minimal resources (whiteboard and notebooks). The inclusion of a reference paragraph and teacher notes on syllable counting provides excellent support.",
         "strengths": [
-          "Realistic time allocations across all sections.",
-          "Comprehensive teacher support materials including a sample paragraph."
+          "Provides a complete reference paragraph for the teacher to use as an expected standard.",
+          "Resource requirements are low-cost and universally available."
         ],
         "improvements": []
       },
@@ -194,10 +194,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson provides clear, named differentiation strategies for both struggling and advanced students, and uses accessible language for both teachers and students.",
+        "rationale": "Differentiation is handled exceptionally well, with specific, named strategies provided for both struggling students (sentence starters) and advanced learners (4-syllable word challenge).",
         "strengths": [
-          "Specific differentiation strategies provided (sentence starters and 4-syllable challenge).",
-          "Clear, engaging, and empowering instructional language."
+          "Concrete sentence starters are provided for students who need support.",
+          "The challenge task for early finishers is specific and directly extends the SLO."
         ],
         "improvements": []
       },
@@ -222,20 +222,20 @@
             "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged through clapping, brainstorming, and writing. Peer interaction is well-structured, and the closing assessment effectively consolidates learning.",
+        "rationale": "Students are actively engaged through writing, syllable clapping, and peer review. The closing assessment effectively consolidates learning by having students prove they met the SLO criteria.",
         "strengths": [
-          "Multiple opportunities for active participation.",
-          "Structured peer review task to check capitalization."
+          "The peer review activity (swapping notebooks to check for syllables and capitals) is a great structured interaction.",
+          "The closing assessment directly checks the specific components of the SLO."
         ],
         "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
-        "totalScore": "14 / 16",
+        "totalScore": "16 / 16",
         "subCriteria": [
           {
             "name": "Contextually relevant content",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Inclusive & diverse representation",
@@ -243,17 +243,17 @@
           },
           {
             "name": "Student voice & cultural connection",
-            "rating": "3"
+            "rating": "4"
           },
           {
             "name": "Language & cultural sensitivity",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses familiar local names and an engaging, universal topic (superpowers). It is inclusive and culturally sensitive.",
+        "rationale": "The lesson successfully incorporates local context by mentioning 'Taleemabad' and using familiar local names (Ali, Sara, Ahmed, Zainab). It invites students to think about how they would help their own community.",
         "strengths": [
-          "Use of diverse local names (Ali, Sara, Ahmed, Zainab).",
-          "Engaging and relatable topic for Grade 5 students."
+          "Uses familiar Pakistani names representing both genders.",
+          "Connects the imaginative superpower prompt to helping people in a local context (Taleemabad)."
         ],
         "improvements": []
       },
@@ -274,10 +274,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The content is factually accurate, particularly the syllable counting examples. The lesson is internally consistent and free from bias.",
+        "rationale": "The lesson is internally consistent, with timings, instructions, and examples all aligning perfectly. The academic content regarding syllables and capitalization is accurate.",
         "strengths": [
-          "Accurate academic content (syllable breakdowns).",
-          "Strong internal consistency across timings and instructions."
+          "The reference paragraph accurately demonstrates the required 3-syllable words and capitalization.",
+          "Instructions and timings are logically consistent throughout."
         ],
         "improvements": []
       },
@@ -298,10 +298,10 @@
             "rating": "3"
           }
         ],
-        "rationale": "The lesson clearly prioritizes writing while integrating speaking and listening (clapping syllables). It uses named strategies like mind mapping and peer review.",
+        "rationale": "The lesson maintains a strong, consistent focus on writing while integrating speaking and listening through the syllable clapping activity. Teaching strategies like mind mapping and think-alouds are explicitly named and well-utilized.",
         "strengths": [
-          "Clear focus on creative writing.",
-          "Effective integration of syllable counting as a spelling/vocabulary strategy."
+          "Clear prioritization of writing skills with appropriate scaffolding.",
+          "Effective use of the think-aloud strategy to model the writing process for ESL learners."
         ],
         "improvements": []
       }
@@ -309,15 +309,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 131.407,
-      "total_time": 131.408
+      "review_time": 43.954,
+      "total_time": 43.954
     },
     "tokens": {
-      "input_tokens": 13536,
-      "output_tokens": 4712,
-      "total_tokens": 18248,
+      "input_tokens": 13441,
+      "output_tokens": 4230,
+      "total_tokens": 17671,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.083616
+      "cost_usd": 0.077642
     }
   }
 }

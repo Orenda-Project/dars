@@ -42,7 +42,8 @@ export type ReviewPayload =
 
 export type ShowcaseEntry = {
   id: number;
-  grade: number;
+  // D-6: single-grade entries serialise as `number`, multi-grade as `number[]`.
+  grade: number | number[];
   skill: string;
   page: string;
   topic: string;
@@ -54,6 +55,21 @@ export type ShowcaseEntry = {
   review_error?: string;
   review?: ReviewPayload | null;
 };
+
+function isMultigrade(grade: number | number[]): grade is number[] {
+  return Array.isArray(grade);
+}
+
+function gradeLabel(grade: number | number[]): string {
+  if (!isMultigrade(grade)) return String(grade);
+  const sorted = [...grade].sort((a, b) => a - b);
+  if (sorted.length === 0) return "";
+  const contiguous = sorted.every((g, i) => i === 0 || g === sorted[i - 1] + 1);
+  if (contiguous && sorted.length >= 2) {
+    return `${sorted[0]}–${sorted[sorted.length - 1]}`;
+  }
+  return sorted.join(", ");
+}
 
 type Props = {
   tag: string;
@@ -91,18 +107,40 @@ export function ShowcaseTemplate({
   }, [selectedId]);
 
   const grouped = useMemo(() => {
-    const map = new Map<number, ShowcaseEntry[]>();
+    // D-1/D-6: numeric grades first (ascending), then a single "Multi-Grade" bucket last.
+    const numericBuckets = new Map<number, ShowcaseEntry[]>();
+    const multigradeBucket: ShowcaseEntry[] = [];
     for (const e of entries) {
-      const arr = map.get(e.grade) ?? [];
-      arr.push(e);
-      map.set(e.grade, arr);
+      if (isMultigrade(e.grade)) {
+        multigradeBucket.push(e);
+      } else {
+        const arr = numericBuckets.get(e.grade) ?? [];
+        arr.push(e);
+        numericBuckets.set(e.grade, arr);
+      }
     }
-    return Array.from(map.entries())
+    const numericGroups = Array.from(numericBuckets.entries())
       .sort(([a], [b]) => a - b)
       .map(([grade, items]) => ({
-        grade,
+        key: `g${grade}`,
+        label: `Grade ${grade}`,
+        subtitle: null as string | null,
         items: items.sort((a, b) => a.id - b.id),
       }));
+    const out = [...numericGroups];
+    if (multigradeBucket.length > 0) {
+      // Subtitle summarises the grade ranges present in this bucket.
+      const ranges = multigradeBucket
+        .map((e) => gradeLabel(e.grade))
+        .filter((label, i, arr) => arr.indexOf(label) === i);
+      out.push({
+        key: "multigrade",
+        label: "Multi-Grade",
+        subtitle: ranges.length > 0 ? `G${ranges.join(" · G")}` : null,
+        items: multigradeBucket.sort((a, b) => a.id - b.id),
+      });
+    }
+    return out;
   }, [entries]);
 
   if (!entries.length) {
@@ -179,11 +217,16 @@ export function ShowcaseTemplate({
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-0 max-w-7xl mx-auto w-full">
         <aside className="border-b lg:border-b-0 lg:border-r border-dars-rule-light bg-dars-parchment-mid">
-          {grouped.map(({ grade, items }) => (
-            <div key={grade}>
+          {grouped.map(({ key, label, subtitle, items }) => (
+            <div key={key}>
               <div className="px-5 py-2.5 bg-dars-parchment-deep border-b border-dars-rule-light flex items-baseline justify-between">
                 <span className="text-[11px] font-bold tracking-[2px] uppercase text-dars-ink">
-                  Grade {grade}
+                  {label}
+                  {subtitle ? (
+                    <span className="ml-2 tracking-[1.5px] text-dars-muted">
+                      · {subtitle}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="text-[10px] text-dars-muted">
                   {items.length} lesson plans
@@ -234,7 +277,7 @@ export function ShowcaseTemplate({
           <div className="px-6 py-3 border-b border-dars-rule-light flex items-center justify-between gap-4 flex-wrap">
             <div className="min-w-0">
               <div className="text-[11px] font-bold tracking-[2px] uppercase text-dars-muted">
-                Grade {selected.grade} · {selected.skill}
+                {isMultigrade(selected.grade) ? "Grades" : "Grade"} {gradeLabel(selected.grade)} · {selected.skill}
               </div>
               <div className="font-serif text-lg tracking-[-0.2px] truncate">
                 {selected.topic
@@ -291,7 +334,7 @@ export function ShowcaseTemplate({
                   This lesson plan failed to generate
                 </p>
                 <p className="text-sm text-dars-muted mb-4">
-                  Grade {selected.grade}, {selected.skill}, page {selected.page}.
+                  {isMultigrade(selected.grade) ? "Grades" : "Grade"} {gradeLabel(selected.grade)}, {selected.skill}, page {selected.page}.
                 </p>
                 <pre className="bg-dars-parchment-mid border border-dars-rule-light rounded-md p-4 text-xs text-dars-ink whitespace-pre-wrap break-words max-w-2xl">
                   {selected.error ?? "Unknown error"}

@@ -1,8 +1,8 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "178 / 180",
-    "percentage": "99%",
+    "grandTotal": "177 / 184",
+    "percentage": "96%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
@@ -33,10 +33,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan is structurally complete, containing all required sections with substantive, actionable content. The scope is perfectly timed for a single 37-minute class period.",
+        "rationale": "The lesson plan is structurally complete, containing all required sections with substantive, actionable content. It is perfectly scoped for a single 40-minute class period focusing on one specific SLO.",
         "strengths": [
-          "All sections are fully developed with clear instructions.",
-          "The time allocations sum up to a realistic 37 minutes, fitting perfectly within a standard 40-minute period."
+          "All sections are fully developed with clear instructions rather than placeholders.",
+          "The lesson scope is realistic and tightly focused on a single grammatical concept."
         ],
         "improvements": []
       },
@@ -69,10 +69,11 @@
             "rating": "4"
           }
         ],
-        "rationale": "The SLO is highly specific, focusing solely on reciprocal pronouns, and is easily measurable through the practice tasks. The activities are well-scaffolded, moving from physical demonstration to sentence completion. Textbook alignment is inferred as plausible based on the specific page and activity reference.",
+        "rationale": "The SLO is highly specific, measurable, and focuses entirely on reciprocal pronouns. The activities scaffold logically from physical demonstration to guided practice to independent application. Textbook alignment is plausible, though book content was not provided for verification.",
         "strengths": [
-          "The SLO targets a single, clear grammar concept without inflation.",
-          "Assessments directly measure the students' ability to use reciprocal pronouns as stated in the SLO."
+          "The SLO is precise and avoids skill inflation.",
+          "Assessments directly measure the stated SLO without introducing unrelated skills.",
+          "Activities align perfectly with the cognitive level required by the SLO."
         ],
         "improvements": []
       },
@@ -117,7 +118,7 @@
             "rating": "3"
           },
           {
-            "name": "Gradual release of responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
+            "name": "Gradual release of responsibility (I Do \u2192 We Do \u2192 You Do)",
             "rating": "4"
           },
           {
@@ -125,10 +126,11 @@
             "rating": "3"
           }
         ],
-        "rationale": "The instructional flow is excellent, featuring a strong GRR structure, explicit teacher modeling (contrasting incorrect and correct sentences), and well-placed CFUs. The hook effectively introduces the concept of mutual action.",
+        "rationale": "The instructional flow is excellent. The teacher models the concept effectively using a think-aloud strategy, and the gradual release of responsibility is clearly structured. The hook is engaging and directly relevant to the concept of mutual action.",
         "strengths": [
-          "Teacher modeling explicitly addresses a common misconception (reflexive vs. reciprocal pronouns).",
-          "The lesson provides varied practice options, including a kinesthetic activity (Freeze Tag) and independent writing."
+          "The high-five hook is a brilliant, age-appropriate physical demonstration of reciprocal action.",
+          "Teacher instructions are explicit, including exactly what to write on the board and how to explain common mistakes.",
+          "CFUs are well-placed after the core explanation and directly check understanding of the concept."
         ],
         "improvements": []
       },
@@ -157,10 +159,11 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is highly practical for a Pakistani classroom, requiring no special resources. The Teacher Support section provides excellent background knowledge and anticipates common student errors.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom. Timings are realistic, resources are minimal, and the teacher support notes provide valuable subject knowledge and anticipate common student errors.",
         "strengths": [
-          "The inclusion of a 'Common Error' note helps less-experienced teachers anticipate and correct mistakes.",
-          "Providing options for the Practice section gives the teacher flexibility based on class dynamics."
+          "The 'Teacher Support' section explicitly addresses the common confusion between reciprocal and reflexive pronouns.",
+          "Time allocations are realistic and sum up to an appropriate 37 minutes.",
+          "The lesson requires no special resources, making it highly feasible."
         ],
         "improvements": []
       },
@@ -185,10 +188,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "Differentiation is explicitly addressed with concrete strategies for both ends of the spectrum: sentence frames for struggling learners and paragraph writing for advanced learners.",
+        "rationale": "Differentiation is handled exceptionally well, with specific, actionable tasks provided for both struggling and advanced learners. The language used throughout is clear and accessible.",
         "strengths": [
-          "Clear, actionable differentiation strategies are provided for both struggling and advanced students.",
-          "The instructional language is simple, direct, and easy for teachers to follow."
+          "Provides concrete differentiation tasks (fill-in-the-blanks vs. paragraph writing) rather than vague suggestions.",
+          "The concept of 'teamwork' is used effectively to make the grammatical rule easy for students to understand."
         ],
         "improvements": []
       },
@@ -213,16 +216,16 @@
             "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged through physical movement (high-fives, freeze tag) and independent writing. The closing assessment effectively consolidates learning with a quick, formative check.",
+        "rationale": "Students are actively engaged throughout the lesson, from the physical hook to the interactive practice options. The closing assessment effectively consolidates learning and checks mastery.",
         "strengths": [
-          "The 'Thumbs Up/Thumbs Down' activity provides a quick, whole-class formative assessment.",
-          "Peer interaction is naturally integrated into the hook and practice activities."
+          "Multiple opportunities for peer interaction, including the hook and the 'Freeze Tag' game.",
+          "The conclusion includes a clear, measurable final assessment with a specific mastery threshold and reteach plan."
         ],
         "improvements": []
       },
       {
         "criterion": "Cultural Relevance & Representation",
-        "totalScore": "16 / 16",
+        "totalScore": "15 / 16",
         "subCriteria": [
           {
             "name": "Contextually relevant content",
@@ -234,17 +237,17 @@
           },
           {
             "name": "Student voice & cultural connection",
-            "rating": "4"
+            "rating": "3"
           },
           {
             "name": "Language & cultural sensitivity",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses familiar local names (Ali, Sana, Fatima, Zain, Bilal) and culturally relevant contexts like a cricket match and sharing duties at home.",
+        "rationale": "The lesson uses culturally relevant names (Sana, Ali, Fatima, Hira, Zain, Bilal) and familiar contexts like a cricket team. The representation is inclusive of both genders.",
         "strengths": [
-          "The use of local names and familiar scenarios (cricket, homework) makes the content relatable.",
-          "Students are invited to write original sentences about their own friends or family, bringing their personal context into the lesson."
+          "Local names make the examples immediately relatable to Pakistani students.",
+          "The advanced differentiation task uses a culturally resonant scenario (a cricket match)."
         ],
         "improvements": []
       },
@@ -253,7 +256,7 @@
         "totalScore": "12 / 12",
         "subCriteria": [
           {
-            "name": "Internal consistency & Plausible Textbook References",
+            "name": "Internal consistency",
             "rating": "4"
           },
           {
@@ -265,10 +268,10 @@
             "rating": "4"
           }
         ],
-        "rationale": "The grammar rules regarding reciprocal pronouns are accurate. The lesson is internally consistent, with timings, instructions, and examples all aligning logically.",
+        "rationale": "The grammatical content is entirely accurate. The lesson is internally consistent, with instructions, examples, and assessments all aligning perfectly with the stated SLO.",
         "strengths": [
-          "The distinction between 'each other' (two people) and 'one another' (more than two) is accurately taught.",
-          "The lesson flows logically without any contradictory instructions."
+          "The distinction between 'each other' and 'one another' is accurately explained in the teacher notes.",
+          "The lesson flows logically without any contradictory instructions or timing errors."
         ],
         "improvements": []
       },
@@ -289,10 +292,10 @@
             "rating": "3"
           }
         ],
-        "rationale": "The lesson maintains a clear focus on grammar application (writing and speaking). It employs effective explicit grammar instruction strategies, including contrasting incorrect/correct examples.",
+        "rationale": "The lesson maintains a clear focus on grammar instruction. It employs effective teaching strategies like think-alouds and TPR (Total Physical Response) to make abstract grammar concepts concrete.",
         "strengths": [
-          "The grammar concept is taught in a meaningful context (teamwork/mutual action) rather than just as a mechanical rule.",
-          "The lesson integrates speaking (oral CFUs, game) and writing (sentence completion) to reinforce the grammar point."
+          "The teacher's think-aloud strategy during the explanation phase is an excellent way to model grammatical reasoning.",
+          "The integration of physical movement (high-fives, freeze tag) helps solidify the concept of reciprocal action for ESL learners."
         ],
         "improvements": []
       }
@@ -300,15 +303,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 26.755,
-      "total_time": 26.756
+      "review_time": 32.054,
+      "total_time": 32.055
     },
     "tokens": {
-      "input_tokens": 13602,
-      "output_tokens": 3439,
-      "total_tokens": 17041,
+      "input_tokens": 13453,
+      "output_tokens": 4214,
+      "total_tokens": 17667,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.068472
+      "cost_usd": 0.077474
     }
   }
 }

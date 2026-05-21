@@ -1,31 +1,31 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "177 / 184",
-    "percentage": "96%",
+    "grandTotal": "182 / 184",
+    "percentage": "99%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
         "totalScore": "24 / 24",
         "subCriteria": [
           {
-            "name": "SLO Present and Non-Empty",
+            "name": "SLO present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Hook Present and Non-Empty",
+            "name": "Hook present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Explanation Present and Non-Empty",
+            "name": "Explanation present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Practice Present and Non-Empty",
+            "name": "Practice present and non-empty",
             "rating": "4"
           },
           {
-            "name": "Conclusion Present and Non-Empty",
+            "name": "Conclusion present and non-empty",
             "rating": "4"
           },
           {
@@ -33,19 +33,20 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan is structurally complete, containing all necessary sections with substantive content. The scope is perfectly tailored for a single 40-minute class focusing on one clear objective.",
+        "rationale": "The lesson plan is structurally complete, containing all required sections with substantive, actionable content. The scope is perfectly tailored for a single 42-minute class period focusing on one specific SLO.",
         "strengths": [
-          "All sections are fully developed with actionable content.",
-          "The time allocations are realistic and sum up to an appropriate single-lesson duration."
+          "All sections are fully developed with clear, actionable instructions.",
+          "The time allocations are realistic and sum up to a single class period.",
+          "The SLO is explicitly stated, complete, and measurable."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "22 / 24",
+        "totalScore": "24 / 24",
         "subCriteria": [
           {
-            "name": "Clear, Specific, and Single-Focus SLO",
+            "name": "Clear, specific, and single-focus SLO",
             "rating": "4"
           },
           {
@@ -53,132 +54,117 @@
             "rating": "4"
           },
           {
-            "name": "Scaffolded Activities",
+            "name": "Scaffolded activities",
             "rating": "4"
           },
           {
-            "name": "Aligned with Textbook Content",
+            "name": "Aligned with textbook content",
             "rating": "4"
           },
           {
-            "name": "SLO\u2013Assessment Alignment",
-            "rating": "2"
+            "name": "SLO\u2013assessment alignment",
+            "rating": "4"
           },
           {
-            "name": "Bloom's Level Accuracy",
+            "name": "Bloom's level accuracy",
             "rating": "4"
           }
         ],
-        "rationale": "The SLO is highly specific and measurable, focusing on keyword hunting for comprehension. However, the assessment tasks in the Practice and Conclusion sections include spelling exercises (Activity 2) which do not align with the stated comprehension SLO.",
+        "rationale": "The lesson aligns perfectly with the stated SLO of locating specific information using Keyword Hunting. The activities progress logically, and the assessments directly measure the targeted skill.",
         "strengths": [
-          "The SLO is precise, single-focused, and uses an appropriate action verb.",
-          "Activities are well-scaffolded, building logically toward the objective."
+          "The SLO is highly focused on a single, measurable skill.",
+          "Assessments in the Practice and Conclusion sections directly measure the Keyword Hunting strategy.",
+          "The Bloom's level [Apply] accurately matches the cognitive demand of the strategy being taught."
         ],
-        "improvements": [
-          {
-            "subCriterion": "SLO\u2013Assessment Alignment",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Practice and Conclusion",
-            "instruction": "Remove tasks related to spelling/missing letters (Activity 2) from the practice and final assessment, ensuring all tasks strictly measure the stated SLO of keyword hunting for comprehension."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "40 / 44",
+        "totalScore": "43 / 44",
         "subCriteria": [
           {
-            "name": "Opening Hook Relevant to SLO",
+            "name": "Opening hook relevant to SLO",
             "rating": "4"
           },
           {
-            "name": "Explicit Instructions in Explanation",
+            "name": "Explicit instructions in Explanation",
             "rating": "4"
           },
           {
-            "name": "Modeling/Demonstration by Teacher",
+            "name": "Modeling/demonstration by teacher",
             "rating": "4"
           },
           {
-            "name": "Smooth Transitions Across Steps",
+            "name": "Smooth transitions across steps",
             "rating": "4"
           },
           {
-            "name": "Practice Opportunities for Students",
+            "name": "Practice opportunities for students",
             "rating": "4"
           },
           {
-            "name": "Appropriately Placed and Spaced CFU Questions",
+            "name": "Appropriately placed and spaced CFU questions",
             "rating": "4"
           },
           {
-            "name": "Grade-Appropriate Strategies Aligned with SLO",
+            "name": "Grade-appropriate strategies aligned with SLO",
             "rating": "4"
           },
           {
-            "name": "Higher-Order Thinking Opportunities",
+            "name": "Higher-order thinking opportunities",
+            "rating": "4"
+          },
+          {
+            "name": "Visual aid effectiveness",
             "rating": "3"
           },
           {
-            "name": "Visual Aid Effectiveness",
-            "rating": "3"
+            "name": "Gradual release of responsibility (I Do \u2192 We Do \u2192 You Do)",
+            "rating": "4"
           },
           {
-            "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
-            "rating": "2"
-          },
-          {
-            "name": "Prior Knowledge Activation",
+            "name": "Prior knowledge activation",
             "rating": "4"
           }
         ],
-        "rationale": "The instructional flow is generally excellent, with a highly relevant hook and explicit teacher modeling. However, the Gradual Release of Responsibility is compromised by presenting guided pair work and independent work as mutually exclusive options rather than a sequence.",
+        "rationale": "The instructional flow is excellent, featuring a highly relatable hook, clear teacher modeling, and a well-structured gradual release of responsibility. Visual aids are described effectively on the board, though no digital images are present.",
         "strengths": [
-          "The YouTube search analogy in the Hook brilliantly activates prior knowledge and connects to the new skill.",
-          "Teacher modeling is explicit, detailing exactly what to write and how to demonstrate scanning."
+          "The search engine analogy in the Hook perfectly activates prior knowledge and connects to the new concept.",
+          "Teacher modeling is explicit, using a clear example sentence with color-coded keywords.",
+          "CFUs are well-placed immediately after the explanation to check understanding before practice."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Practice",
-            "instruction": "Structure the Practice section to explicitly sequence Option 1 (Pair work) as the 'We Do' phase, followed by Option 2 (Independent work) as the 'You Do' phase, rather than presenting them as either/or choices."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Practicality & Teacher Support",
         "totalScore": "20 / 20",
         "subCriteria": [
           {
-            "name": "Appropriately Timed Sections",
+            "name": "Appropriately timed sections",
             "rating": "4"
           },
           {
-            "name": "Adequate Time for Practice and Explanation",
+            "name": "Adequate time for Practice and Explanation",
             "rating": "4"
           },
           {
-            "name": "Teacher Support Materials",
+            "name": "Teacher support materials",
             "rating": "4"
           },
           {
-            "name": "Resource Requirements",
+            "name": "Resource requirements",
             "rating": "4"
           },
           {
-            "name": "Teacher Flexibility / No Over-Scripting",
+            "name": "Teacher flexibility / no over-scripting",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is highly practical for a Pakistani classroom. Timings are realistic, resources are minimal and accessible, and the teacher is provided with excellent support notes and answer keys.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom, requiring only a whiteboard and textbook. Timings are realistic, and excellent teacher support is provided through answer keys and pedagogical notes.",
         "strengths": [
-          "Time allocations are perfectly balanced, allowing ample time for both explanation and practice.",
-          "The inclusion of a comprehensive answer key and specific teacher notes empowers low-skill teachers."
+          "Provides a clear answer key for the textbook activities, aiding teacher confidence.",
+          "Offers flexible options for the Practice section, allowing the teacher to adapt to class readiness.",
+          "Resource requirements are minimal and universally available."
         ],
         "improvements": []
       },
@@ -187,26 +173,27 @@
         "totalScore": "16 / 16",
         "subCriteria": [
           {
-            "name": "Suggestions for Struggling or Advanced Students",
+            "name": "Suggestions for struggling or advanced students",
             "rating": "4"
           },
           {
-            "name": "Named Differentiation Strategies with Instructions",
+            "name": "Named differentiation strategies with instructions",
             "rating": "4"
           },
           {
-            "name": "Instructional Language for Students",
+            "name": "Instructional language for students",
             "rating": "4"
           },
           {
-            "name": "Instructional Language for Teachers",
+            "name": "Instructional language for teachers",
             "rating": "4"
           }
         ],
-        "rationale": "Differentiation is handled exceptionally well, with specific, named strategies provided for both struggling learners (sentence starters) and advanced learners (peer questioning). The language used is clear and accessible.",
+        "rationale": "Differentiation is explicitly addressed with concrete strategies for both struggling and advanced learners. The language used for both students and teachers is clear and accessible.",
         "strengths": [
-          "Concrete differentiation strategies are provided for both ends of the learning spectrum.",
-          "Instructional language is engaging, simple, and age-appropriate."
+          "Provides specific sentence starters for struggling students.",
+          "Includes a meaningful challenge task (writing a new question) for early finishers.",
+          "Teacher instructions are directive, clear, and easy to follow."
         ],
         "improvements": []
       },
@@ -215,26 +202,27 @@
         "totalScore": "16 / 16",
         "subCriteria": [
           {
-            "name": "Active Student Participation",
+            "name": "Active student participation",
             "rating": "4"
           },
           {
-            "name": "Peer Interaction Opportunities",
+            "name": "Peer interaction opportunities",
             "rating": "4"
           },
           {
-            "name": "Real-World Application",
+            "name": "Real-world application",
             "rating": "4"
           },
           {
-            "name": "Closing Assessment / Lesson Consolidation",
+            "name": "Closing assessment / lesson consolidation",
             "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged throughout the lesson. The real-world connection to searching for YouTube videos makes the abstract concept of scanning highly relatable. The closing assessment effectively consolidates learning.",
+        "rationale": "Students are actively engaged throughout the lesson. The real-world connection to search engines is brilliant, and the closing assessment effectively consolidates learning.",
         "strengths": [
-          "The YouTube search analogy provides a highly authentic real-world application of the skill.",
-          "The Traffic Lights strategy offers a quick, effective formative assessment tool for the conclusion."
+          "The YouTube/search engine analogy provides a strong, authentic real-world application.",
+          "The Traffic Lights AFL strategy allows for quick, visible self-assessment.",
+          "Peer interaction is meaningfully integrated into the practice options."
         ],
         "improvements": []
       },
@@ -243,26 +231,27 @@
         "totalScore": "15 / 16",
         "subCriteria": [
           {
-            "name": "Contextually Relevant Content",
+            "name": "Contextually relevant content",
             "rating": "4"
           },
           {
-            "name": "Inclusive & Diverse Representation",
+            "name": "Inclusive & diverse representation",
             "rating": "4"
           },
           {
-            "name": "Student Voice & Cultural Connection",
+            "name": "Student voice & cultural connection",
             "rating": "3"
           },
           {
-            "name": "Language & Cultural Sensitivity",
+            "name": "Language & cultural sensitivity",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses culturally familiar names and relatable scenarios. Representation is inclusive, featuring both male and female names in the examples and practice options.",
+        "rationale": "The lesson uses culturally familiar names and contexts. The representation is inclusive, and the language is sensitive and appropriate for Pakistani students.",
         "strengths": [
-          "Use of local names (Sir Riaz, Pinky, Ali, Zainab) makes the content relatable.",
-          "The scenarios used (losing a toy, searching YouTube) are highly relevant to the students' daily lives."
+          "Uses familiar local names (Ahmed, Sir Riaz, Pinky, Ali, Zainab) in examples and prompts.",
+          "The context of searching for videos on phones is highly relatable to modern students.",
+          "Both male and female names are represented evenly."
         ],
         "improvements": []
       },
@@ -271,22 +260,23 @@
         "totalScore": "12 / 12",
         "subCriteria": [
           {
-            "name": "Internal Consistency",
+            "name": "Internal consistency",
             "rating": "4"
           },
           {
-            "name": "Academic Content Accuracy",
+            "name": "Academic content accuracy",
             "rating": "4"
           },
           {
-            "name": "Bias and Balance",
+            "name": "Bias and balance",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is internally consistent, with timings, instructions, and answer keys aligning perfectly. The academic content regarding reading strategies is accurate and unbiased.",
+        "rationale": "The lesson is internally consistent, with timings, instructions, and answer keys aligning perfectly. The academic content regarding reading comprehension strategies is accurate.",
         "strengths": [
-          "The explanation of keyword hunting and scanning is academically sound and precise.",
-          "Textbook references and answer keys are internally consistent throughout the plan."
+          "The Keyword Hunting strategy is taught accurately and effectively.",
+          "Textbook references and answer keys are internally consistent and plausible.",
+          "No bias or stereotyping is present in the examples."
         ],
         "improvements": []
       },
@@ -307,10 +297,11 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson maintains a strong, consistent focus on the reading skill of scanning. Specific reading strategies are named and explicitly taught, and textbook activities are integrated seamlessly.",
+        "rationale": "The lesson maintains a strong focus on reading comprehension. The Keyword Hunting strategy is explicitly named and taught, and textbook activities are integrated seamlessly.",
         "strengths": [
-          "Clear prioritization of reading comprehension and scanning skills.",
-          "Explicit teaching and modeling of the 'Keyword Hunting' strategy."
+          "Clear and consistent focus on reading comprehension (scanning for specific information).",
+          "The Keyword Hunting strategy is explicitly named, modeled, and practiced.",
+          "Textbook Activity 2 and 3 are fully integrated into the practice phase."
         ],
         "improvements": []
       }
@@ -318,15 +309,16 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 33.334,
-      "total_time": 33.335
+      "review_time": 27.809,
+      "total_time": 27.81
     },
     "tokens": {
-      "input_tokens": 13610,
-      "output_tokens": 4321,
-      "total_tokens": 17931,
+      "input_tokens": 13603,
+      "output_tokens": 4211,
+      "total_tokens": 17814,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.079072
+      "cost_usd": 0.0556826,
+      "cached_tokens": 12253
     }
   }
 }

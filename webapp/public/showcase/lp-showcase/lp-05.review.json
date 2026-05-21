@@ -1,31 +1,31 @@
 {
   "status": "success",
   "review": {
-    "grandTotal": "174 / 180",
-    "percentage": "97%",
+    "grandTotal": "178 / 180",
+    "percentage": "99%",
     "evaluation": [
       {
         "criterion": "Structural Completeness",
         "totalScore": "24 / 24",
         "subCriteria": [
           {
-            "name": "SLO present and non-empty",
+            "name": "SLO Present and Non-Empty",
             "rating": "4"
           },
           {
-            "name": "Hook present and non-empty",
+            "name": "Hook Present and Non-Empty",
             "rating": "4"
           },
           {
-            "name": "Explanation present and non-empty",
+            "name": "Explanation Present and Non-Empty",
             "rating": "4"
           },
           {
-            "name": "Practice present and non-empty",
+            "name": "Practice Present and Non-Empty",
             "rating": "4"
           },
           {
-            "name": "Conclusion present and non-empty",
+            "name": "Conclusion Present and Non-Empty",
             "rating": "4"
           },
           {
@@ -33,19 +33,19 @@
             "rating": "4"
           }
         ],
-        "rationale": "The lesson plan is structurally complete, with all required sections present, well-developed, and appropriately scoped for a single 40-minute class period.",
+        "rationale": "The lesson plan contains all required sections with substantive, actionable content. The scope is perfectly tailored for a single 40-minute class period targeting one specific learning outcome.",
         "strengths": [
-          "The SLO is clear, specific, and actionable.",
-          "All sections contain substantive, teacher-usable content rather than generic placeholders."
+          "All sections are fully developed with clear, actionable instructions.",
+          "The lesson is appropriately scoped for a single 40-minute period."
         ],
         "improvements": []
       },
       {
         "criterion": "Curriculum Alignment",
-        "totalScore": "23 / 24",
+        "totalScore": "22 / 24",
         "subCriteria": [
           {
-            "name": "Clear, specific, and single-focus SLO",
+            "name": "Clear, Specific, and Single-Focus SLO",
             "rating": "4"
           },
           {
@@ -53,123 +53,114 @@
             "rating": "4"
           },
           {
-            "name": "Scaffolded activities",
+            "name": "Scaffolded Activities",
             "rating": "4"
           },
           {
-            "name": "Aligned with textbook content",
+            "name": "Aligned with Textbook Content",
             "rating": "3"
           },
           {
-            "name": "SLO\u2013assessment alignment",
-            "rating": "4"
+            "name": "SLO\u2013Assessment Alignment",
+            "rating": "3"
           },
           {
-            "name": "Bloom's level accuracy",
+            "name": "Bloom's Level Accuracy",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson aligns perfectly with the stated SLO, focusing entirely on writing a 3-sentence paragraph. The activities build logically toward this goal, and the Bloom's level (Create) is accurate. Textbook alignment is inferred as page 133 is referenced.",
+        "rationale": "The SLO is highly specific, measurable, and accurately targets the 'Create' level of Bloom's Taxonomy. The activities are well-scaffolded toward the writing task. The final assessment questions in the conclusion slightly drift into reading comprehension rather than focusing purely on the writing SLO, but the core practice aligns perfectly.",
         "strengths": [
-          "The SLO is highly focused on a single, measurable skill.",
-          "Assessments directly measure the specific writing skill stated in the SLO."
+          "The SLO is precise, single-focused, and highly measurable.",
+          "Activities build logically from vocabulary generation to sentence construction to paragraph writing."
         ],
         "improvements": []
       },
       {
         "criterion": "Instructional Flow",
-        "totalScore": "38 / 44",
+        "totalScore": "42 / 44",
         "subCriteria": [
           {
-            "name": "Opening hook relevant to SLO",
+            "name": "Opening Hook Relevant to SLO",
             "rating": "4"
           },
           {
-            "name": "Explicit instructions in Explanation",
+            "name": "Explicit Instructions in Explanation",
             "rating": "4"
           },
           {
-            "name": "Modeling/demonstration by teacher",
+            "name": "Modeling/Demonstration by Teacher",
             "rating": "4"
           },
           {
-            "name": "Smooth transitions across steps",
+            "name": "Smooth Transitions Across Steps",
             "rating": "4"
           },
           {
-            "name": "Practice opportunities for students",
+            "name": "Practice Opportunities for Students",
             "rating": "4"
           },
           {
-            "name": "Appropriately placed and spaced CFU questions",
+            "name": "Appropriately Placed and Spaced CFU Questions",
+            "rating": "4"
+          },
+          {
+            "name": "Grade-Appropriate Strategies Aligned with SLO",
+            "rating": "4"
+          },
+          {
+            "name": "Higher-Order Thinking Opportunities",
+            "rating": "4"
+          },
+          {
+            "name": "Visual Aid Effectiveness",
             "rating": "3"
           },
           {
-            "name": "Grade-appropriate strategies aligned with SLO",
+            "name": "Gradual Release of Responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
             "rating": "4"
           },
           {
-            "name": "Higher-order thinking opportunities",
-            "rating": "3"
-          },
-          {
-            "name": "Visual aid effectiveness",
-            "rating": "3"
-          },
-          {
-            "name": "Gradual release of responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
-            "rating": "2"
-          },
-          {
-            "name": "Prior knowledge activation",
+            "name": "Prior Knowledge Activation",
             "rating": "3"
           }
         ],
-        "rationale": "The instructional flow is generally strong, with excellent modeling and explicit instructions. However, the Gradual Release of Responsibility is compromised because the Practice section offers 'options' rather than a sequence, meaning the 'We Do' phase might be skipped entirely depending on the teacher's choice.",
+        "rationale": "The instructional flow is excellent, featuring strong teacher modeling (think-alouds), well-placed CFUs, and a clear Gradual Release of Responsibility. Prior knowledge activation is present in the teacher notes but could be more explicitly integrated into the hook script.",
         "strengths": [
-          "The teacher's think-aloud modeling is exceptionally clear and helpful for students.",
-          "The hook is highly engaging and directly relevant to the topic."
+          "Exceptional teacher modeling with explicit think-alouds demonstrating the writing process.",
+          "Strong Gradual Release of Responsibility from teacher modeling to collaborative/independent practice."
         ],
-        "improvements": [
-          {
-            "subCriterion": "Gradual release of responsibility (GRR) \u2014 I Do \u2192 We Do \u2192 You Do",
-            "currentScore": "2",
-            "targetScore": "4",
-            "action": "MODIFY",
-            "location": "Practice",
-            "instruction": "Restructure the practice section from 'options' to a clear sequence: start with a shared writing task on the board (We Do), followed by students writing their own sentences independently (You Do)."
-          }
-        ]
+        "improvements": []
       },
       {
         "criterion": "Practicality & Teacher Support",
         "totalScore": "20 / 20",
         "subCriteria": [
           {
-            "name": "Appropriately timed sections",
+            "name": "Appropriately Timed Sections",
             "rating": "4"
           },
           {
-            "name": "Adequate time for Practice and Explanation",
+            "name": "Adequate Time for Practice and Explanation",
             "rating": "4"
           },
           {
-            "name": "Teacher support materials",
+            "name": "Teacher Support Materials",
             "rating": "4"
           },
           {
-            "name": "Resource requirements",
+            "name": "Resource Requirements",
             "rating": "4"
           },
           {
-            "name": "Teacher flexibility / no over-scripting",
+            "name": "Teacher Flexibility / No Over-Scripting",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is highly practical, with realistic timings, low-cost resources, and excellent teacher support materials including a reference paragraph.",
+        "rationale": "The lesson is highly practical for a Pakistani classroom, requiring only basic materials like chart paper and the board. Timings are realistic, and the provision of multiple practice options gives the teacher excellent flexibility.",
         "strengths": [
-          "Time allocations are realistic and sum to an appropriate 42 minutes.",
-          "The script provides clear guidance without being overly rigid."
+          "Low-cost, easily accessible resource requirements.",
+          "Providing three different options for the practice section empowers the teacher to adapt to their specific class dynamics."
         ],
         "improvements": []
       },
@@ -178,26 +169,26 @@
         "totalScore": "16 / 16",
         "subCriteria": [
           {
-            "name": "Suggestions for struggling or advanced students",
+            "name": "Suggestions for Struggling or Advanced Students",
             "rating": "4"
           },
           {
-            "name": "Named differentiation strategies with instructions",
+            "name": "Named Differentiation Strategies with Instructions",
             "rating": "4"
           },
           {
-            "name": "Instructional language for students",
+            "name": "Instructional Language for Students (Easy to Understand)",
             "rating": "4"
           },
           {
-            "name": "Instructional language for teachers",
+            "name": "Instructional Language for Teachers (Easy to Understand)",
             "rating": "4"
           }
         ],
-        "rationale": "Differentiation is handled excellently, with specific, named strategies for both struggling students (sentence starters) and advanced students (adding extra describing words).",
+        "rationale": "Differentiation is explicitly addressed with concrete strategies for both struggling students (sentence starters) and advanced learners (incorporating new vocabulary). The language used is simple, engaging, and age-appropriate.",
         "strengths": [
-          "Clear, actionable differentiation strategies are provided for both ends of the spectrum.",
-          "Instructional language is simple, engaging, and age-appropriate."
+          "Clear, actionable differentiation strategies for both ends of the learning spectrum.",
+          "Teacher instructions are exceptionally clear and easy to follow."
         ],
         "improvements": []
       },
@@ -206,26 +197,26 @@
         "totalScore": "15 / 16",
         "subCriteria": [
           {
-            "name": "Active student participation",
+            "name": "Active Student Participation",
             "rating": "4"
           },
           {
-            "name": "Peer interaction opportunities",
+            "name": "Peer Interaction Opportunities",
             "rating": "4"
           },
           {
-            "name": "Real-world application",
+            "name": "Real-World Application",
+            "rating": "4"
+          },
+          {
+            "name": "Closing Assessment / Lesson Consolidation",
             "rating": "3"
-          },
-          {
-            "name": "Closing assessment / lesson consolidation",
-            "rating": "4"
           }
         ],
-        "rationale": "Students are actively engaged throughout the lesson, with good opportunities for peer interaction (swapping notebooks) and a strong closing assessment.",
+        "rationale": "Students are actively engaged through writing, peer review (swapping notebooks), and physical movement in the conclusion. The postcard format provides a meaningful real-world application. The closing assessment checks some comprehension facts alongside the writing skill.",
         "strengths": [
-          "The peer review step (checking for power words) is a great way to encourage interaction.",
-          "The closing assessment effectively checks mastery of the SLO."
+          "The postcard activity provides an authentic, real-world purpose for writing.",
+          "Peer interaction is meaningfully integrated through collaborative brainstorming and peer feedback (starring words)."
         ],
         "improvements": []
       },
@@ -234,26 +225,26 @@
         "totalScore": "15 / 16",
         "subCriteria": [
           {
-            "name": "Contextually relevant content",
+            "name": "Contextually Relevant Content",
             "rating": "4"
           },
           {
-            "name": "Inclusive & diverse representation",
+            "name": "Inclusive & Diverse Representation",
             "rating": "4"
           },
           {
-            "name": "Student voice & cultural connection",
+            "name": "Student Voice & Cultural Connection",
             "rating": "3"
           },
           {
-            "name": "Language & cultural sensitivity",
+            "name": "Language & Cultural Sensitivity",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson uses highly relevant local context (Deosai Plains) and includes diverse local names, making it relatable for Pakistani students.",
+        "rationale": "The lesson uses a highly relevant local context (Deosai Plains, Pakistan) and familiar local names (Ali, Sara, Ahmed, Zainab). Students are invited to connect to their own experiences of visiting green fields.",
         "strengths": [
-          "Strong use of local geography (Deosai Plains) to anchor the creative writing task.",
-          "Inclusive use of local names in the examples."
+          "Strong use of local Pakistani geography (Deosai Plains) to contextualize the writing task.",
+          "Inclusive use of multiple local names in examples and groupings."
         ],
         "improvements": []
       },
@@ -262,28 +253,28 @@
         "totalScore": "12 / 12",
         "subCriteria": [
           {
-            "name": "Internal consistency",
+            "name": "Internal Consistency & Plausible Textbook References",
             "rating": "4"
           },
           {
-            "name": "Academic content accuracy",
+            "name": "Academic Content Accuracy",
             "rating": "4"
           },
           {
-            "name": "Bias and balance",
+            "name": "Bias and Balance",
             "rating": "4"
           }
         ],
-        "rationale": "The lesson is factually accurate, internally consistent, and free from bias.",
+        "rationale": "The lesson is internally consistent, with timings, instructions, and examples aligning perfectly. The academic content regarding sentence structure and descriptive writing is accurate for Grade 2.",
         "strengths": [
-          "Instructions, timings, and examples align perfectly.",
-          "The academic content is accurate and appropriate for Grade 2."
+          "Flawless internal consistency between the modeled sentences, the word bank, and the final sample paragraph.",
+          "Accurate and age-appropriate academic content."
         ],
         "improvements": []
       },
       {
         "criterion": "Subject Specific Review - English",
-        "totalScore": "11 / 12",
+        "totalScore": "12 / 12",
         "subCriteria": [
           {
             "name": "Prioritized Skill Focus (Reading/Listening/Speaking/Writing)",
@@ -295,13 +286,13 @@
           },
           {
             "name": "Evidence of Textbook Material Usage",
-            "rating": "3"
+            "rating": "4"
           }
         ],
-        "rationale": "The lesson maintains a clear focus on writing and uses effective strategies like mind mapping and think-aloud modeling. Textbook usage is evident through the topic and page reference.",
+        "rationale": "The lesson maintains a laser focus on the prioritized skill of writing. It effectively employs named strategies like mind mapping and collaborative brainstorming, and integrates the textbook's vocabulary ('Power Words') seamlessly into the writing task.",
         "strengths": [
-          "Consistent focus on the prioritized skill of writing.",
-          "Excellent use of think-aloud modeling to teach the writing process."
+          "Consistent and unwavering focus on the core skill of descriptive writing.",
+          "Excellent integration of textbook vocabulary into a creative, productive task."
         ],
         "improvements": []
       }
@@ -309,15 +300,15 @@
   },
   "metadata": {
     "timings": {
-      "review_time": 31.687,
-      "total_time": 31.688
+      "review_time": 39.959,
+      "total_time": 39.96
     },
     "tokens": {
-      "input_tokens": 13400,
-      "output_tokens": 4091,
-      "total_tokens": 17491,
+      "input_tokens": 13521,
+      "output_tokens": 4427,
+      "total_tokens": 17948,
       "model": "google/gemini-3.1-pro-preview",
-      "cost_usd": 0.075892
+      "cost_usd": 0.080166
     }
   }
 }
