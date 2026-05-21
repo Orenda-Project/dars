@@ -379,22 +379,31 @@ async def auto_build_breakdown(
     for tr in topic_rows:
         topics_by_chapter.setdefault(tr["book_chapter_id"], []).append(tr)
 
+    # Per topic, we resolve two preferences (D-13):
+    #   * The first non-null sub-SLO `recommended_lp_type` (highest precedence).
+    #   * The first non-null parent-SLO `recommended_lp_type` (fallback).
+    # `pick_lp_type` resolves the precedence; we just collect both and pass.
+    topic_sub_slo_lp: dict[UUID, str | None] = {}
     topic_recommended_lp: dict[UUID, str | None] = {}
     if topic_rows:
         rec_rows = await conn.fetch(
             """
-            SELECT tss.topic_id, s.recommended_lp_type
+            SELECT tss.topic_id,
+                   ss.recommended_lp_type AS sub_slo_lp_type,
+                   s.recommended_lp_type  AS slo_lp_type
             FROM topic_sub_slos tss
             JOIN sub_slos ss ON ss.id = tss.sub_slo_id
             JOIN slos s ON s.id = ss.slo_id
             WHERE tss.topic_id = ANY($1::uuid[])
-              AND s.recommended_lp_type IS NOT NULL
             ORDER BY tss.topic_id, ss.position
             """,
             [t["id"] for t in topic_rows],
         )
         for r in rec_rows:
-            topic_recommended_lp.setdefault(r["topic_id"], r["recommended_lp_type"])
+            if r["sub_slo_lp_type"] is not None:
+                topic_sub_slo_lp.setdefault(r["topic_id"], r["sub_slo_lp_type"])
+            if r["slo_lp_type"] is not None:
+                topic_recommended_lp.setdefault(r["topic_id"], r["slo_lp_type"])
 
     topic_counts = [len(topics_by_chapter.get(c["id"], [])) for c in chapters]
     chapter_days = compute_chapter_day_budget(topic_counts, request.total_teaching_days)
@@ -458,6 +467,7 @@ async def auto_build_breakdown(
                     topic_title=topic["title"],
                     topic_text=topic["topic_text"],
                     recommended_lp_type=topic_recommended_lp.get(topic["id"]),
+                    sub_slo_recommended_lp_type=topic_sub_slo_lp.get(topic["id"]),
                 )
                 if not is_valid_lp_type(subject_code, lp_type):
                     result.warnings.append(

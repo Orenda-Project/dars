@@ -113,3 +113,71 @@ def test_unknown_subject_returns_safe_value():
     )
     # Falls through to 'revision' (most subjects' last-resort).
     assert out == "revision"
+
+
+# ── Sub-SLO precedence (D-13, ncp-english-g1-seed) ───────────────────────────
+
+
+def test_sub_slo_lp_type_wins_over_parent_slo():
+    # Both set, both valid — sub-SLO is more specific.
+    assert pick_lp_type(
+        subject_code="Eng",
+        topic_title="Comprehension Questions",
+        topic_text="Answer the questions below.",
+        recommended_lp_type="grammar",
+        sub_slo_recommended_lp_type="comprehension_qa",
+    ) == "comprehension_qa"
+
+
+def test_sub_slo_lp_type_alone_is_used():
+    # Sub-SLO set, parent NULL — sub-SLO drives the choice.
+    assert pick_lp_type(
+        subject_code="Eng",
+        topic_title="Story Time",
+        topic_text="Once upon a time...",
+        recommended_lp_type=None,
+        sub_slo_recommended_lp_type="creative_writing",
+    ) == "creative_writing"
+
+
+def test_parent_slo_used_when_sub_slo_null():
+    # Parent set, sub-SLO NULL — existing behavior preserved.
+    assert pick_lp_type(
+        subject_code="Eng",
+        topic_title="Nouns",
+        topic_text="A noun is a naming word.",
+        recommended_lp_type="grammar",
+        sub_slo_recommended_lp_type=None,
+    ) == "grammar"
+
+
+def test_neither_recommendation_falls_through_to_heuristic():
+    # Both NULL — keyword heuristic still works.
+    assert pick_lp_type(
+        subject_code="Eng",
+        topic_title="Nouns",
+        topic_text="A noun is a naming word.",
+        recommended_lp_type=None,
+        sub_slo_recommended_lp_type=None,
+    ) == "grammar"
+
+
+def test_invalid_sub_slo_lp_type_falls_through_to_parent():
+    # Sub-SLO has an invalid-for-subject value; parent SLO's value still wins.
+    assert pick_lp_type(
+        subject_code="Eng",
+        topic_title="Story Time",
+        topic_text="Once upon a time...",
+        recommended_lp_type="reading",
+        sub_slo_recommended_lp_type="concrete",  # Maths-only; invalid for Eng
+    ) == "reading"
+
+
+def test_invalid_sub_slo_and_invalid_parent_fall_through_to_heuristic():
+    assert pick_lp_type(
+        subject_code="Eng",
+        topic_title="Nouns",
+        topic_text="A noun is a naming word.",
+        recommended_lp_type="concrete",        # Maths-only
+        sub_slo_recommended_lp_type="word_problems",  # Maths-only
+    ) == "grammar"

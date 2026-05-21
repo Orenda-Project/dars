@@ -177,6 +177,7 @@ LLM-broken-down granular outcomes.
 | `statement` | TEXT | granular: "Student can identify CVC words in isolation" |
 | `position` | INT | order within parent SLO |
 | `source` | TEXT | "manual" \| "schema_breakdown" |
+| `recommended_lp_type` | TEXT NULL | per-sub-SLO lp_type override; if set, wins over parent SLO's `recommended_lp_type` (see `breakdown/lp_type_heuristics.py`). Populated by the NCP seed; NULL for existing Dars sub-SLOs (which inherit parent's value). Added by migration `20260520000002_sub_slos_add_recommended_lp_type.sql`. Allowed values validated in application code, not the DB. |
 | `created_at`, `updated_at` | TIMESTAMPTZ | |
 
 UNIQUE `(slo_id, code)`.
