@@ -14,6 +14,7 @@ gated by X-API-Key. The teacher app uses those; the dashboard uses
 both.
 """
 import logging
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -185,17 +186,22 @@ async def update_teacher(
 class AcademicYearCreate(BaseModel):
     school_id: UUID
     name: str = Field(min_length=1, max_length=100)
-    start_date: str  # ISO date — Pydantic accepts both date and str here, we keep simple
-    end_date: str
+    # Pydantic v2 parses ISO date strings ("YYYY-MM-DD") into datetime.date,
+    # which asyncpg needs for date params (otherwise it raises DataError at
+    # the bind step, before Postgres ever sees the value).
+    start_date: date
+    end_date: date
 
 
 class AcademicYearUpdate(BaseModel):
     name: str | None = None
-    start_date: str | None = None
-    end_date: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 class AcademicYearWritten(BaseModel):
+    # start_date / end_date come back as strings because the SELECT uses
+    # to_char(..., 'YYYY-MM-DD'); the response shape is contractual.
     id: UUID
     org_id: UUID
     school_id: UUID
@@ -214,14 +220,17 @@ async def create_academic_year(
     row = await conn.fetchrow(
         """
         INSERT INTO academic_years (org_id, school_id, name, start_date, end_date)
-        VALUES ($1, $2, $3, $4::date, $5::date)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id, org_id, school_id, name,
                   to_char(start_date, 'YYYY-MM-DD') AS start_date,
                   to_char(end_date, 'YYYY-MM-DD') AS end_date
         """,
         admin.org_id, payload.school_id, payload.name, payload.start_date, payload.end_date,
     )
-    log.info("create_ay: school=%s ay=%s", payload.school_id, row["id"])
+    log.info(
+        "create_ay: school=%s ay=%s start=%s end=%s",
+        payload.school_id, row["id"], payload.start_date, payload.end_date,
+    )
     return AcademicYearWritten(**dict(row))
 
 
@@ -248,10 +257,10 @@ async def update_academic_year(
         sets.append(f"name = ${len(params)}")
     if payload.start_date is not None:
         params.append(payload.start_date)
-        sets.append(f"start_date = ${len(params)}::date")
+        sets.append(f"start_date = ${len(params)}")
     if payload.end_date is not None:
         params.append(payload.end_date)
-        sets.append(f"end_date = ${len(params)}::date")
+        sets.append(f"end_date = ${len(params)}")
     if not sets:
         row = await conn.fetchrow(
             """SELECT id, org_id, school_id, name,
