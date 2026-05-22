@@ -50,9 +50,9 @@ If two docs disagree, this is the order. Code is **lowest** authority. Surface c
 
 | Phase | Status | PR | Notes |
 |---|---|---|---|
-| Phase 1 — Multi-grade LPs in the showcase | 🟡 In flight | (pending) | F-1.1 → F-1.5 implemented on branch `feat/lp-showcase-multigrade`. Regenerated showcase: 13 entries (10 single-grade with reviews, 3 multi-grade rendered via the new Python renderer per D-7). Awaiting commit + PR. |
+| Phase 1 — Multi-grade LPs in the showcase | ✅ Closed | [#88](https://github.com/Orenda-Project/dars/pull/88) | Squash-merged 2026-05-21 (commit `9aff0f3`). Railway webapp deploy `88af8fc2` SUCCESS. Server SKIPPED (no `/server/**` changes — correct). Live at `dars-fe-stage.up.railway.app/showcase/lp-showcase` showing 3 sidebar groups (Grade 2, Grade 5, Multi-Grade) with 13 LPs total. |
 
-**Next thing to do:** commit the changes on `feat/lp-showcase-multigrade`, push, and open a PR against `staging`. After merge, watch Railway (server) — skipped if no server files changed — and Vercel (webapp). Update Step 5 with PR number and mark ✅ when both deploys are green.
+**Feature closed.** This onramp is now historical — the folder stays for future reference of what was decided (the 7 decisions in `01-decision-log.md`) and the Python multigrade renderer pattern (D-7).
 
 ## Step 6 — Where to find supporting context
 
