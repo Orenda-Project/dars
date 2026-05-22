@@ -77,36 +77,33 @@ When something works, say "gg" naturally. When it breaks, "chammaar." Memories `
 
 ## Step 5 — Current state
 
-**As of 2026-05-21 — F1.1..F1.8 code complete; awaiting PR merge + post-deploy script run (F1.9).**
+**As of 2026-05-22 — Phase 1 complete. NCP English G1 data is live on Dars staging.**
 
 | Feature | Status |
 |---|---|
-| F1.1 — Migration: `sub_slos.recommended_lp_type` | ✅ migration file written; v2 data-model doc updated |
+| F1.1 — Migration: `sub_slos.recommended_lp_type` | ✅ shipped via PR #87, applied on staging |
 | F1.2 — `lp_type_heuristics` + `auto_build_service` sub-SLO precedence | ✅ 6 new tests pass; 18/18 total |
 | F1.3 — Script scaffold + dual DB connections | ✅ `scripts/import_ncp_english_g1.py` |
 | F1.4 — Claude lp_type classifier | ✅ `scripts/lp_type_classifier.py`; 6 mocked tests pass |
-| F1.5 — Upsert NCP curriculum + SLOs | ✅ run live: 91 NCP English G1 SLOs in Dars staging |
-| F1.6 — Sub-SLO breakdown via Anthropic + Claude lp_type | ✅ code complete; **blocked on staging migration deploy** |
-| F1.7 — Book 1171 + chapters upsert (book.book_text slicing) | ✅ code complete; unblocked once F1.6 runs |
-| F1.8 — Topics + topic↔sub-SLO via Anthropic mapper | ✅ code complete |
-| F1.9 — Run on staging, delete `import_books.py`, open PR | 🟡 `import_books.py` deleted; PR pending |
+| F1.5 — Upsert NCP curriculum + SLOs | ✅ live: 91 NCP English G1 SLOs on staging |
+| F1.6 — Sub-SLO breakdown via Anthropic + Claude lp_type | ✅ live: 11 sub-SLOs (sparse — see D-22); D-21 streaming patch |
+| F1.7 — Book 1171 + chapters upsert (book.book_text slicing) | ✅ live: 8 chapters (4 soft-deleted in fde_staging) |
+| F1.8 — Topics + topic↔sub-SLO via Anthropic mapper | ✅ live: 8 synthetic topics + 27 topic↔sub-SLO mappings |
+| F1.9 — Run on staging, delete `import_books.py`, open PR | ✅ PR #87 merged 2026-05-21; script run 2026-05-22 |
+
+**End-to-end verification (2026-05-22):**
+- Sample NCP org (`4ab011dd-d081-4654-a72a-52dcc84a92d3`) signed up on staging with `curriculum_code=NCP`.
+- `POST /api/v2/breakdowns/auto-build` produced a draft org-scope breakdown (`c4dcbf75-4016-4156-af56-55539fe8b0ce`): 8 chapters · 139 lessons · 25 FA · 8 SA · 8 revision = **180 slots** (D-74 invariant holds).
+- Total Anthropic spend for the import run: ~$0.93 (one Opus breakdown + 11 Haiku lp_type classifies + 8 Opus topic-mapper calls).
+
+**Out-of-scope incident, fixed mid-session:** unrelated 500 in `POST /api/v1/academic-years` (`AcademicYearCreate.start_date` was typed `str` instead of `datetime.date`). Fixed in PR #90, deployed staging 2026-05-22; UI-verified.
 
 **Next thing to do unless the user says otherwise:**
 
-Commit + push branch `feat/ncp-english-g1-seed-phase-1`, open PR to staging. After merge Railway applies migration `20260520000002_sub_slos_add_recommended_lp_type.sql`. Then run:
-
-```
-cd dars/server
-uv run python ../scripts/import_ncp_english_g1.py
-```
-
-Expected one-shot end-to-end behavior:
-- F1.5 re-upserts the 91 SLOs (idempotent, 0 new)
-- F1.6 makes 1 Anthropic call (breakdown of all 91 SLOs into sub-SLOs) + N Haiku calls to classify lp_type per sub-SLO
-- F1.7 reads book 1171 + 12 chapters, slices `book.book_text` per chapter, upserts
-- F1.8 creates 12 synthetic topics + 12 Anthropic calls to map each chapter to sub-SLOs
-
-Estimated total cost: < $5 one-shot. Total runtime: ~5 minutes.
+Phase 1 is done. There is no Phase 2 in this feature (D-18). Likely follow-ups (NOT part of this feature):
+- Richer sub-SLO breakdown: replace the single bulk Opus call with per-SLO calls if 11 sub-SLOs / 91 SLOs is too thin for downstream LP generation quality (D-22).
+- Restore the 4 soft-deleted chapters if content team confirms they should be live.
+- Repeat the seed for another grade/subject cell (NCP × G2, NCP × Urdu, etc.) — D-1 scopes this feature to one cell only.
 
 ---
 
