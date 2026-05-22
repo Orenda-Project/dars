@@ -285,12 +285,17 @@ def _run_breakdown_llm(slos_text: str) -> str:
         BREAKDOWN_MODEL, len(slos_text.splitlines()), len(system_prompt),
     )
     client = anthropic.Anthropic()
-    response = client.messages.create(
+    # Streaming required: with max_tokens=32000 on Opus, the SDK's worst-case
+    # latency estimate exceeds the 10-minute non-streaming ceiling and refuses
+    # client.messages.create(...). stream().get_final_message() returns the
+    # same Message shape so the rest of the call site is unchanged.
+    with client.messages.stream(
         model=BREAKDOWN_MODEL,
         max_tokens=BREAKDOWN_MAX_TOKENS,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
-    )
+    ) as stream:
+        response = stream.get_final_message()
     log.info(
         "Breakdown response received — usage in=%d out=%d",
         response.usage.input_tokens, response.usage.output_tokens,
