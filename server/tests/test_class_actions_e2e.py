@@ -367,6 +367,64 @@ class TestClassActionsE2E:
         finally:
             await self._cleanup(refs)
 
+    async def test_timeline_merges_lessons_and_assessments_dated(
+        self, client: AsyncClient
+    ):
+        """class-timeline-view F-1.3 — /timeline returns lessons + assessments
+        interleaved by position, each carrying the projector's date."""
+        refs = await self._refs_and_realize_class(client)
+        try:
+            cst_id = refs["cst_id"]
+            r = await client.get(
+                f"/api/v2/csts/{cst_id}/timeline", headers=org_headers()
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["cst_id"] == cst_id
+            items = body["items"]
+            assert len(items) > 0
+
+            # Strictly ascending position (the global spine).
+            positions = [it["position"] for it in items]
+            assert positions == sorted(positions)
+            assert len(positions) == len(set(positions))
+
+            # Both kinds present and actually interleaved (not all lessons
+            # then all assessments).
+            kinds = [it["kind"] for it in items]
+            assert "lesson" in kinds
+            assert "assessment" in kinds
+
+            # Each item carries the projector fields + chapter context.
+            for it in items:
+                assert "projected_date" in it
+                assert "is_conflict" in it and "is_overflow" in it
+                assert it["breakdown_chapter_id"]
+
+            # Date matches the projector for a known lesson slot.
+            from dars.breakdown.projector import project_cst_schedule
+            from uuid import UUID
+
+            conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+            try:
+                projected = await project_cst_schedule(conn, UUID(cst_id))
+            finally:
+                await conn.close()
+            proj_by_id = {str(p.slot_id): p for p in projected}
+            for it in items:
+                p = proj_by_id.get(it["id"])
+                assert p is not None
+                expected = p.projected_date.isoformat() if p.projected_date else None
+                assert it["projected_date"] == expected
+        finally:
+            await self._cleanup(refs)
+
+    async def test_timeline_requires_org_auth(self, client: AsyncClient):
+        r = await client.get(
+            "/api/v2/csts/00000000-0000-0000-0000-000000000000/timeline",
+        )
+        assert r.status_code == 401, r.text
+
     async def test_mark_taught_requires_org_auth(self, client: AsyncClient):
         # No header
         r = await client.post(

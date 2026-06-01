@@ -15,6 +15,7 @@ from dars.breakdown.mark_taught_service import (
     mark_lesson_slot,
 )
 from dars.breakdown.onboarding_service import onboard_cst
+from dars.breakdown.projector import project_cst_schedule
 from dars.v2_api.deps import OrgContext, get_current_org, get_db_conn
 from dars.v2_api.schemas_class_actions import (
     ClassAssessmentSlotListItem,
@@ -22,6 +23,7 @@ from dars.v2_api.schemas_class_actions import (
     ClassLessonSlotListItem,
     ClassLessonSlotListResponse,
     CompleteAssessmentBody,
+    CstTimelineResponse,
     MarkActionResponse,
     MarkTaughtBody,
     OnboardBody,
@@ -29,6 +31,8 @@ from dars.v2_api.schemas_class_actions import (
     SkipBody,
     SubSLOCoverageEntry,
     SubSLOCoverageResponse,
+    TimelineAssessmentItem,
+    TimelineLessonItem,
 )
 
 log = logging.getLogger("v2_api.class_actions")
@@ -397,3 +401,140 @@ async def list_assessment_slots(
         "list_assessment_slots: cst=%s returned %d slots", cst_id, len(items),
     )
     return ClassAssessmentSlotListResponse(cst_id=cst_id, items=items)
+
+
+# ---------------------------------------------------------------------------
+# class-timeline-view — unified, dated timeline (D-1..D-5).
+#
+# Merges the lesson + assessment list queries above with the projector's
+# per-slot dates (project_cst_schedule, reused verbatim per D-5) into one
+# kind-discriminated list sorted by global position. One fetch drives the
+# teacher app's Timeline tab.
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/csts/{cst_id}/timeline",
+    response_model=CstTimelineResponse,
+)
+async def get_cst_timeline(
+    cst_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> CstTimelineResponse:
+    log.info("get_cst_timeline: entry cst=%s", cst_id)
+    try:
+        await _ensure_cst_in_org(conn, cst_id, org.id)
+
+        # Projector owns date assignment + conflict/overflow flags (D-2, D-5).
+        projected = await project_cst_schedule(conn, cst_id)
+        proj = {(p.slot_kind, p.slot_id): p for p in projected}
+
+        lesson_rows = await conn.fetch(
+            """
+            SELECT
+                cls.id, cls.position, cls.slot_type, cls.lp_type,
+                cls.topic_id, cls.status, cls.generated_lp_id,
+                t.title              AS topic_title,
+                bc.id                AS breakdown_chapter_id,
+                bc.position          AS breakdown_chapter_position,
+                book_chapter.title   AS breakdown_chapter_title,
+                gl.status            AS lp_status
+            FROM class_lesson_slots cls
+            JOIN breakdown_slots bs       ON bs.id = cls.breakdown_slot_id
+            JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
+            JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+            LEFT JOIN topics t          ON t.id = cls.topic_id
+            LEFT JOIN generated_lps gl  ON gl.id = cls.generated_lp_id
+            WHERE cls.cst_id = $1
+            ORDER BY cls.position
+            """,
+            cst_id,
+        )
+
+        assess_rows = await conn.fetch(
+            """
+            SELECT
+                cas.id, cas.position, cas.assessment_type,
+                cas.status, cas.generated_exam_id,
+                bc.id                AS breakdown_chapter_id,
+                bc.position          AS breakdown_chapter_position,
+                book_chapter.title   AS breakdown_chapter_title,
+                ge.status            AS exam_status,
+                COALESCE(
+                    array_agg(cast2.topic_id ORDER BY cast2.position)
+                        FILTER (WHERE cast2.topic_id IS NOT NULL),
+                    ARRAY[]::UUID[]
+                ) AS topic_ids,
+                COALESCE(
+                    array_agg(t.title ORDER BY cast2.position)
+                        FILTER (WHERE t.title IS NOT NULL),
+                    ARRAY[]::TEXT[]
+                ) AS topic_titles
+            FROM class_assessment_slots cas
+            JOIN breakdown_slots bs       ON bs.id = cas.breakdown_slot_id
+            JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
+            JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+            LEFT JOIN class_assessment_slot_topics cast2
+                ON cast2.class_assessment_slot_id = cas.id
+            LEFT JOIN topics t            ON t.id = cast2.topic_id
+            LEFT JOIN generated_exams ge  ON ge.id = cas.generated_exam_id
+            WHERE cas.cst_id = $1
+            GROUP BY cas.id, bc.id, book_chapter.id, ge.status
+            ORDER BY cas.position
+            """,
+            cst_id,
+        )
+
+        items: list[TimelineLessonItem | TimelineAssessmentItem] = []
+
+        for r in lesson_rows:
+            p = proj.get(("lesson", r["id"]))
+            items.append(TimelineLessonItem(
+                id=r["id"], position=r["position"],
+                projected_date=p.projected_date if p else None,
+                is_anchor=p.is_anchor if p else False,
+                is_conflict=p.is_conflict if p else False,
+                is_overflow=p.is_overflow if p else False,
+                slot_type=r["slot_type"], lp_type=r["lp_type"],
+                topic_id=r["topic_id"], topic_title=r["topic_title"],
+                status=r["status"], generated_lp_id=r["generated_lp_id"],
+                lp_status=r["lp_status"] or "not_generated",
+                breakdown_chapter_id=r["breakdown_chapter_id"],
+                breakdown_chapter_position=r["breakdown_chapter_position"],
+                breakdown_chapter_title=r["breakdown_chapter_title"],
+            ))
+
+        for r in assess_rows:
+            p = proj.get(("assessment", r["id"]))
+            items.append(TimelineAssessmentItem(
+                id=r["id"], position=r["position"],
+                projected_date=p.projected_date if p else None,
+                is_anchor=p.is_anchor if p else False,
+                is_conflict=p.is_conflict if p else False,
+                is_overflow=p.is_overflow if p else False,
+                assessment_type=r["assessment_type"],
+                topic_ids=list(r["topic_ids"] or []),
+                topic_titles=list(r["topic_titles"] or []),
+                status=r["status"], generated_exam_id=r["generated_exam_id"],
+                exam_status=r["exam_status"] or "not_generated",
+                breakdown_chapter_id=r["breakdown_chapter_id"],
+                breakdown_chapter_position=r["breakdown_chapter_position"],
+                breakdown_chapter_title=r["breakdown_chapter_title"],
+            ))
+
+        # Global teaching order is the spine (D-1).
+        items.sort(key=lambda i: i.position)
+
+        log.info(
+            "get_cst_timeline: exit cst=%s items=%d overflow=%d conflicts=%d",
+            cst_id, len(items),
+            sum(1 for i in items if i.is_overflow),
+            sum(1 for i in items if i.is_conflict),
+        )
+        return CstTimelineResponse(cst_id=cst_id, items=items)
+    except HTTPException:
+        raise
+    except Exception:
+        log.error("get_cst_timeline: failed cst=%s", cst_id, exc_info=True)
+        raise
