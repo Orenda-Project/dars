@@ -13,9 +13,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { LPViewer } from "@/components/molecules/lp-viewer";
 import { SlideOver } from "@/components/molecules/slide-over";
 import {
-  ClassAssessmentsTab,
-} from "@/components/templates/class-assessments-tab";
-import {
   ClassBookTab,
   type BookTabChapter,
   type BookTabTopic,
@@ -29,9 +26,10 @@ import {
   type ClassDetailTab,
 } from "@/components/templates/class-detail-template";
 import {
-  ClassLessonsTab,
-  type ChapterGroup,
-} from "@/components/templates/class-lessons-tab";
+  ClassTimelineTab,
+  type TimelineChapterGroup,
+  type TimelineKindFilter,
+} from "@/components/templates/class-timeline-tab";
 import {
   ClassSLOProgressTab,
   type SLOProgressGroup,
@@ -53,8 +51,8 @@ import {
   tenancy as tenancyApi,
   today as todayApi,
   type BookChapter,
-  type ClassAssessmentSlotListItem,
   type ClassLessonSlotListItem,
+  type CstTimelineItem,
   type Holiday,
   type SLO,
   type SubSLOCoverageEntry,
@@ -64,14 +62,16 @@ import {
 
 const TAB_NAMES: ClassDetailTab[] = [
   "today",
-  "lessons",
-  "assessments",
+  "timeline",
   "timetable",
   "book",
   "slos",
 ];
 
 function asTab(input: string | null): ClassDetailTab {
+  // class-timeline-view: the old Lessons + Assessments tabs are now one
+  // Timeline tab. Old deep links fall back to it.
+  if (input === "lessons" || input === "assessments") return "timeline";
   if (input && (TAB_NAMES as string[]).includes(input)) {
     return input as ClassDetailTab;
   }
@@ -136,10 +136,12 @@ export default function ClassDetailPage() {
   }, [cstId]);
 
   // ----- Tab data state (lazy per tab) -----
+  // Lessons list still backs the Today tab (covered/now/next + coverage).
   const [lessons, setLessons] = useState<ClassLessonSlotListItem[] | null>(null);
-  const [lessonsError, setLessonsError] = useState<string | null>(null);
-  const [assessments, setAssessments] = useState<ClassAssessmentSlotListItem[] | null>(null);
-  const [assessmentsError, setAssessmentsError] = useState<string | null>(null);
+  // Timeline tab: merged lessons + assessments, dated by the projector.
+  const [timeline, setTimeline] = useState<CstTimelineItem[] | null>(null);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<TimelineKindFilter>("all");
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [selectedBookChapterId, setSelectedBookChapterId] = useState<string | null>(null);
@@ -188,25 +190,24 @@ export default function ClassDetailPage() {
     }
   }, [cstId]);
 
-  // Lessons tab data
+  // Lessons list — backs the Today tab's covered/now/next + coverage.
   const loadLessons = useCallback(async () => {
-    setLessonsError(null);
     try {
       const res = await slotsApi.listLessonSlotsForCST(cstId);
       setLessons(res.items);
-    } catch (err) {
-      setLessonsError(formatErr(err));
+    } catch {
+      /* non-fatal: Today shows its own error via loadToday */
     }
   }, [cstId]);
 
-  // Assessments tab data
-  const loadAssessments = useCallback(async () => {
-    setAssessmentsError(null);
+  // Timeline tab data — one fetch, lessons + assessments interleaved + dated.
+  const loadTimeline = useCallback(async () => {
+    setTimelineError(null);
     try {
-      const res = await slotsApi.listAssessmentSlotsForCST(cstId);
-      setAssessments(res.items);
+      const res = await slotsApi.getTimeline(cstId);
+      setTimeline(res.items);
     } catch (err) {
-      setAssessmentsError(formatErr(err));
+      setTimelineError(formatErr(err));
     }
   }, [cstId]);
 
@@ -375,15 +376,18 @@ export default function ClassDetailPage() {
       if (!todayLoaded) loadToday();
       if (lessons === null) loadLessons();
     }
-    if (activeTab === "lessons" && lessons === null) loadLessons();
-    if (activeTab === "assessments" && assessments === null) loadAssessments();
+    if (activeTab === "timeline") {
+      if (timeline === null) loadTimeline();
+      // Today entry pins the "Now" marker to today's date when available.
+      if (!todayLoaded) loadToday();
+    }
     if (activeTab === "timetable" && holidaysData === null) loadHolidays();
     if (activeTab === "book" && bookChapters === null && header) loadBook();
     if (activeTab === "slos" && sloGroups === null && header) loadSLOs();
   }, [
     activeTab,
     lessons,
-    assessments,
+    timeline,
     holidaysData,
     bookChapters,
     sloGroups,
@@ -391,7 +395,7 @@ export default function ClassDetailPage() {
     todayLoaded,
     loadToday,
     loadLessons,
-    loadAssessments,
+    loadTimeline,
     loadHolidays,
     loadBook,
     loadSLOs,
@@ -406,21 +410,24 @@ export default function ClassDetailPage() {
   } | null>(null);
   const [busySlotId, setBusySlotId] = useState<string | null>(null);
 
-  // Slot focus from URL — open LP slide-over for the matching slot.
+  // Slot focus from URL — open LP slide-over for the matching timeline slot.
   useEffect(() => {
-    if (!slotFocus || !lessons) return;
-    const slot = lessons.find((l) => l.id === slotFocus);
-    if (slot) {
-      setDrawer({
-        kind: "lp",
-        slotId: slot.id,
-        title: slot.slot_type === "revision" ? "Revision LP" : "Lesson plan",
-        subtitle: `Day ${slot.position} · ${slot.topic_title ?? "—"}`,
-      });
-    }
-  }, [slotFocus, lessons]);
+    if (!slotFocus || !timeline) return;
+    const slot = timeline.find((t) => t.kind === "lesson" && t.id === slotFocus);
+    if (slot && slot.kind === "lesson") openLP(slot);
+  }, [slotFocus, timeline]);
 
-  const onViewLP = (slot: ClassLessonSlotListItem) => {
+  function openLP(slot: Extract<CstTimelineItem, { kind: "lesson" }>) {
+    setDrawer({
+      kind: "lp",
+      slotId: slot.id,
+      title: slot.slot_type === "revision" ? "Revision LP" : "Lesson plan",
+      subtitle: `Day ${slot.position} · ${slot.topic_title ?? "—"}`,
+    });
+  }
+
+  // ---- Lesson-list handlers (Today tab; operate on ClassLessonSlotListItem) ----
+  const onViewLPLesson = (slot: ClassLessonSlotListItem) => {
     setDrawer({
       kind: "lp",
       slotId: slot.id,
@@ -429,64 +436,129 @@ export default function ClassDetailPage() {
     });
   };
 
-  const onMarkTaught = async (slot: ClassLessonSlotListItem) => {
-    setBusySlotId(slot.id);
+  const markTaughtById = async (slotId: string) => {
+    setBusySlotId(slotId);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      await slotsApi.markTaught(slot.id, { taught_on: today });
-      await loadLessons();
-      // Refresh the Today dashboard's coverage tally if it's been loaded.
-      if (todayLoaded) await loadToday();
+      await slotsApi.markTaught(slotId, { taught_on: today });
+      await Promise.all([
+        loadLessons(),
+        timeline !== null ? loadTimeline() : Promise.resolve(),
+        todayLoaded ? loadToday() : Promise.resolve(),
+      ]);
     } catch (err) {
-      setLessonsError(formatErr(err));
+      setTimelineError(formatErr(err));
     } finally {
       setBusySlotId(null);
     }
   };
 
-  const onSkipLesson = async (slot: ClassLessonSlotListItem) => {
-    setBusySlotId(slot.id);
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      await slotsApi.skipLesson(slot.id, { occurred_on: today });
-      await loadLessons();
-    } catch (err) {
-      setLessonsError(formatErr(err));
-    } finally {
-      setBusySlotId(null);
-    }
-  };
+  const onMarkTaught = (slot: ClassLessonSlotListItem) => markTaughtById(slot.id);
 
-  const onViewExam = (slot: ClassAssessmentSlotListItem) => {
+  // ---- Timeline handlers (operate on CstTimelineItem) ----
+  const onTimelineViewLP = (item: Extract<CstTimelineItem, { kind: "lesson" }>) =>
+    openLP(item);
+
+  const onTimelineViewExam = (
+    item: Extract<CstTimelineItem, { kind: "assessment" }>,
+  ) => {
     setDrawer({
       kind: "exam",
-      slotId: slot.id,
-      title: slot.assessment_type === "formative" ? "Formative assessment" : "Summative assessment",
-      subtitle: `Day ${slot.position} · ${slot.topic_titles.length} topic${slot.topic_titles.length === 1 ? "" : "s"}`,
+      slotId: item.id,
+      title:
+        item.assessment_type === "formative"
+          ? "Formative assessment"
+          : "Summative assessment",
+      subtitle: `Day ${item.position} · ${item.topic_titles.length} topic${item.topic_titles.length === 1 ? "" : "s"}`,
     });
   };
 
-  const lessonGroups = useMemo<ChapterGroup[]>(() => {
-    if (!lessons) return [];
-    const map = new Map<string, ChapterGroup>();
-    for (const slot of lessons) {
-      const key = slot.breakdown_chapter_id;
+  const onTimelineMarkTaught = async (item: CstTimelineItem) => {
+    if (item.kind === "lesson") {
+      await markTaughtById(item.id);
+      return;
+    }
+    // Assessment "mark done" → complete.
+    setBusySlotId(item.id);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await slotsApi.completeAssessment(item.id, { taught_on: today });
+      await Promise.all([
+        loadTimeline(),
+        todayLoaded ? loadLessons() : Promise.resolve(),
+      ]);
+    } catch (err) {
+      setTimelineError(formatErr(err));
+    } finally {
+      setBusySlotId(null);
+    }
+  };
+
+  const onTimelineSkip = async (item: CstTimelineItem) => {
+    setBusySlotId(item.id);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      if (item.kind === "lesson") {
+        await slotsApi.skipLesson(item.id, { occurred_on: today });
+      } else {
+        await slotsApi.skipAssessment(item.id, { occurred_on: today });
+      }
+      await Promise.all([
+        loadTimeline(),
+        todayLoaded ? loadLessons() : Promise.resolve(),
+      ]);
+    } catch (err) {
+      setTimelineError(formatErr(err));
+    } finally {
+      setBusySlotId(null);
+    }
+  };
+
+  // Timeline grouped by chapter, honouring the kind filter (F-2.3, F-2.6).
+  const timelineGroups = useMemo<TimelineChapterGroup[]>(() => {
+    if (!timeline) return [];
+    const filtered =
+      timelineFilter === "all"
+        ? timeline
+        : timeline.filter((t) => t.kind === timelineFilter);
+    const map = new Map<string, TimelineChapterGroup>();
+    for (const item of filtered) {
+      const key = item.breakdown_chapter_id;
       const existing = map.get(key);
       if (existing) {
-        existing.slots.push(slot);
+        existing.items.push(item);
       } else {
         map.set(key, {
-          chapter_id: slot.breakdown_chapter_id,
-          chapter_position: slot.breakdown_chapter_position,
-          chapter_title: slot.breakdown_chapter_title,
-          slots: [slot],
+          chapter_id: item.breakdown_chapter_id,
+          chapter_position: item.breakdown_chapter_position,
+          chapter_title: item.breakdown_chapter_title,
+          items: [item],
         });
       }
     }
+    // Items already arrive position-sorted from the endpoint; keep that
+    // within a group and sort groups by chapter position.
     return Array.from(map.values()).sort(
       (a, b) => a.chapter_position - b.chapter_position,
     );
-  }, [lessons]);
+  }, [timeline, timelineFilter]);
+
+  // "You are here" (D-7): today's slot if scheduled, else the first
+  // not-yet-done item in teaching order.
+  const currentSlotId = useMemo<string | null>(() => {
+    if (!timeline) return null;
+    const todaySlotId =
+      todayEntry?.lesson_slot?.slot_id ??
+      todayEntry?.assessment_slot?.slot_id ??
+      null;
+    if (todaySlotId && timeline.some((t) => t.id === todaySlotId)) {
+      return todaySlotId;
+    }
+    const pending = timeline.find(
+      (t) => t.status === "planned" || t.status === "scheduled",
+    );
+    return pending?.id ?? null;
+  }, [timeline, todayEntry]);
 
   // Today dashboard derived state — needs the lessons list for covered/now/next
   // and topic titles, plus the today entry to identify today's slot.
@@ -582,52 +654,46 @@ export default function ClassDetailPage() {
               coverage={todayCoverage}
               busy={busySlotId !== null}
               onViewLP={() => {
-                if (todayView.todayLessonSlot) onViewLP(todayView.todayLessonSlot);
+                if (todayView.todayLessonSlot) onViewLPLesson(todayView.todayLessonSlot);
               }}
               onMarkTaught={() => {
                 if (todayView.todayLessonSlot) onMarkTaught(todayView.todayLessonSlot);
               }}
               onViewExam={() => {
-                const a = assessments?.find(
-                  (s) => s.id === todayEntry?.assessment_slot?.slot_id,
-                );
+                const a = todayEntry?.assessment_slot;
                 if (a) {
-                  onViewExam(a);
-                } else if (todayEntry?.assessment_slot) {
-                  // Assessment list not loaded on this tab; open the assessments
-                  // tab where the exam viewer/placeholder lives.
-                  router.push(
-                    `/teacher-app/classes/${cstId}?tab=assessments`,
-                  );
+                  setDrawer({
+                    kind: "exam",
+                    slotId: a.slot_id,
+                    title:
+                      a.assessment_type === "formative"
+                        ? "Formative assessment"
+                        : "Summative assessment",
+                    subtitle: `Day ${a.position}`,
+                  });
                 }
               }}
             />
           )
         ) : null}
 
-        {activeTab === "lessons" ? (
-          lessonsError ? (
-            <TabError message={lessonsError} />
-          ) : lessons === null ? (
-            <TabLoading label="Loading lessons…" />
+        {activeTab === "timeline" ? (
+          timelineError ? (
+            <TabError message={timelineError} />
+          ) : timeline === null ? (
+            <TabLoading label="Loading timeline…" />
           ) : (
-            <ClassLessonsTab
-              groups={lessonGroups}
-              onViewLP={onViewLP}
-              onMarkTaught={onMarkTaught}
-              onSkip={onSkipLesson}
+            <ClassTimelineTab
+              groups={timelineGroups}
+              currentSlotId={currentSlotId}
+              filter={timelineFilter}
+              onFilterChange={setTimelineFilter}
+              onViewLP={onTimelineViewLP}
+              onViewExam={onTimelineViewExam}
+              onMarkTaught={onTimelineMarkTaught}
+              onSkip={onTimelineSkip}
               busySlotId={busySlotId}
             />
-          )
-        ) : null}
-
-        {activeTab === "assessments" ? (
-          assessmentsError ? (
-            <TabError message={assessmentsError} />
-          ) : assessments === null ? (
-            <TabLoading label="Loading assessments…" />
-          ) : (
-            <ClassAssessmentsTab items={assessments} onView={onViewExam} />
           )
         ) : null}
 

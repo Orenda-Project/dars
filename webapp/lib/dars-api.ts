@@ -300,6 +300,65 @@ export interface ClassAssessmentSlotListResponse {
   items: ClassAssessmentSlotListItem[];
 }
 
+/**
+ * Unified timeline (class-timeline-view). `/api/v2/csts/{id}/timeline`
+ * returns lessons + assessments interleaved by global `position`, each
+ * stamped with the projector's `projected_date` + conflict/overflow flags.
+ * Discriminated on `kind`.
+ */
+export type TimelineGenStatus =
+  | "not_generated"
+  | "PENDING"
+  | "IN_FLIGHT"
+  | "READY"
+  | "ERROR";
+
+export interface TimelineLessonItem {
+  kind: "lesson";
+  id: UUID;
+  position: number;
+  projected_date: ISODate | null;
+  is_anchor: boolean;
+  is_conflict: boolean;
+  is_overflow: boolean;
+  slot_type: "lesson" | "revision";
+  lp_type: string | null;
+  topic_id: UUID | null;
+  topic_title: string | null;
+  status: "planned" | "taught" | "skipped";
+  generated_lp_id: UUID | null;
+  lp_status: TimelineGenStatus;
+  breakdown_chapter_id: UUID;
+  breakdown_chapter_position: number;
+  breakdown_chapter_title: string;
+}
+
+export interface TimelineAssessmentItem {
+  kind: "assessment";
+  id: UUID;
+  position: number;
+  projected_date: ISODate | null;
+  is_anchor: boolean;
+  is_conflict: boolean;
+  is_overflow: boolean;
+  assessment_type: "formative" | "summative";
+  topic_ids: UUID[];
+  topic_titles: string[];
+  status: "scheduled" | "completed" | "skipped";
+  generated_exam_id: UUID | null;
+  exam_status: TimelineGenStatus;
+  breakdown_chapter_id: UUID;
+  breakdown_chapter_position: number;
+  breakdown_chapter_title: string;
+}
+
+export type CstTimelineItem = TimelineLessonItem | TimelineAssessmentItem;
+
+export interface CstTimelineResponse {
+  cst_id: UUID;
+  items: CstTimelineItem[];
+}
+
 /** Returned by `GET /api/v1/class-assessment-slots/{id}` (F4.13). */
 export interface ClassAssessmentSlotDetail {
   id: UUID;
@@ -889,6 +948,13 @@ export const slots = {
     request<ClassAssessmentSlotListResponse>(
       `/api/v2/csts/${cst_id}/assessment-slots`,
     ),
+
+  /**
+   * class-timeline-view — lessons + assessments interleaved by position,
+   * each stamped with the projector's date + conflict/overflow flags.
+   */
+  getTimeline: (cst_id: UUID) =>
+    request<CstTimelineResponse>(`/api/v2/csts/${cst_id}/timeline`),
 
   /** F4.13 — single assessment slot detail including exam_result JSON. */
   getAssessmentSlotDetail: (slot_id: UUID) =>
