@@ -29,10 +29,10 @@ this file lists.
 ## Step 5 — Current state
 | Phase | Status | PR |
 |-------|--------|----|
-| 1 — Today dashboard (default class view) | 🟡 in flight (PR open) | — |
+| 1 — Today dashboard (default class view) | ✅ Closed | #92 (merged 2026-06-01) |
 
-**Next thing to do:** PR open against staging. After merge, watch the Vercel
-webapp deploy, then mark Phase 1 ✅ and close the bead.
+**Next thing to do:** Feature shipped to staging. Verify the Vercel webapp
+deploy is green (dars-fe-stage.up.railway.app / Vercel).
 
 ## Step 6 — Supporting context
 - Touched files: `webapp/app/teacher-app/classes/[cst_id]/page.tsx`,
