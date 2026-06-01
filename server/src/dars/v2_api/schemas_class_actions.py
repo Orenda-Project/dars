@@ -1,5 +1,6 @@
 """Pydantic schemas for teacher-facing class slot actions (F2.12, F2.13)."""
 from datetime import date
+from typing import Annotated, Literal, Union
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -117,3 +118,63 @@ class ClassAssessmentSlotListItem(BaseModel):
 class ClassAssessmentSlotListResponse(BaseModel):
     cst_id: UUID
     items: list[ClassAssessmentSlotListItem]
+
+
+# ---------------------------------------------------------------------------
+# Unified timeline (class-timeline-view feature; D-3/D-4).
+#
+# Lessons + assessments interleaved by `position`, each stamped with the
+# projector's `projected_date` and conflict/overflow flags. A kind-tagged
+# discriminated union so the frontend renders both in one ordered list.
+# Field names mirror the per-kind list items above + four projector fields.
+# ---------------------------------------------------------------------------
+
+
+class TimelineLessonItem(BaseModel):
+    kind: Literal["lesson"] = "lesson"
+    id: UUID
+    position: int
+    projected_date: date | None
+    is_anchor: bool
+    is_conflict: bool
+    is_overflow: bool
+    slot_type: str  # 'lesson' | 'revision'
+    lp_type: str | None
+    topic_id: UUID | None
+    topic_title: str | None
+    status: str  # 'planned' | 'taught' | 'skipped'
+    generated_lp_id: UUID | None
+    lp_status: str
+    breakdown_chapter_id: UUID
+    breakdown_chapter_position: int
+    breakdown_chapter_title: str
+
+
+class TimelineAssessmentItem(BaseModel):
+    kind: Literal["assessment"] = "assessment"
+    id: UUID
+    position: int
+    projected_date: date | None
+    is_anchor: bool
+    is_conflict: bool
+    is_overflow: bool
+    assessment_type: str  # 'formative' | 'summative'
+    topic_ids: list[UUID]
+    topic_titles: list[str]
+    status: str  # 'scheduled' | 'completed' | 'skipped'
+    generated_exam_id: UUID | None
+    exam_status: str
+    breakdown_chapter_id: UUID
+    breakdown_chapter_position: int
+    breakdown_chapter_title: str
+
+
+TimelineItem = Annotated[
+    Union[TimelineLessonItem, TimelineAssessmentItem],
+    Field(discriminator="kind"),
+]
+
+
+class CstTimelineResponse(BaseModel):
+    cst_id: UUID
+    items: list[TimelineItem]
