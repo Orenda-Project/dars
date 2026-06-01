@@ -24,4 +24,6 @@ Decisions are frozen. To revise: ask the user, mark the old entry "Superseded by
 
 **D-10: Timeline replaces the Lessons + Assessments tabs (does not add a 3rd).** *Rationale:* Keeping three overlapping surfaces (Lessons, Assessments, Timeline) is the same fragmentation in reverse. The Timeline is the lessons+assessments surface. A `kind` filter (All / Lessons / Assessments) within the Timeline preserves single-kind browsing. *Apply:* Phase 2 removes the two tabs from `TAB_NAMES`, adds `timeline`. Today / Timetable / Book / SLOs tabs are untouched. *Decided:* 2026-06-01 (plan).
 
+**D-12: Timeline row actions branch on kind.** *Rationale:* The unified row exposes Mark/Skip for both kinds, but the backend verbs differ — lessons use `mark-taught`/`skip`, assessments use `complete`/`skip`. The timeline's "Mark done" on an assessment calls `completeAssessment`; on a lesson it calls `markTaught`. Skip maps to `skipLesson`/`skipAssessment` respectively. After any action the timeline re-fetches (and the lessons list too, so the Today tab stays in sync). *Apply:* Phase 2 `page.tsx` handlers. *Decided:* 2026-06-01 (execution).
+
 **D-11: No schema change.** *Rationale:* All data (slots, statuses, anchors, generation links) and the projector already exist. This is a read-path + UI feature. *Apply:* both phases; no migration file. *Decided:* 2026-06-01 (plan).
