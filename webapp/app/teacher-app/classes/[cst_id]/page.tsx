@@ -39,6 +39,11 @@ import {
 } from "@/components/templates/class-slos-tab";
 import { ClassTimetableTab } from "@/components/templates/class-timetable-tab";
 import {
+  ClassTodayTab,
+  type ProgressSlot,
+  type TodayWork,
+} from "@/components/templates/class-today-tab";
+import {
   DarsApiError,
   books as booksApi,
   curriculum as curriculumApi,
@@ -46,16 +51,19 @@ import {
   progress as progressApi,
   slots as slotsApi,
   tenancy as tenancyApi,
+  today as todayApi,
   type BookChapter,
   type ClassAssessmentSlotListItem,
   type ClassLessonSlotListItem,
   type Holiday,
   type SLO,
   type SubSLOCoverageEntry,
+  type TodayEntry,
   type Topic,
 } from "@/lib/dars-api";
 
 const TAB_NAMES: ClassDetailTab[] = [
+  "today",
   "lessons",
   "assessments",
   "timetable",
@@ -67,7 +75,7 @@ function asTab(input: string | null): ClassDetailTab {
   if (input && (TAB_NAMES as string[]).includes(input)) {
     return input as ClassDetailTab;
   }
-  return "lessons";
+  return "today";
 }
 
 export default function ClassDetailPage() {
@@ -148,6 +156,37 @@ export default function ClassDetailPage() {
   const [sloGroups, setSloGroups] = useState<SLOProgressGroup[] | null>(null);
   const [sloError, setSloError] = useState<string | null>(null);
   const [joinedAtPosition, setJoinedAtPosition] = useState(1);
+
+  // Today tab data
+  const [todayEntry, setTodayEntry] = useState<TodayEntry | null>(null);
+  const [todayLoaded, setTodayLoaded] = useState(false);
+  const [todayError, setTodayError] = useState<string | null>(null);
+  const [todayCoverage, setTodayCoverage] = useState<{
+    taught: number;
+    total: number;
+  } | null>(null);
+
+  // Today tab data — today's slot for this CST + a coverage tally. The
+  // covered/now/next strip is derived from the lessons list, so trigger
+  // loadLessons() too.
+  const loadToday = useCallback(async () => {
+    setTodayError(null);
+    try {
+      const [todayRes, coverageRes] = await Promise.all([
+        todayApi.get(),
+        progressApi.getSubSLOCoverage(cstId),
+      ]);
+      const entry = todayRes.items.find((e) => e.cst_id === cstId) ?? null;
+      setTodayEntry(entry);
+      setTodayCoverage({
+        taught: coverageRes.items.filter((c) => c.status === "taught").length,
+        total: coverageRes.items.length,
+      });
+      setTodayLoaded(true);
+    } catch (err) {
+      setTodayError(formatErr(err));
+    }
+  }, [cstId]);
 
   // Lessons tab data
   const loadLessons = useCallback(async () => {
@@ -332,6 +371,10 @@ export default function ClassDetailPage() {
 
   // Tab-driven loads
   useEffect(() => {
+    if (activeTab === "today") {
+      if (!todayLoaded) loadToday();
+      if (lessons === null) loadLessons();
+    }
     if (activeTab === "lessons" && lessons === null) loadLessons();
     if (activeTab === "assessments" && assessments === null) loadAssessments();
     if (activeTab === "timetable" && holidaysData === null) loadHolidays();
@@ -345,6 +388,8 @@ export default function ClassDetailPage() {
     bookChapters,
     sloGroups,
     header,
+    todayLoaded,
+    loadToday,
     loadLessons,
     loadAssessments,
     loadHolidays,
@@ -390,6 +435,8 @@ export default function ClassDetailPage() {
       const today = new Date().toISOString().slice(0, 10);
       await slotsApi.markTaught(slot.id, { taught_on: today });
       await loadLessons();
+      // Refresh the Today dashboard's coverage tally if it's been loaded.
+      if (todayLoaded) await loadToday();
     } catch (err) {
       setLessonsError(formatErr(err));
     } finally {
@@ -441,6 +488,71 @@ export default function ClassDetailPage() {
     );
   }, [lessons]);
 
+  // Today dashboard derived state — needs the lessons list for covered/now/next
+  // and topic titles, plus the today entry to identify today's slot.
+  const todayView = useMemo(() => {
+    const plannedLessons = (lessons ?? [])
+      .filter((l) => l.status === "planned")
+      .sort((a, b) => a.position - b.position);
+
+    const todayLessonSlot = todayEntry?.lesson_slot
+      ? (lessons ?? []).find((l) => l.id === todayEntry.lesson_slot!.slot_id) ?? null
+      : null;
+
+    // Now = today's lesson slot if scheduled, else the next planned lesson (D-3).
+    const nowListItem = todayLessonSlot ?? plannedLessons[0] ?? null;
+    const nextListItem = nowListItem
+      ? plannedLessons.find((l) => l.position > nowListItem.position) ?? null
+      : null;
+
+    const toProgressSlot = (
+      s: ClassLessonSlotListItem | null,
+    ): ProgressSlot | null =>
+      s ? { position: s.position, topicTitle: s.topic_title } : null;
+
+    let work: TodayWork = null;
+    if (todayLessonSlot) {
+      work = {
+        kind: "lesson",
+        slotId: todayLessonSlot.id,
+        position: todayLessonSlot.position,
+        slotType: todayLessonSlot.slot_type,
+        lpType: todayLessonSlot.lp_type,
+        topicTitle: todayLessonSlot.topic_title,
+        status: todayLessonSlot.status,
+        lpStatus: todayLessonSlot.lp_status,
+      };
+    } else if (todayEntry?.assessment_slot) {
+      const a = todayEntry.assessment_slot;
+      work = {
+        kind: "assessment",
+        slotId: a.slot_id,
+        position: a.position,
+        assessmentType: a.assessment_type,
+        topicCount: a.topic_ids.length,
+      };
+    }
+
+    return {
+      work,
+      todayLessonSlot,
+      coveredCount: (lessons ?? []).filter((l) => l.status === "taught").length,
+      nowSlot: toProgressSlot(nowListItem),
+      nextSlot: toProgressSlot(nextListItem),
+    };
+  }, [lessons, todayEntry]);
+
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+    [],
+  );
+
   // ---- Render ----
   if (headerError) return <TabError message={headerError} />;
   if (!header) return <TabLoading label="Loading class…" />;
@@ -455,6 +567,44 @@ export default function ClassDetailPage() {
         gradeCode={header.gradeCode}
         schoolName={header.schoolName}
       >
+        {activeTab === "today" ? (
+          todayError ? (
+            <TabError message={todayError} />
+          ) : !todayLoaded || lessons === null ? (
+            <TabLoading label="Loading today…" />
+          ) : (
+            <ClassTodayTab
+              todayLabel={todayLabel}
+              work={todayView.work}
+              coveredCount={todayView.coveredCount}
+              nowSlot={todayView.nowSlot}
+              nextSlot={todayView.nextSlot}
+              coverage={todayCoverage}
+              busy={busySlotId !== null}
+              onViewLP={() => {
+                if (todayView.todayLessonSlot) onViewLP(todayView.todayLessonSlot);
+              }}
+              onMarkTaught={() => {
+                if (todayView.todayLessonSlot) onMarkTaught(todayView.todayLessonSlot);
+              }}
+              onViewExam={() => {
+                const a = assessments?.find(
+                  (s) => s.id === todayEntry?.assessment_slot?.slot_id,
+                );
+                if (a) {
+                  onViewExam(a);
+                } else if (todayEntry?.assessment_slot) {
+                  // Assessment list not loaded on this tab; open the assessments
+                  // tab where the exam viewer/placeholder lives.
+                  router.push(
+                    `/teacher-app/classes/${cstId}?tab=assessments`,
+                  );
+                }
+              }}
+            />
+          )
+        ) : null}
+
         {activeTab === "lessons" ? (
           lessonsError ? (
             <TabError message={lessonsError} />
