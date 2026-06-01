@@ -44,9 +44,9 @@ Code is lowest authority. Surface conflicts; don't silently pick a side.
 | Phase | Status | PR |
 |-------|--------|----|
 | Phase 1 — Merged timeline endpoint (`GET /csts/{id}/timeline`) | ✅ done | #95 |
-| Phase 2 — Unified timeline tab (frontend) | 🟡 in PR | (pending) |
+| Phase 2 — Unified timeline tab (frontend) | ✅ done | #96 |
 
-**Next thing to do:** Phase 2 implemented on branch `feat/class-timeline-view-phase-2-tab` (F-2.1..F-2.7) — new `ClassTimelineTab`, `slots.getTimeline`, tabs swapped (Today · Timeline · Timetable · Book · SLOs), old `?tab=lessons|assessments` deep links fall back to Timeline; old `class-lessons-tab.tsx` / `class-assessments-tab.tsx` deleted. tsc + eslint + `next build` clean. After PR merges + webapp deploy is green, mark Phase 2 ✅ and move the feature to Closed in `docs/features/README.md`.
+**✅ Feature closed (2026-06-01).** Both phases shipped to staging; backend deploy SUCCESS on d22c1a4 (#95), webapp deploy SUCCESS on 232513d (#96). Class detail tabs are now Today · Timeline · Timetable · Book · SLOs. Nothing outstanding.
 
 ## Step 6 — Where to find supporting context
 - Beads: `.beads/status.jsonl`
