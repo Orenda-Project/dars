@@ -40,17 +40,17 @@ If two docs disagree, this is the order. Surface conflicts; don't silently pick 
 - Say "gg" when something works; "chammaar" when it breaks.
 
 ## Step 5 — Current state
-**As of 2026-06-02 — Phase 1 ✅ shipped. Phase 2 code complete, PR open.**
+**As of 2026-06-02 — ✅ FEATURE CLOSED. Both phases shipped to staging, all deploys green.**
 
 | Phase | Scope | Status |
 |---|---|---|
 | Plan + onramp | folder, decision log, data model | ✅ |
 | Phase 1 — chapter date ranges | F1.1 schema · F1.2 derived days · F1.3 advisory validation · F1.4 dashboard editor | ✅ shipped PR #98 (squash → staging, commit 10edfc3); server + webapp Railway deploys SUCCESS |
-| Phase 2 — manual Chapter Plan | F2.1 page schema · F2.2 manual builder backend · F2.3 auto-build as seed · F2.4 dashboard editor | ✅ code complete; PR open to staging |
+| Phase 2 — manual Chapter Plan | F2.1 page schema · F2.2 manual builder backend · F2.3 auto-build as seed · F2.4 dashboard editor | ✅ shipped PR #99 (squash → staging, commit d680605); server + webapp Railway deploys SUCCESS |
 
 **Phase 2 detail:** migration `20260603000000_breakdown_slots_page_range.sql` (page_start/page_end nullable). Page range threaded through slot read/create/update schemas + all 5 slot SQL projections. New per-chapter seed endpoint `POST /breakdowns/{id}/chapters/{chapter_id}/seed` + `seed_chapter_slots()` reusing auto-build planners (D-9). Dashboard: page-range inputs in SlotEditor (advisory end<start guard), "pp N–M" badges in SlotList, "Seed plan" button on empty chapters. Suite 152 passed; webapp tsc+eslint clean.
 
-**Next thing to do:** after Phase 2 PR merges + both Railway deploys green, mark Phase 2 ✅ + close bead + move the feature to Closed in `docs/features/README.md`. The "global = teacher's default comparison UI" idea from the original ask is NOT in this feature's scope (covered only by the existing fork mechanism, D-7) — raise as a possible follow-up feature.
+**Follow-up (NOT built):** the "global = teacher's default comparison UI" idea from the original ask is not in this feature's scope — covered only by the existing fork mechanism (D-7). A candidate next feature: a teacher-app view showing the global reference plan alongside the teacher's edited plan.
 
 **Phase 1 detail:** migration `20260602000000_breakdown_chapters_date_range.sql` (start_date/end_date nullable). New `server/src/dars/breakdown/chapter_calendar.py` (derived days + advisory warnings, reuses `projector.compute_teaching_days`; holiday source per D-8). Router `_hydrate_breakdown` now returns `derived_teaching_days` per chapter + `chapter_range_warnings`. Dashboard editor: per-chapter date pickers replace the day-count input (dates are primary, days derived/displayed); inline warning badges; chapters ordered by start_date. Tests: `tests/test_chapter_calendar.py` (7). Suite 152 passed.
 

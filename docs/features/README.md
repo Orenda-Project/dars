@@ -6,11 +6,12 @@ The v2 rebuild (`docs/plans/2026-05-15-dars-v2-rebuild/`) predates this conventi
 
 ## Active
 
-- [chapter-breakdown-and-plan](chapter-breakdown-and-plan/README.md) — splits breakdown authoring into two explicit dashboard actions: **Chapter Breakdown** (order chapters + assign explicit calendar date ranges) and **Chapter Plan** (manually break one chapter into typed slots with page ranges; auto-build demoted to optional seed). Two additive schema deltas. Phase 1 in flight.
 - [class-today-dashboard](class-today-dashboard/README.md) — new **Today** tab as the default class view in the teacher app: today's date, today's LP/assessment with view + mark-taught, a Covered/Now/Next strip, and a sub-SLO coverage meter. Frontend-only. Phase 1 in flight.
 - [ncp-english-g1-seed](ncp-english-g1-seed/README.md) — real NCP curriculum data (English × G1) alongside the synthetic Dars seed: SLOs from `fde_staging.slo_ncpslo`, sub-SLOs via Schema-style breakdown, lp_type via Claude, book 1171 prose from `book.book_text`. Phase 1 in flight.
 
 ## Closed
+
+- [chapter-breakdown-and-plan](chapter-breakdown-and-plan/README.md) — split breakdown authoring into two explicit dashboard actions: **Chapter Breakdown** (order chapters + explicit calendar date ranges, derived teaching days, advisory overlap/gap warnings) and **Chapter Plan** (manually break a chapter into typed slots with page ranges; auto-build demoted to an optional per-chapter "Seed plan"). Two additive schema deltas. Shipped 2026-06-02 via PR #98 (phase 1) + #99 (phase 2).
 
 - [class-timeline-view](class-timeline-view/README.md) — replaced the teacher app's separate Lessons + Assessments tabs with one **unified, dated timeline**: lessons + assessments interleaved by position, stamped with projected dates from the backend projector, grouped by chapter, with a "you are here" marker, kind filter, quiet generation status, and conflict/overflow warnings. New `GET /csts/{id}/timeline` endpoint + Timeline tab. Shipped 2026-06-01 via PR #95 (backend) + #96 (frontend).
 
