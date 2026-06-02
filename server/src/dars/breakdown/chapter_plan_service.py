@@ -503,14 +503,20 @@ async def generate_chapter_plan(
                 )
                 result.lesson_slot_count += 1
             else:  # formative/summative assessment
+                # class_assessment_slots uses the short form ('formative'/'summative')
+                # and status 'scheduled' (DB CHECK constraints), unlike the planner's
+                # '*_assessment' slot_type + lesson 'planned'.
+                assessment_type = (
+                    "formative" if plan.slot_type == "formative_assessment" else "summative"
+                )
                 slot_id = await conn.fetchval(
                     """
                     INSERT INTO class_assessment_slots
                       (org_id, cst_id, position, assessment_type, book_chapter_id, status)
-                    VALUES ($1, $2, $3, $4, $5, 'planned')
+                    VALUES ($1, $2, $3, $4, $5, 'scheduled')
                     RETURNING id
                     """,
-                    org_id, cst_id, pos, plan.slot_type, book_chapter_id,
+                    org_id, cst_id, pos, assessment_type, book_chapter_id,
                 )
                 for i, t_id in enumerate(plan.covered_topic_ids, start=1):
                     await conn.execute(
