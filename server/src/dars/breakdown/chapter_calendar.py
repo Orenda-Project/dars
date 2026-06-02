@@ -30,46 +30,14 @@ async def resolve_breakdown_holidays(
     conn: asyncpg.Connection, breakdown_id: UUID
 ) -> set[date]:
     """
-    Best-effort org-holiday set for a breakdown's scope.
+    Holiday set for a syllabus breakdown's academic calendar.
 
-    global scope (scope_ref_id NULL) -> no holidays (plain Mon-Fri).
-    org scope    -> org's holidays across its academic years.
-    class scope  -> the class's academic year holidays.
-
-    Returns an empty set when no calendar is resolvable; callers then
-    count plain weekdays.
+    Syllabus breakdowns are global-only (Phase 2): they are not bound to any
+    org or academic year, so there are no holidays to subtract. Callers count
+    plain weekdays (Mon-Fri). Kept async + signature-stable so call sites and
+    any future per-org calendar work don't have to change.
     """
-    row = await conn.fetchrow(
-        "SELECT scope, scope_ref_id FROM breakdowns WHERE id = $1",
-        breakdown_id,
-    )
-    if row is None:
-        return set()
-    scope, ref = row["scope"], row["scope_ref_id"]
-
-    if scope == "global" or ref is None:
-        return set()
-
-    if scope == "class":
-        # scope_ref_id is a CST id -> walk to the class academic year.
-        holidays = await conn.fetch(
-            """
-            SELECT oh.date
-            FROM class_subject_teachers cst
-            JOIN school_classes sc ON sc.id = cst.school_class_id
-            JOIN org_holidays oh ON oh.academic_year_id = sc.academic_year_id
-            WHERE cst.id = $1
-            """,
-            ref,
-        )
-        return {r["date"] for r in holidays}
-
-    # org scope: scope_ref_id is an org id -> all that org's holidays.
-    holidays = await conn.fetch(
-        "SELECT date FROM org_holidays WHERE org_id = $1",
-        ref,
-    )
-    return {r["date"] for r in holidays}
+    return set()
 
 
 def derived_teaching_days(

@@ -46,7 +46,7 @@ Surface conflicts; don't silently pick a side.
 |---|---|---|
 | Plan + onramp | folder, decision log, data model | ✅ |
 | Phase 1 — rename (copy/docs) | F1.1 UI copy · F1.2 API docstrings · F1.3 docs/memory | ✅ code complete; PR open |
-| Phase 2 — demolition + table rename | F2.1 salvage planners · F2.2 del realize · F2.3 del fork · F2.4 del slot UI/API · F2.5 migration+reseed · F2.6 global-only | ⬜ |
+| Phase 2 — demolition + table rename | F2.1 salvage planners · F2.2 del realize · F2.3 del fork · F2.4 del slot UI/API · F2.5 migration+reseed · F2.6 global-only | ✅ code complete; PR open. Re-seed of 2 globals pending migration deploy. |
 | Phase 3 — teacher Chapter Plan | F3.1 syllabus-by-today · F3.2 slot-count · F3.3 generate · F3.4 UI · F3.5 periods | ⬜ |
 
 **Next thing to do:** open bead `feat-syllabus-breakdown-phase-1-rename`, branch from staging, do the user-facing rename (Phase 1 is copy/docs only — the code+table rename is in Phase 2 where the migration lives).

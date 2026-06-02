@@ -10,11 +10,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  breakdowns as breakdownsApi,
+  syllabusBreakdowns as syllabusBreakdownsApi,
   curriculum as curriculumApi,
   DarsApiError,
   tenancy as tenancyApi,
-  type Breakdown,
+  type SyllabusBreakdown,
   type CST,
   type School,
   type Teacher,
@@ -40,14 +40,14 @@ export default function OverviewPage() {
           tenancyApi.getSchools(),
           tenancyApi.getTeachers(),
           tenancyApi.getCSTs(),
-          breakdownsApi.getBreakdowns(),
+          syllabusBreakdownsApi.getBreakdowns(),
         ]);
       setCounts({
         schools: (schools as School[]).length,
         teachers: (teachers as Teacher[]).length,
         csts: (csts as CST[]).length,
-        breakdownsPublished: (bds as Breakdown[]).filter((b) => b.status === "published").length,
-        breakdownsDraft: (bds as Breakdown[]).filter((b) => b.status === "draft").length,
+        breakdownsPublished: (bds as SyllabusBreakdown[]).filter((b) => b.status === "published").length,
+        breakdownsDraft: (bds as SyllabusBreakdown[]).filter((b) => b.status === "draft").length,
       });
     } catch (err) {
       setError(
@@ -84,12 +84,12 @@ export default function OverviewPage() {
             <StatCard
               label="Published syllabus breakdowns"
               value={counts.breakdownsPublished}
-              href="/dashboard/breakdowns"
+              href="/dashboard/syllabus-breakdowns"
             />
             <StatCard
               label="Draft syllabus breakdowns"
               value={counts.breakdownsDraft}
-              href="/dashboard/breakdowns"
+              href="/dashboard/syllabus-breakdowns"
             />
           </div>
 
@@ -109,7 +109,7 @@ export default function OverviewPage() {
               {counts.breakdownsDraft > 0 ? (
                 <li>
                   You have {counts.breakdownsDraft} draft syllabus breakdown{counts.breakdownsDraft === 1 ? "" : "s"} —{" "}
-                  <Link className="underline" href="/dashboard/breakdowns">review and publish</Link>.
+                  <Link className="underline" href="/dashboard/syllabus-breakdowns">review and publish</Link>.
                 </li>
               ) : null}
               <li>

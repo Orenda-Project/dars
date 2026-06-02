@@ -27,7 +27,6 @@ import sys
 import asyncpg
 
 from dars.seeds.book_dars_english_g1 import seed_dars_english_g1_book
-from dars.seeds.breakdown_demo import seed_demo_breakdown
 from dars.seeds.lookups import seed_lookups
 from dars.seeds.slos_dars_english_g1 import seed_dars_english_g1_slos
 from dars.seeds.tenancy_demo import seed_demo_tenancy
@@ -55,17 +54,15 @@ async def _run_all_steps(conn: asyncpg.Connection) -> None:
     await seed_dars_english_g1_slos(conn)
     # F1.4 — Book + chapters + topics + SLO/sub-SLO mappings
     await seed_dars_english_g1_book(conn)
-    # NOTE: seed_demo_tenancy + seed_demo_breakdown intentionally NOT run on
-    # startup anymore (2026-06-02). They are run only via `make seed --with-demo`
-    # (see _run_demo_steps); staging/prod build operational data via the dashboard.
+    # NOTE: seed_demo_tenancy intentionally NOT run on startup anymore
+    # (2026-06-02). It is run only via `make seed --with-demo` (see
+    # _run_demo_steps); staging/prod build operational data via the dashboard.
 
 
 async def _run_demo_steps(conn: asyncpg.Connection) -> None:
     """Demo *operational* data — only for local dev / explicit `make seed --with-demo`."""
     # F1.5 — Demo tenancy: org, school, AY, class, teacher, CST, timetable
     await seed_demo_tenancy(conn)
-    # F2.14 — Demo breakdown: published global → org → class with realized slots
-    await seed_demo_breakdown(conn)
 
 
 async def main() -> None:

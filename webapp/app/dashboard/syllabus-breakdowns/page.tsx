@@ -1,12 +1,9 @@
 /**
- * F5.10 — Breakdowns list (org-scope only).
+ * Syllabus breakdowns list (global, read-mostly).
  *
- * The dashboard is for the client; they author at the **org** scope.
- * Global breakdowns (templates to fork) live under Curriculum.
- * Class-scope breakdowns are visible from the class detail page.
- *
- * If the org doesn't yet have an org-scope breakdown for a (grade,
- * subject), the list nudges the user to fork a global template.
+ * Lists the global syllabus breakdowns for the org's curriculum — one per
+ * grade × subject. Each is a chapter→date-range plan. Open one to edit its
+ * chapter date ranges and publish.
  */
 "use client";
 
@@ -15,18 +12,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   admin,
-  breakdowns as breakdownsApi,
+  syllabusBreakdowns as syllabusBreakdownsApi,
   curriculum as curriculumApi,
   DarsApiError,
   type AdminMeResponse,
-  type Breakdown,
+  type SyllabusBreakdown,
   type Grade,
   type Subject,
 } from "@/lib/dars-api";
 
-export default function BreakdownsPage() {
+export default function SyllabusBreakdownsPage() {
   const [me, setMe] = useState<AdminMeResponse | null>(null);
-  const [orgItems, setOrgItems] = useState<Breakdown[]>([]);
+  const [items, setItems] = useState<SyllabusBreakdown[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -35,14 +32,14 @@ export default function BreakdownsPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [m, orgList, { items: gs }, { items: ss }] = await Promise.all([
+      const [m, list, { items: gs }, { items: ss }] = await Promise.all([
         admin.me(),
-        breakdownsApi.getBreakdowns({ scope: "org" }),
+        syllabusBreakdownsApi.getBreakdowns(),
         curriculumApi.getGrades(),
         curriculumApi.getSubjects(),
       ]);
       setMe(m);
-      setOrgItems(orgList.items.filter((b) => b.curriculum_id === m.curriculum_id));
+      setItems(list.items.filter((b) => b.curriculum_id === m.curriculum_id));
       setGrades(gs);
       setSubjects(ss);
     } catch (err) {
@@ -58,7 +55,7 @@ export default function BreakdownsPage() {
     setBusyId(id);
     setError(null);
     try {
-      await breakdownsApi.publish(id);
+      await syllabusBreakdownsApi.publish(id);
       await load();
     } catch (err) {
       setError(formatErr(err));
@@ -76,7 +73,7 @@ export default function BreakdownsPage() {
     [subjects],
   );
 
-  const breakdownLabel = (b: Breakdown): string => {
+  const breakdownLabel = (b: SyllabusBreakdown): string => {
     const curriculumCode = me?.curriculum_code ?? "—";
     const gradeLabel = gradeById.get(b.grade_id)?.display_name ?? "—";
     const subjectCode = subjectById.get(b.subject_id)?.code ?? "—";
@@ -91,35 +88,23 @@ export default function BreakdownsPage() {
             Syllabus Breakdowns
           </h1>
           <p className="text-sm text-dars-muted mt-1 max-w-2xl">
-            Your org's master plans, one per grade × subject. Fork a published
-            org plan into a class to give a specific class its own schedule.
-            Templates to fork live under{" "}
-            <Link href="/dashboard/curriculum" className="underline">
-              Curriculum
-            </Link>
-            .
+            Global chapter→date-range plans, one per grade × subject. Open one
+            to set each chapter's teaching dates and publish.
           </p>
         </div>
       </div>
 
       {error ? <p className="text-sm text-dars-terra mb-3">{error}</p> : null}
 
-      {orgItems.length === 0 ? (
+      {items.length === 0 ? (
         <div className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-4">
           <p className="text-sm font-medium text-dars-ink">
-            No org syllabus breakdowns yet.
-          </p>
-          <p className="text-xs text-dars-muted mt-1">
-            Visit{" "}
-            <Link href="/dashboard/curriculum" className="underline">
-              Curriculum
-            </Link>{" "}
-            to fork a global template into your org.
+            No syllabus breakdowns yet.
           </p>
         </div>
       ) : (
         <ul className="space-y-2">
-          {orgItems.map((b) => (
+          {items.map((b) => (
             <li
               key={b.id}
               className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3 flex items-center justify-between gap-3"
@@ -135,7 +120,7 @@ export default function BreakdownsPage() {
               <div className="flex items-center gap-3 shrink-0">
                 <StatusBadge status={b.status} />
                 <Link
-                  href={`/dashboard/breakdowns/${b.id}`}
+                  href={`/dashboard/syllabus-breakdowns/${b.id}`}
                   className="text-xs text-dars-terra hover:underline"
                 >
                   View

@@ -12,9 +12,9 @@
 import { useState } from "react";
 
 export interface OnboardingChapterOption {
-  position: number;       // breakdown_chapter.position (1..N)
+  position: number;       // syllabus chapter.position (1..N)
   title: string;          // book chapter title
-  teaching_days: number;  // chapter length in teaching days
+  teaching_days: number | null;  // derived chapter length in teaching days; null when no date range
 }
 
 interface OnboardingTemplateProps {
@@ -121,7 +121,8 @@ export function OnboardingTemplate(props: OnboardingTemplateProps) {
               <option value="">Select a chapter…</option>
               {chapters.map((c) => (
                 <option key={c.position} value={c.position}>
-                  Ch {c.position}: {c.title} ({c.teaching_days} days)
+                  Ch {c.position}: {c.title}
+                  {c.teaching_days != null ? ` (${c.teaching_days} days)` : ""}
                 </option>
               ))}
             </select>
@@ -142,7 +143,7 @@ export function OnboardingTemplate(props: OnboardingTemplateProps) {
               placeholder="e.g. 3"
               className="mt-1 w-full px-3 py-2 rounded-md border border-dars-rule-light bg-white text-dars-ink text-sm focus:outline-none focus:ring-2 focus:ring-dars-terra"
             />
-            {selectedChapter ? (
+            {selectedChapter && selectedChapter.teaching_days != null ? (
               <span className="text-xs text-dars-muted-light mt-1 block">
                 This chapter is {selectedChapter.teaching_days} teaching days
                 long. Day 1 = first day of the chapter.

@@ -1,29 +1,31 @@
 /**
  * F5.9 — Curriculum browser.
  *
- * Tabs: SLOs / Books. Read-only. Filtered by grade + subject.
+ * Tabs: SLOs / Books / Syllabus. Read-only. Filtered by grade + subject.
+ * The Syllabus tab lists the published global syllabus breakdowns for the
+ * current (grade, subject) with a link into the editor.
  */
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   books as booksApi,
-  breakdowns as breakdownsApi,
+  syllabusBreakdowns as syllabusBreakdownsApi,
   curriculum as curriculumApi,
   DarsApiError,
   admin,
   type AdminMeResponse,
   type Book,
-  type Breakdown,
+  type SyllabusBreakdown,
   type Grade,
   type SLO,
   type SubSLO,
   type Subject,
 } from "@/lib/dars-api";
 
-type Tab = "slos" | "books" | "templates";
+type Tab = "slos" | "books" | "syllabus";
 
 export default function CurriculumPage() {
   const [me, setMe] = useState<AdminMeResponse | null>(null);
@@ -35,9 +37,7 @@ export default function CurriculumPage() {
   const [slos, setSlos] = useState<SLO[]>([]);
   const [subSlosBySlo, setSubSlosBySlo] = useState<Record<string, SubSLO[]>>({});
   const [books, setBooks] = useState<Book[]>([]);
-  const [templates, setTemplates] = useState<Breakdown[]>([]);
-  const [orgBreakdowns, setOrgBreakdowns] = useState<Breakdown[]>([]);
-  const [busyForkId, setBusyForkId] = useState<string | null>(null);
+  const [syllabi, setSyllabi] = useState<SyllabusBreakdown[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -82,25 +82,17 @@ export default function CurriculumPage() {
           });
           if (!cancelled) setBooks(items);
         } else {
-          // templates — global breakdowns + the org's existing org-scope
-          // ones (so we can mark a template "Already forked").
-          const [globalList, orgList] = await Promise.all([
-            breakdownsApi.getBreakdowns({ scope: "global" }),
-            breakdownsApi.getBreakdowns({ scope: "org" }),
-          ]);
+          // syllabus — published global syllabus breakdowns for this combo.
+          const list = await syllabusBreakdownsApi.getBreakdowns();
           if (cancelled) return;
-          setTemplates(
-            globalList.items
-              .filter(
-                (b) =>
-                  b.curriculum_id === me.curriculum_id &&
-                  b.grade_id === gradeId &&
-                  b.subject_id === subjectId &&
-                  b.status === "published",
-              ),
-          );
-          setOrgBreakdowns(
-            orgList.items.filter((b) => b.curriculum_id === me.curriculum_id),
+          setSyllabi(
+            list.items.filter(
+              (b) =>
+                b.curriculum_id === me.curriculum_id &&
+                b.grade_id === gradeId &&
+                b.subject_id === subjectId &&
+                b.status === "published",
+            ),
           );
         }
       } catch (err) {
@@ -111,22 +103,6 @@ export default function CurriculumPage() {
       cancelled = true;
     };
   }, [tab, me, gradeId, subjectId]);
-
-  async function handleForkOrg(globalId: string) {
-    if (!me) return;
-    setBusyForkId(globalId);
-    setError(null);
-    try {
-      await breakdownsApi.forkOrg(globalId, { org_id: me.org_id });
-      // refresh the org list so the "Already forked" hint flips on
-      const orgList = await breakdownsApi.getBreakdowns({ scope: "org" });
-      setOrgBreakdowns(orgList.items.filter((b) => b.curriculum_id === me.curriculum_id));
-    } catch (err) {
-      setError(formatErr(err));
-    } finally {
-      setBusyForkId(null);
-    }
-  }
 
   async function toggleSlo(sloId: string) {
     if (subSlosBySlo[sloId]) {
@@ -174,7 +150,7 @@ export default function CurriculumPage() {
       </div>
 
       <nav className="border-b border-dars-rule-light mb-4 flex gap-1">
-        {(["slos", "books", "templates"] as const).map((t) => (
+        {(["slos", "books", "syllabus"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -186,7 +162,7 @@ export default function CurriculumPage() {
                 : "border-transparent text-dars-muted hover:text-dars-ink")
             }
           >
-            {t === "slos" ? "SLOs" : t === "books" ? "Books" : "Templates"}
+            {t === "slos" ? "SLOs" : t === "books" ? "Books" : "Syllabus"}
           </button>
         ))}
       </nav>
@@ -246,59 +222,35 @@ export default function CurriculumPage() {
       ) : (
         <div>
           <p className="text-sm text-dars-muted mb-2">
-            Published global syllabus breakdowns for {me?.curriculum_code}. Fork one
-            into your org to start customising.
+            Published global syllabus breakdowns for {me?.curriculum_code}.
           </p>
-          {templates.length === 0 ? (
+          {syllabi.length === 0 ? (
             <p className="text-sm text-dars-muted">
-              No templates for this combination yet.
+              No published syllabus breakdown for this combination yet.
             </p>
           ) : (
             <ul className="space-y-2">
-              {templates.map((t) => {
-                const alreadyForked = orgBreakdowns.some(
-                  (o) =>
-                    o.parent_breakdown_id === t.id ||
-                    (o.grade_id === t.grade_id && o.subject_id === t.subject_id),
-                );
-                return (
-                  <li
-                    key={t.id}
-                    className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3 flex items-center justify-between gap-3"
+              {syllabi.map((t) => (
+                <li
+                  key={t.id}
+                  className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-3 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-dars-ink truncate">
+                      Syllabus breakdown
+                    </p>
+                    <p className="text-[10px] font-mono text-dars-muted-light mt-0.5">
+                      {t.id.slice(0, 8)}…
+                    </p>
+                  </div>
+                  <Link
+                    href={`/dashboard/syllabus-breakdowns/${t.id}`}
+                    className="text-xs text-dars-terra hover:underline shrink-0"
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium text-dars-ink truncate">
-                        Global template
-                      </p>
-                      <p className="text-[10px] font-mono text-dars-muted-light mt-0.5">
-                        {t.id.slice(0, 8)}…
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <Link
-                        href={`/dashboard/breakdowns/${t.id}`}
-                        className="text-xs text-dars-terra hover:underline"
-                      >
-                        View
-                      </Link>
-                      {alreadyForked ? (
-                        <span className="text-xs text-dars-muted italic">
-                          Already in your org
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleForkOrg(t.id)}
-                          disabled={busyForkId === t.id}
-                          className="text-xs text-dars-ink hover:underline disabled:opacity-50"
-                        >
-                          {busyForkId === t.id ? "Forking…" : "Fork to org"}
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+                    View
+                  </Link>
+                </li>
+              ))}
             </ul>
           )}
         </div>
