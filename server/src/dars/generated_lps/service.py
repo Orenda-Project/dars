@@ -105,15 +105,17 @@ async def _load_lesson_slot_context(
             cls.lp_type       AS lp_type,
             cls.slot_type     AS slot_type,
             cls.generated_lp_id AS generated_lp_id,
-            cst.curriculum_id AS curriculum_id,
-            cst.grade_id      AS grade_id,
+            o.curriculum_id   AS curriculum_id,
+            sc.grade_id       AS grade_id,
             cst.subject_id    AS subject_id,
             g.code            AS grade_code,
             s.code            AS subject_code,
             t.topic_text      AS topic_text
         FROM class_lesson_slots cls
         JOIN class_subject_teachers cst ON cst.id = cls.cst_id
-        JOIN grades g                   ON g.id = cst.grade_id
+        JOIN school_classes sc          ON sc.id = cst.school_class_id
+        JOIN organizations o            ON o.id = cst.org_id
+        JOIN grades g                   ON g.id = sc.grade_id
         JOIN subjects s                 ON s.id = cst.subject_id
         LEFT JOIN topics t              ON t.id = cls.topic_id
         WHERE cls.id = $1
@@ -529,18 +531,18 @@ async def _load_revision_slot_context(
             cls.cst_id        AS cst_id,
             cls.position      AS slot_position,
             cls.slot_type     AS slot_type,
-            cls.breakdown_slot_id AS breakdown_slot_id,
-            cst.curriculum_id AS curriculum_id,
-            cst.grade_id      AS grade_id,
+            cls.book_chapter_id AS book_chapter_id,
+            o.curriculum_id   AS curriculum_id,
+            sc.grade_id       AS grade_id,
             cst.subject_id    AS subject_id,
             g.code            AS grade_code,
-            s.code            AS subject_code,
-            bs.breakdown_chapter_id AS breakdown_chapter_id
+            s.code            AS subject_code
         FROM class_lesson_slots cls
         JOIN class_subject_teachers cst ON cst.id = cls.cst_id
-        JOIN grades g                   ON g.id = cst.grade_id
+        JOIN school_classes sc          ON sc.id = cst.school_class_id
+        JOIN organizations o            ON o.id = cst.org_id
+        JOIN grades g                   ON g.id = sc.grade_id
         JOIN subjects s                 ON s.id = cst.subject_id
-        JOIN breakdown_slots bs         ON bs.id = cls.breakdown_slot_id
         WHERE cls.id = $1
         """,
         lesson_slot_id,
@@ -560,16 +562,15 @@ async def _load_revision_slot_context(
         """
         SELECT cls.topic_id, t.topic_text, cls.position
         FROM class_lesson_slots cls
-        JOIN breakdown_slots bs ON bs.id = cls.breakdown_slot_id
         JOIN topics t            ON t.id = cls.topic_id
         WHERE cls.cst_id = $1
-          AND bs.breakdown_chapter_id = $2
+          AND cls.book_chapter_id = $2
           AND cls.position < $3
           AND cls.slot_type = 'lesson'
           AND cls.topic_id IS NOT NULL
         ORDER BY cls.position
         """,
-        base["cst_id"], base["breakdown_chapter_id"], base["slot_position"],
+        base["cst_id"], base["book_chapter_id"], base["slot_position"],
     )
     return {**base, "prior_topics": prior_rows}
 

@@ -48,7 +48,6 @@ class OnboardBody(BaseModel):
 
 class OnboardResponse(BaseModel):
     cst_id: UUID
-    breakdown_id: UUID
     resolved_position: int
     joined_at_position: int
 
@@ -89,9 +88,9 @@ class ClassLessonSlotListItem(BaseModel):
     generated_lp_id: UUID | None
     lp_status: str  # 'not_generated' | 'PENDING' | 'IN_FLIGHT' | 'READY' | 'ERROR'
     # Breakdown chapter context — drives the grouped UI.
-    breakdown_chapter_id: UUID
-    breakdown_chapter_position: int
-    breakdown_chapter_title: str
+    breakdown_chapter_id: UUID | None = None
+    breakdown_chapter_position: int | None = None
+    breakdown_chapter_title: str | None = None
 
 
 class ClassLessonSlotListResponse(BaseModel):
@@ -110,9 +109,9 @@ class ClassAssessmentSlotListItem(BaseModel):
     exam_status: str
     topic_ids: list[UUID]
     topic_titles: list[str]
-    breakdown_chapter_id: UUID
-    breakdown_chapter_position: int
-    breakdown_chapter_title: str
+    breakdown_chapter_id: UUID | None = None
+    breakdown_chapter_position: int | None = None
+    breakdown_chapter_title: str | None = None
 
 
 class ClassAssessmentSlotListResponse(BaseModel):
@@ -145,9 +144,9 @@ class TimelineLessonItem(BaseModel):
     status: str  # 'planned' | 'taught' | 'skipped'
     generated_lp_id: UUID | None
     lp_status: str
-    breakdown_chapter_id: UUID
-    breakdown_chapter_position: int
-    breakdown_chapter_title: str
+    breakdown_chapter_id: UUID | None = None
+    breakdown_chapter_position: int | None = None
+    breakdown_chapter_title: str | None = None
 
 
 class TimelineAssessmentItem(BaseModel):
@@ -164,9 +163,9 @@ class TimelineAssessmentItem(BaseModel):
     status: str  # 'scheduled' | 'completed' | 'skipped'
     generated_exam_id: UUID | None
     exam_status: str
-    breakdown_chapter_id: UUID
-    breakdown_chapter_position: int
-    breakdown_chapter_title: str
+    breakdown_chapter_id: UUID | None = None
+    breakdown_chapter_position: int | None = None
+    breakdown_chapter_title: str | None = None
 
 
 TimelineItem = Annotated[
@@ -178,3 +177,38 @@ TimelineItem = Annotated[
 class CstTimelineResponse(BaseModel):
     cst_id: UUID
     items: list[TimelineItem]
+
+
+# ---------------------------------------------------------------------------
+# Teacher Chapter Plan — syllabus view + break-it-down (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+class SyllabusChapterForCst(BaseModel):
+    book_chapter_id: UUID
+    chapter_number: int
+    title: str
+    start_date: date | None
+    end_date: date | None
+    # D-9/D-14: real teaching periods in the range for THIS class (0 if no dates).
+    slot_count: int
+    # whether the teacher has already broken this chapter down.
+    is_planned: bool
+    # D-10: the chapter the class should be on today.
+    is_current: bool
+
+
+class SyllabusForCstResponse(BaseModel):
+    cst_id: UUID
+    syllabus_breakdown_id: UUID | None  # None if no published syllabus for this class
+    periods_per_week: int
+    chapters: list[SyllabusChapterForCst]
+
+
+class GenerateChapterPlanResponse(BaseModel):
+    cst_id: UUID
+    book_chapter_id: UUID
+    slot_count: int
+    lesson_slot_count: int
+    assessment_slot_count: int
+    warnings: list[str] = []

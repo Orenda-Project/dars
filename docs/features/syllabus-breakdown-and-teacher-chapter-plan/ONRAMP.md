@@ -47,7 +47,7 @@ Surface conflicts; don't silently pick a side.
 | Plan + onramp | folder, decision log, data model | ✅ |
 | Phase 1 — rename (copy/docs) | F1.1 UI copy · F1.2 API docstrings · F1.3 docs/memory | ✅ shipped PR #101 (webapp green) |
 | Phase 2 — demolition + table rename | F2.1 salvage planners · F2.2 del realize · F2.3 del fork · F2.4 del slot UI/API · F2.5 migration+reseed · F2.6 global-only | ✅ shipped PR #102 + hotfix PR #103 (FK-order migration crash); server+webapp green; 2 globals re-seeded into syllabus_* tables (Dars 10ch, NCP 8ch, dates null) |
-| Phase 3 — teacher Chapter Plan | F3.1 syllabus-by-today · F3.2 slot-count · F3.3 generate · F3.4 UI · F3.5 periods | ⬜ next |
+| Phase 3 — teacher Chapter Plan | F3.1 syllabus-by-today · F3.2 slot-count · F3.3 generate · F3.4 UI · F3.5 periods | ✅ code complete; PR open. Adds D-16 (class slots book_chapter_id) + migration 20260605000000; fixed Phase-2 dropped-table regressions in timeline/list/onboarding/service. |
 
 **Live staging state:** `syllabus_breakdowns` (2 published globals: Dars `7a8bb78e…` 10ch, NCP `566c4244…` 8ch) + `syllabus_chapters` (dates null — admin sets via dashboard). Old breakdown tables dropped. `class_*_slots` have `page_start/end`, no `breakdown_slot_id`. Planners live in `breakdown/chapter_plan_service.py`.
 
