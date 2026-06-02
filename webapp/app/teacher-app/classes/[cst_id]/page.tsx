@@ -237,8 +237,9 @@ export default function ClassDetailPage() {
         await slotsApi.breakDownChapter(cstId, book_chapter_id);
         await Promise.all([
           loadSyllabus(),
-          // Timeline now has new slots; refetch if it was already loaded.
+          // Timeline + Today now have new slots; refetch if already loaded.
           timeline !== null ? loadTimeline() : Promise.resolve(),
+          todayLoaded ? loadToday() : Promise.resolve(),
         ]);
       } catch (err) {
         setSyllabusError(formatErr(err));
@@ -246,7 +247,7 @@ export default function ClassDetailPage() {
         setBusyChapterId(null);
       }
     },
-    [cstId, loadSyllabus, loadTimeline, timeline],
+    [cstId, loadSyllabus, loadTimeline, timeline, todayLoaded, loadToday],
   );
 
   // Holidays tab data
@@ -413,6 +414,9 @@ export default function ClassDetailPage() {
     if (activeTab === "today") {
       if (!todayLoaded) loadToday();
       if (lessons === null) loadLessons();
+      // Need the syllabus to show "you should be teaching Ch X" when today has
+      // no generated slot yet (chapter not broken down).
+      if (syllabus === null) loadSyllabus();
     }
     if (activeTab === "timeline") {
       if (timeline === null) loadTimeline();
@@ -693,7 +697,6 @@ export default function ClassDetailPage() {
               nowSlot={todayView.nowSlot}
               nextSlot={todayView.nextSlot}
               coverage={todayCoverage}
-              busy={busySlotId !== null}
               onViewLP={() => {
                 if (todayView.todayLessonSlot) onViewLPLesson(todayView.todayLessonSlot);
               }}
@@ -714,6 +717,23 @@ export default function ClassDetailPage() {
                   });
                 }
               }}
+              currentChapterToPlan={(() => {
+                // Only relevant when today has no generated slot. Find the
+                // chapter today falls in that hasn't been broken down yet.
+                if (todayView.work !== null) return null;
+                const c = syllabus?.chapters.find(
+                  (ch) => ch.is_current && !ch.is_planned && ch.slot_count > 0,
+                );
+                return c
+                  ? {
+                      bookChapterId: c.book_chapter_id,
+                      chapterNumber: c.chapter_number,
+                      title: c.title,
+                    }
+                  : null;
+              })()}
+              onBreakDown={handleBreakDown}
+              busy={busySlotId !== null || busyChapterId !== null}
             />
           )
         ) : null}
