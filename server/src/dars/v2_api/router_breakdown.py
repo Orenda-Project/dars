@@ -30,6 +30,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from dars.breakdown.auto_build_service import (
     AutoBuildRequest,
     auto_build_breakdown,
+    seed_chapter_slots,
 )
 from dars.config import settings
 from dars.breakdown.chapter_calendar import (
@@ -74,6 +75,8 @@ from dars.v2_api.schemas_breakdown import (
     ForkOrgBody,
     ForkResponse,
     RealizeResponse,
+    SeedChapterBody,
+    SeedChapterResponse,
     SubSLOBreakdownResponse,
     SubSLOBulkAccepted,
     SubSLOBulkRequest,
@@ -199,7 +202,8 @@ async def _validate_chapter_belongs_to_breakdown(
 ) -> asyncpg.Record:
     row = await conn.fetchrow(
         """
-        SELECT id, breakdown_id, book_chapter_id, position, teaching_days
+        SELECT id, breakdown_id, book_chapter_id, position, teaching_days,
+               start_date, end_date
         FROM breakdown_chapters
         WHERE id = $1 AND breakdown_id = $2
         """,
@@ -219,7 +223,8 @@ async def _validate_slot_belongs_to_breakdown(
     row = await conn.fetchrow(
         """
         SELECT id, breakdown_id, breakdown_chapter_id, position, chapter_position,
-               slot_type, lp_type, topic_id, anchor_date, created_at, updated_at
+               slot_type, lp_type, topic_id, anchor_date, page_start, page_end,
+               created_at, updated_at
         FROM breakdown_slots
         WHERE id = $1 AND breakdown_id = $2
         """,
@@ -267,7 +272,8 @@ async def _hydrate_breakdown(
     slots = await conn.fetch(
         """
         SELECT id, breakdown_id, breakdown_chapter_id, position, chapter_position,
-               slot_type, lp_type, topic_id, anchor_date, created_at, updated_at
+               slot_type, lp_type, topic_id, anchor_date, page_start, page_end,
+               created_at, updated_at
         FROM breakdown_slots
         WHERE breakdown_id = $1
         ORDER BY position
@@ -700,6 +706,63 @@ async def update_chapter(
     return BreakdownChapterRead(**dict(row))
 
 
+@router.post(
+    "/breakdowns/{breakdown_id}/chapters/{chapter_id}/seed",
+    response_model=SeedChapterResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def seed_chapter(
+    breakdown_id: UUID,
+    chapter_id: UUID,
+    payload: SeedChapterBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SeedChapterResponse:
+    """
+    F2.3 / D-9: seed an editable starting set of slots for one empty chapter,
+    reusing the auto-build planners. Manual editing takes over afterward.
+    """
+    bd = await _require_draft(conn, breakdown_id, org.id)
+    chapter = await _validate_chapter_belongs_to_breakdown(conn, breakdown_id, chapter_id)
+    subject_code = await _subject_code(conn, bd["subject_id"])
+
+    # Default day budget: derived teaching days (D-2), else topic count, else 1.
+    day_budget = payload.day_budget
+    if day_budget is None:
+        holidays = await resolve_breakdown_holidays(conn, breakdown_id)
+        derived = derived_teaching_days(
+            chapter["start_date"], chapter["end_date"], holidays
+        )
+        if derived and derived > 0:
+            day_budget = derived
+        else:
+            topic_count = await conn.fetchval(
+                "SELECT count(*) FROM topics WHERE book_chapter_id = $1",
+                chapter["book_chapter_id"],
+            )
+            day_budget = max(1, int(topic_count or 0))
+
+    try:
+        result = await seed_chapter_slots(
+            conn,
+            breakdown_id=breakdown_id,
+            breakdown_chapter_id=chapter_id,
+            subject_code=subject_code,
+            day_budget=day_budget,
+            fa_cadence=payload.fa_cadence,
+            sa_per_chapter=payload.sa_per_chapter,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        )
+    return SeedChapterResponse(
+        chapter_id=result.chapter_id,
+        inserted_slot_count=result.inserted_slot_count,
+        warnings=result.warnings,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Slots
 # ---------------------------------------------------------------------------
@@ -752,13 +815,15 @@ async def add_slot(
                 """
                 INSERT INTO breakdown_slots
                   (breakdown_id, breakdown_chapter_id, position, chapter_position,
-                   slot_type, lp_type, topic_id, anchor_date)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                   slot_type, lp_type, topic_id, anchor_date, page_start, page_end)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING id, breakdown_id, breakdown_chapter_id, position, chapter_position,
-                          slot_type, lp_type, topic_id, anchor_date, created_at, updated_at
+                          slot_type, lp_type, topic_id, anchor_date, page_start, page_end,
+                          created_at, updated_at
                 """,
                 breakdown_id, chapter["id"], payload.position, payload.chapter_position,
                 payload.slot_type, payload.lp_type, payload.topic_id, payload.anchor_date,
+                payload.page_start, payload.page_end,
             )
             extras: list[BreakdownSlotTopicRead] = []
             for i, t_id in enumerate(payload.extra_topic_ids, start=1):
@@ -800,7 +865,7 @@ async def update_slot(
 
     sets: list[str] = []
     params: list = []
-    for field in ("position", "chapter_position", "slot_type", "lp_type", "topic_id", "anchor_date"):
+    for field in ("position", "chapter_position", "slot_type", "lp_type", "topic_id", "anchor_date", "page_start", "page_end"):
         value = getattr(payload, field)
         if value is not None:
             params.append(value)
@@ -815,7 +880,8 @@ async def update_slot(
             SET {", ".join(sets)}, updated_at = now()
             WHERE id = ${len(params)}
             RETURNING id, breakdown_id, breakdown_chapter_id, position, chapter_position,
-                      slot_type, lp_type, topic_id, anchor_date, created_at, updated_at
+                      slot_type, lp_type, topic_id, anchor_date, page_start, page_end,
+                      created_at, updated_at
             """,
             *params,
         )
@@ -893,7 +959,8 @@ async def set_slot_anchor(
         SET anchor_date = $1, updated_at = now()
         WHERE id = $2
         RETURNING id, breakdown_id, breakdown_chapter_id, position, chapter_position,
-                  slot_type, lp_type, topic_id, anchor_date, created_at, updated_at
+                  slot_type, lp_type, topic_id, anchor_date, page_start, page_end,
+                  created_at, updated_at
         """,
         payload.anchor_date, slot_id,
     )

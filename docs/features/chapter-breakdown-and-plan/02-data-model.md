@@ -19,7 +19,7 @@ Migration: `server/src/dars/migrations/20260602000000_breakdown_chapters_date_ra
 - No new index required for the prototype (chapters per breakdown are few; lookups are by `breakdown_id`).
 - Validation (gaps/overlaps/zero-teaching-day ranges) is **advisory** per D-5 — enforced in the service/UI layer, not by DB constraints.
 
-## Delta 2 — `breakdown_slots` gains a page range (Phase 2)
+## Delta 2 — `breakdown_slots` gains a page range (Phase 2) — ✅ applied
 
 Migration: `server/src/dars/migrations/20260603000000_breakdown_slots_page_range.sql`
 

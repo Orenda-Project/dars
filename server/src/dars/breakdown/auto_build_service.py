@@ -538,3 +538,159 @@ async def auto_build_breakdown(
         result.total_slot_count, len(result.warnings),
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Per-chapter seed (chapter-breakdown-and-plan, F2.3 / D-9)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SeedChapterResult:
+    chapter_id: UUID
+    inserted_slot_count: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+
+async def seed_chapter_slots(
+    conn: asyncpg.Connection,
+    *,
+    breakdown_id: UUID,
+    breakdown_chapter_id: UUID,
+    subject_code: str,
+    day_budget: int,
+    fa_cadence: int = 5,
+    sa_per_chapter: int = 1,
+) -> SeedChapterResult:
+    """
+    F2.3 / D-9: generate an editable starting set of slots for ONE existing
+    chapter of an existing draft breakdown, reusing the auto-build planners.
+
+    Unlike `auto_build_breakdown` (which creates a whole new breakdown), this
+    inserts slots into a chapter the caller already created. Refuses if the
+    chapter already has slots — seed is for an empty chapter; manual editing
+    takes over afterward. Caller is responsible for the draft/scope checks.
+
+    Slots are appended after the breakdown's current max global position and
+    start at chapter_position 1.
+    """
+    log.info(
+        "seed_chapter_slots: entry breakdown=%s chapter=%s budget=%d",
+        breakdown_id, breakdown_chapter_id, day_budget,
+    )
+    if day_budget < 1:
+        raise ValueError("day_budget must be >= 1")
+
+    existing = await conn.fetchval(
+        "SELECT count(*) FROM breakdown_slots WHERE breakdown_chapter_id = $1",
+        breakdown_chapter_id,
+    )
+    if existing:
+        raise ValueError("chapter already has slots; seed only an empty chapter")
+
+    chapter = await conn.fetchrow(
+        "SELECT book_chapter_id FROM breakdown_chapters WHERE id = $1",
+        breakdown_chapter_id,
+    )
+    if chapter is None:
+        raise ValueError(f"breakdown_chapter {breakdown_chapter_id} not found")
+
+    topic_rows = await conn.fetch(
+        """
+        SELECT id, title, topic_text
+        FROM topics
+        WHERE book_chapter_id = $1
+        ORDER BY topic_number
+        """,
+        chapter["book_chapter_id"],
+    )
+
+    topic_sub_slo_lp: dict[UUID, str | None] = {}
+    topic_recommended_lp: dict[UUID, str | None] = {}
+    if topic_rows:
+        rec_rows = await conn.fetch(
+            """
+            SELECT tss.topic_id,
+                   ss.recommended_lp_type AS sub_slo_lp_type,
+                   s.recommended_lp_type  AS slo_lp_type
+            FROM topic_sub_slos tss
+            JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+            JOIN slos s ON s.id = ss.slo_id
+            WHERE tss.topic_id = ANY($1::uuid[])
+            ORDER BY tss.topic_id, ss.position
+            """,
+            [t["id"] for t in topic_rows],
+        )
+        for r in rec_rows:
+            if r["sub_slo_lp_type"] is not None:
+                topic_sub_slo_lp.setdefault(r["topic_id"], r["sub_slo_lp_type"])
+            if r["slo_lp_type"] is not None:
+                topic_recommended_lp.setdefault(r["topic_id"], r["slo_lp_type"])
+
+    result = SeedChapterResult(chapter_id=breakdown_chapter_id)
+
+    allocation = allocate_chapter_days(
+        chapter_days=day_budget,
+        topic_count=len(topic_rows),
+        fa_cadence=fa_cadence,
+        sa_per_chapter=sa_per_chapter,
+    )
+    topic_lp_types: list[str] = []
+    for topic in topic_rows:
+        lp_type = pick_lp_type(
+            subject_code=subject_code,
+            topic_title=topic["title"],
+            topic_text=topic["topic_text"],
+            recommended_lp_type=topic_recommended_lp.get(topic["id"]),
+            sub_slo_recommended_lp_type=topic_sub_slo_lp.get(topic["id"]),
+        )
+        if not is_valid_lp_type(subject_code, lp_type):
+            result.warnings.append(
+                f"topic {topic['id']} got invalid lp_type {lp_type!r}; defaulting"
+            )
+            lp_type = "revision"
+        topic_lp_types.append(lp_type)
+
+    planned = plan_chapter_slots(
+        topic_ids=[t["id"] for t in topic_rows],
+        topic_lp_types=topic_lp_types,
+        allocation=allocation,
+        fa_cadence=fa_cadence,
+    )
+
+    async with conn.transaction():
+        base_position = await conn.fetchval(
+            "SELECT coalesce(max(position), 0) FROM breakdown_slots WHERE breakdown_id = $1",
+            breakdown_id,
+        )
+        chapter_position = 0
+        for plan in planned:
+            chapter_position += 1
+            base_position += 1
+            slot_id = await conn.fetchval(
+                """
+                INSERT INTO breakdown_slots
+                  (breakdown_id, breakdown_chapter_id, position, chapter_position,
+                   slot_type, lp_type, topic_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id
+                """,
+                breakdown_id, breakdown_chapter_id, base_position, chapter_position,
+                plan.slot_type, plan.lp_type, plan.topic_id,
+            )
+            result.inserted_slot_count += 1
+            if plan.covered_topic_ids:
+                for i, t_id in enumerate(plan.covered_topic_ids, start=1):
+                    await conn.execute(
+                        """
+                        INSERT INTO breakdown_slot_topics (breakdown_slot_id, topic_id, position)
+                        VALUES ($1, $2, $3)
+                        """,
+                        slot_id, t_id, i,
+                    )
+
+    log.info(
+        "seed_chapter_slots: exit chapter=%s inserted=%d warnings=%d",
+        breakdown_chapter_id, result.inserted_slot_count, len(result.warnings),
+    )
+    return result
