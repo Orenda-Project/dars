@@ -40,12 +40,12 @@ If two docs disagree, this is the order. Surface conflicts; don't silently pick 
 - Say "gg" when something works; "chammaar" when it breaks.
 
 ## Step 5 — Current state
-**As of 2026-06-02 — Phase 1 implemented, PR open (first session).**
+**As of 2026-06-02 — Phase 1 ✅ shipped. Phase 2 not started.**
 
 | Phase | Scope | Status |
 |---|---|---|
 | Plan + onramp | folder, decision log, data model | ✅ |
-| Phase 1 — chapter date ranges | F1.1 schema · F1.2 derived days · F1.3 advisory validation · F1.4 dashboard editor | ✅ code complete; PR open to staging |
+| Phase 1 — chapter date ranges | F1.1 schema · F1.2 derived days · F1.3 advisory validation · F1.4 dashboard editor | ✅ shipped PR #98 (squash → staging, commit 10edfc3); server + webapp Railway deploys SUCCESS |
 | Phase 2 — manual Chapter Plan | F2.1 page schema · F2.2 manual builder backend · F2.3 auto-build as seed · F2.4 dashboard editor | ⬜ not started |
 
 **Phase 1 detail:** migration `20260602000000_breakdown_chapters_date_range.sql` (start_date/end_date nullable). New `server/src/dars/breakdown/chapter_calendar.py` (derived days + advisory warnings, reuses `projector.compute_teaching_days`; holiday source per D-8). Router `_hydrate_breakdown` now returns `derived_teaching_days` per chapter + `chapter_range_warnings`. Dashboard editor: per-chapter date pickers replace the day-count input (dates are primary, days derived/displayed); inline warning badges; chapters ordered by start_date. Tests: `tests/test_chapter_calendar.py` (7). Suite 152 passed.
