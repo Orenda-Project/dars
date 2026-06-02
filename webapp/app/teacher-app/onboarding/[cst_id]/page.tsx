@@ -16,7 +16,7 @@ import {
 import {
   DarsApiError,
   books as booksApi,
-  breakdowns as breakdownsApi,
+  syllabusBreakdowns as syllabusBreakdownsApi,
   curriculum as curriculumApi,
   onboarding as onboardingApi,
   tenancy as tenancyApi,
@@ -37,18 +37,28 @@ export default function OnboardingPage() {
     setError(null);
     try {
       const cst = await tenancyApi.getCST(cstId);
-      const [{ items: classes }, breakdown] = await Promise.all([
+      const [{ items: classes }, syllabusList] = await Promise.all([
         tenancyApi.getClasses(),
-        breakdownsApi.getMyClassBreakdown(cstId),
+        syllabusBreakdownsApi.getBreakdowns({ status: "published" }),
       ]);
       const klass = classes.find((c) => c.id === cst.school_class_id);
       setClassName(klass?.name ?? `Class ${cst.school_class_id.slice(0, 8)}`);
+
+      // Match the published global syllabus breakdown by (grade, subject).
+      const breakdown = klass
+        ? syllabusList.items.find(
+            (b) =>
+              b.status === "published" &&
+              b.grade_id === klass.grade_id &&
+              b.subject_id === cst.subject_id,
+          )
+        : undefined;
 
       if (!breakdown) {
         setChapters([]);
         return;
       }
-      const hydrated = await breakdownsApi.getBreakdown(breakdown.id);
+      const hydrated = await syllabusBreakdownsApi.getBreakdown(breakdown.id);
       // book_chapter title lookup
       let titleByChapterId = new Map<string, string>();
       if (hydrated.book_id) {
@@ -62,7 +72,7 @@ export default function OnboardingPage() {
         .map((c) => ({
           position: c.position,
           title: titleByChapterId.get(c.book_chapter_id) ?? `Chapter ${c.position}`,
-          teaching_days: c.teaching_days,
+          teaching_days: c.derived_teaching_days,
         }));
       setChapters(options);
     } catch (err) {

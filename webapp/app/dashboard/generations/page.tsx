@@ -12,11 +12,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   admin,
-  breakdowns as breakdownsApi,
+  syllabusBreakdowns as syllabusBreakdownsApi,
   curriculum as curriculumApi,
   DarsApiError,
   type AdminMeResponse,
-  type Breakdown,
+  type SyllabusBreakdown,
   type BreakdownGenerationStatus,
   type Grade,
   type Subject,
@@ -26,7 +26,7 @@ const POLL_MS = 5000;
 const MAX_POLLS = 80; // ~6.6 min ceiling per breakdown
 
 interface Row {
-  breakdown: Breakdown;
+  breakdown: SyllabusBreakdown;
   status: BreakdownGenerationStatus | null;
   loading: boolean;
 }
@@ -44,7 +44,7 @@ export default function GenerationsPage() {
     try {
       const [m, all, { items: gs }, { items: ss }] = await Promise.all([
         admin.me(),
-        breakdownsApi.getBreakdowns(),
+        syllabusBreakdownsApi.getBreakdowns(),
         curriculumApi.getGrades(),
         curriculumApi.getSubjects(),
       ]);
@@ -145,7 +145,7 @@ export default function GenerationsPage() {
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div>
                   <p className="font-medium text-dars-ink">
-                    {r.breakdown.scope} · {gradeLabel(r.breakdown.grade_id)} ·{" "}
+                    {gradeLabel(r.breakdown.grade_id)} ·{" "}
                     {subjectLabel(r.breakdown.subject_id)}
                   </p>
                   <p className="text-[10px] font-mono text-dars-muted-light">
@@ -153,7 +153,7 @@ export default function GenerationsPage() {
                   </p>
                 </div>
                 <Link
-                  href={`/dashboard/breakdowns/${r.breakdown.id}`}
+                  href={`/dashboard/syllabus-breakdowns/${r.breakdown.id}`}
                   className="text-xs text-dars-terra hover:underline"
                 >
                   View →

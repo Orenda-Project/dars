@@ -185,24 +185,20 @@ export interface Topic {
 }
 
 // ---------------------------------------------------------------------------
-// Breakdowns + slots
+// Syllabus breakdowns (global-only, chapter date ranges)
 // ---------------------------------------------------------------------------
 
-export type BreakdownScope = "global" | "org" | "class";
-export type BreakdownStatus = "draft" | "published" | "deleted";
+export type SyllabusBreakdownStatus = "draft" | "published" | "deleted";
 
-export interface Breakdown {
+export interface SyllabusBreakdown {
   id: UUID;
-  scope: BreakdownScope;
-  scope_ref_id: UUID | null;
   curriculum_id: UUID;
   grade_id: UUID;
   subject_id: UUID;
   book_id: UUID | null;
-  parent_breakdown_id: UUID | null;
-  previous_version_id: UUID | null;
-  status: BreakdownStatus;
-  total_teaching_days: number | null;
+  status: SyllabusBreakdownStatus;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
 export interface ClassLessonSlot {
@@ -817,148 +813,90 @@ export const books = {
 };
 
 // ---------------------------------------------------------------------------
-// Breakdowns (`/api/v2/*`)
+// Syllabus breakdowns (`/api/v2/syllabus-breakdowns/*`)
 // ---------------------------------------------------------------------------
 
-export interface BreakdownChapter {
+export interface SyllabusChapter {
   id: UUID;
-  breakdown_id: UUID;
+  syllabus_breakdown_id: UUID;
   book_chapter_id: UUID;
   position: number;
-  teaching_days: number;
-  /** Chapter-Breakdown explicit date range (D-2). Null until set. */
+  /** Chapter explicit date range. Null until set. */
   start_date: ISODate | null;
   end_date: ISODate | null;
   /** Teaching days derived from the range vs. the academic calendar; null when no range. */
   derived_teaching_days: number | null;
 }
 
-/** Advisory, non-blocking chapter date-range warning (D-5). */
+/** Advisory, non-blocking chapter date-range warning. */
 export interface ChapterRangeWarning {
   type: "overlap" | "gap" | "zero_teaching_days";
   chapter_ids: UUID[];
 }
 
-export interface BreakdownSlot {
-  id: UUID;
-  breakdown_id: UUID;
-  breakdown_chapter_id: UUID;
-  position: number;
-  chapter_position: number;
-  slot_type: "lesson" | "formative_assessment" | "summative_assessment" | "revision";
-  lp_type: string | null;
-  topic_id: UUID | null;
-  anchor_date: ISODate | null;
-  /** Chapter Plan page range (D-4). Null when the slot maps to no pages. */
-  page_start: number | null;
-  page_end: number | null;
-}
-
-export interface BreakdownWithChapters extends Breakdown {
-  chapters: BreakdownChapter[];
-}
-
-export interface BreakdownDetail extends BreakdownWithChapters {
-  slots: BreakdownSlot[];
+export interface SyllabusBreakdownDetail extends SyllabusBreakdown {
+  chapters: SyllabusChapter[];
   chapter_range_warnings: ChapterRangeWarning[];
 }
 
-export const breakdowns = {
-  getBreakdowns: (params: { scope?: BreakdownScope; scope_ref_id?: UUID; status?: string } = {}) =>
-    request<ListResponse<Breakdown>>("/api/v2/breakdowns", { query: params }),
+export const syllabusBreakdowns = {
+  getBreakdowns: (params: { status?: string } = {}) =>
+    request<ListResponse<SyllabusBreakdown>>("/api/v2/syllabus-breakdowns", {
+      query: params,
+    }),
 
-  /** Single breakdown read returns chapters + slots hydrated. */
+  /** Single breakdown read returns chapters hydrated. */
   getBreakdown: (id: UUID) =>
-    request<BreakdownDetail>(`/api/v2/breakdowns/${id}`),
+    request<SyllabusBreakdownDetail>(`/api/v2/syllabus-breakdowns/${id}`),
 
-  /** Convenience: most-recent published class-scope breakdown for the CST. */
-  getMyClassBreakdown: async (cst_id: UUID): Promise<Breakdown | null> => {
-    const res = await breakdowns.getBreakdowns({ scope: "class", scope_ref_id: cst_id });
-    const published = res.items.find((b) => b.status === "published");
-    return published ?? null;
-  },
-
-  publish: (id: UUID) =>
-    request<Breakdown>(`/api/v2/breakdowns/${id}/publish`, { method: "POST" }),
-
-  forkOrg: (globalBreakdownId: UUID, body: { org_id: UUID }) =>
-    request<{ new_breakdown_id: UUID; chapter_count?: number; slot_count?: number }>(
-      `/api/v2/breakdowns/${globalBreakdownId}/fork-org`,
-      { method: "POST", body },
-    ),
-
-  forkClass: (orgBreakdownId: UUID, body: { cst_id: UUID }) =>
-    request<{ new_breakdown_id: UUID; chapter_count?: number; slot_count?: number }>(
-      `/api/v2/breakdowns/${orgBreakdownId}/fork-class`,
-      { method: "POST", body },
-    ),
-
-  patchChapter: (
-    breakdownId: UUID,
-    chapterId: UUID,
-    body: { teaching_days?: number; position?: number; start_date?: ISODate; end_date?: ISODate },
-  ) =>
-    request<BreakdownChapter>(
-      `/api/v2/breakdowns/${breakdownId}/chapters/${chapterId}`,
-      { method: "PATCH", body },
-    ),
-
-  patchSlotAnchor: (breakdownId: UUID, slotId: UUID, body: { anchor_date: ISODate | null }) =>
-    request<BreakdownSlot>(
-      `/api/v2/breakdowns/${breakdownId}/slots/${slotId}/anchor`,
-      { method: "PATCH", body },
-    ),
-
-  addSlot: (
-    breakdownId: UUID,
-    body: {
-      breakdown_chapter_id: UUID;
-      position: number;
-      chapter_position: number;
-      slot_type: BreakdownSlot["slot_type"];
-      lp_type: string | null;
-      topic_id: UUID | null;
-      anchor_date: ISODate | null;
-      page_start?: number | null;
-      page_end?: number | null;
-      extra_topic_ids?: UUID[];
-    },
-  ) =>
-    request<BreakdownSlot>(`/api/v2/breakdowns/${breakdownId}/slots`, {
+  create: (body: {
+    curriculum_id: UUID;
+    grade_id: UUID;
+    subject_id: UUID;
+    book_id?: UUID | null;
+  }) =>
+    request<SyllabusBreakdown>("/api/v2/syllabus-breakdowns", {
       method: "POST",
       body,
     }),
 
-  patchSlot: (
+  update: (id: UUID, body: { book_id?: UUID | null }) =>
+    request<SyllabusBreakdown>(`/api/v2/syllabus-breakdowns/${id}`, {
+      method: "PATCH",
+      body,
+    }),
+
+  publish: (id: UUID) =>
+    request<SyllabusBreakdown>(`/api/v2/syllabus-breakdowns/${id}/publish`, {
+      method: "POST",
+    }),
+
+  delete: (id: UUID) =>
+    request<void>(`/api/v2/syllabus-breakdowns/${id}`, { method: "DELETE" }),
+
+  patchChapter: (
     breakdownId: UUID,
-    slotId: UUID,
-    body: {
-      slot_type?: BreakdownSlot["slot_type"];
-      lp_type?: string | null;
-      topic_id?: UUID | null;
-      page_start?: number | null;
-      page_end?: number | null;
-    },
+    chapterId: UUID,
+    body: { position?: number; start_date?: ISODate; end_date?: ISODate },
   ) =>
-    request<BreakdownSlot>(
-      `/api/v2/breakdowns/${breakdownId}/slots/${slotId}`,
+    request<SyllabusChapter>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/chapters/${chapterId}`,
       { method: "PATCH", body },
     ),
 
-  deleteSlot: (breakdownId: UUID, slotId: UUID) =>
-    request<void>(`/api/v2/breakdowns/${breakdownId}/slots/${slotId}`, {
-      method: "DELETE",
-    }),
-
-  /** F2.3 / D-9 — seed an editable starting set of slots for one empty chapter. */
-  seedChapter: (
+  addChapter: (
     breakdownId: UUID,
-    chapterId: UUID,
-    body: { day_budget?: number; fa_cadence?: number; sa_per_chapter?: number } = {},
+    body: { book_chapter_id: UUID; position: number; start_date?: ISODate; end_date?: ISODate },
   ) =>
-    request<{ chapter_id: UUID; inserted_slot_count: number; warnings: string[] }>(
-      `/api/v2/breakdowns/${breakdownId}/chapters/${chapterId}/seed`,
+    request<SyllabusChapter>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/chapters`,
       { method: "POST", body },
+    ),
+
+  deleteChapter: (breakdownId: UUID, chapterId: UUID) =>
+    request<void>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/chapters/${chapterId}`,
+      { method: "DELETE" },
     ),
 };
 
@@ -1428,7 +1366,7 @@ export const darsApi = {
   tenancy,
   curriculum,
   books,
-  breakdowns,
+  syllabusBreakdowns,
   slots,
   generations,
   today,

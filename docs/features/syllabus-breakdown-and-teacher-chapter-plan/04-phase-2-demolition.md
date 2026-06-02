@@ -75,4 +75,15 @@ Remove org/class scope branches. List/get endpoints assume global.
 ---
 
 ## Notes from execution
-_(append during implementation; don't alter specs)_
+
+**2026-06-02 — demolition complete (PR open). Re-seed (F2.5) pending migration deploy.**
+- F2.1: planners salvaged → `breakdown/chapter_plan_service.py` (pure; `compute_chapter_day_budget`, `allocate_chapter_days`, `plan_chapter_slots`, `PlannedSlot`, `ChapterDayAllocation`). Tests → `test_chapter_plan_service.py`.
+- F2.2/F2.3/F2.4: deleted `fork_service.py`, `realize_service.py`, `auto_build_service.py`, `seeds/breakdown_demo.py`. Removed slot/fork/auto-build/seed/anchor endpoints. Removed CST auto-fork-and-realize (`_auto_fork_breakdown_for_cst`) from `router_admin_tenancy.py`. Removed slot hydration from breakdown read; publish no longer realizes.
+- F2.5 (rename): `router_breakdown.py`→`router_syllabus.py`, `schemas_breakdown.py`→`schemas_syllabus.py`; schemas `Breakdown*`→`Syllabus*`; SQL → `syllabus_breakdowns`/`syllabus_chapters` (FK `syllabus_breakdown_id`); paths `/syllabus-breakdowns/...`. Migration `20260604000000_syllabus_rename_drop_slots.sql` (drop old tables, create syllabus_*, drop class `breakdown_slot_id`, add class-slot `page_start/end`). `chapter_calendar.resolve_breakdown_holidays` → returns set() (global has no calendar).
+- F2.6: scope handling fully removed (`VALID_SCOPES`, `_assert_scope_in_org`, scope columns) — global-only.
+- **Extra cleanup (build-from-ground-up mandate):** gutted `generated_lps/batch_service.py` to just `_config_for` + DEFAULT_*_CONFIG (the breakdown-slot-walking enqueue/status path is dead); removed publish auto-enqueue + `/generation-status` endpoint from the router; deleted dead `test_class_actions_e2e.py` (tested the removed fork→realize pipeline — class-action endpoint coverage rebuilds in Phase 3 against teacher slots).
+- Frontend: route `dashboard/breakdowns`→`dashboard/syllabus-breakdowns`; `dars-api.ts` `breakdowns`→`syllabusBreakdowns` (dropped fork/slot/seed/anchor methods); editor stripped to chapter date-range only (deleted SlotEditor/SlotList/slot-types.ts); curriculum "Fork to org" removed → read-only Syllabus list; teacher onboarding rewired to the global syllabus.
+- **Known leftover (out of scope, pre-existing):** `/dashboard/generations` polls a non-existent `/api/v1/breakdowns/{id}/generation-status` — was already dead before this work; generation-monitoring UI cleanup is a separate concern, left as-is.
+- Non-DB suite: 152 passed. Webapp tsc clean.
+
+**F2.5 re-seed TODO (after migration deploys):** recreate the 2 global Syllabus Breakdowns (Dars + NCP G1 English) in `syllabus_breakdowns`/`syllabus_chapters` — chapters in book order, date ranges nullable (admin sets them) or distributed across the academic year. Do via direct insert against staging once the migration is live.
