@@ -1,5 +1,12 @@
 # Onramp — for the chapter-breakdown-and-plan work
 
+> **⚠️ SUPERSEDED (2026-06-02).** This shipped feature is being re-architected by
+> `docs/features/syllabus-breakdown-and-teacher-chapter-plan/`. "Chapter Breakdown" was
+> renamed to **Syllabus Breakdown**; this feature's Phase 1 (chapter date ranges) is kept
+> and renamed, and its Phase 2 (admin page ranges, manual slot builder, per-chapter seed)
+> is removed from admin scope — slot generation moves to the teacher app. See that feature's
+> decision log (D-13). This folder stays as historical record; do not build from it.
+
 You are a Claude agent picking up an in-flight effort. This file is your single entry point. Reading it (and the files it lists) gives you the full context.
 
 You will NOT execute any code, open beads, or write files until you have read everything this file lists.

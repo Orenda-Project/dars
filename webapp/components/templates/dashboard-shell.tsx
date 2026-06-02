@@ -29,7 +29,7 @@ const NAV: DashboardNavItem[] = [
   { href: "/dashboard/overview", label: "Overview" },
   { href: "/dashboard/schools", label: "Schools", group: "Tenancy" },
   { href: "/dashboard/curriculum", label: "Curriculum", group: "Content" },
-  { href: "/dashboard/breakdowns", label: "Breakdowns", group: "Content" },
+  { href: "/dashboard/breakdowns", label: "Syllabus Breakdowns", group: "Content" },
   { href: "/dashboard/generations", label: "Generations", group: "Operations" },
   { href: "/dashboard/generations/failures", label: "Failures", group: "Operations" },
   { href: "/dashboard/reports/slo-coverage", label: "SLO coverage", group: "Reports" },

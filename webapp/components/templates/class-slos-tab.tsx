@@ -40,7 +40,7 @@ export function ClassSLOProgressTab({ groups, joinedAtPosition }: SLOProgressTab
       <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
         <p className="text-sm font-medium text-dars-ink">No SLOs to display</p>
         <p className="text-xs text-dars-muted mt-1">
-          Sub-SLO coverage shows up once the breakdown is published and slots have topics.
+          Sub-SLO coverage shows up once the syllabus breakdown is published and slots have topics.
         </p>
       </div>
     );

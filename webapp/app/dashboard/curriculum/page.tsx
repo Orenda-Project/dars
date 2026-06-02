@@ -246,7 +246,7 @@ export default function CurriculumPage() {
       ) : (
         <div>
           <p className="text-sm text-dars-muted mb-2">
-            Published global breakdowns for {me?.curriculum_code}. Fork one
+            Published global syllabus breakdowns for {me?.curriculum_code}. Fork one
             into your org to start customising.
           </p>
           {templates.length === 0 ? (
