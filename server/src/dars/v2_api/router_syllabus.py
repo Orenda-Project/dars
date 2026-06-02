@@ -268,6 +268,36 @@ async def publish_breakdown(
     # longer fires on publish — slots are generated teacher-side from the
     # class's Chapter Plan (syllabus-breakdown-and-teacher-chapter-plan D-5).
     current = await _require_draft(conn, breakdown_id)
+
+    # A published syllabus must be teacher-usable: it needs at least one
+    # chapter, and every chapter must have a full date range (the teacher
+    # "break it down" flow derives slot counts from these dates).
+    undated = await conn.fetchval(
+        """
+        SELECT count(*) FROM syllabus_chapters
+        WHERE syllabus_breakdown_id = $1
+          AND (start_date IS NULL OR end_date IS NULL)
+        """,
+        current["id"],
+    )
+    total = await conn.fetchval(
+        "SELECT count(*) FROM syllabus_chapters WHERE syllabus_breakdown_id = $1",
+        current["id"],
+    )
+    if total == 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="cannot publish a syllabus breakdown with no chapters",
+        )
+    if undated:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"cannot publish: {undated} chapter(s) have no date range — "
+                "set start and end dates for every chapter first"
+            ),
+        )
+
     row = await conn.fetchrow(
         """
         UPDATE syllabus_breakdowns
