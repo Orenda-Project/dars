@@ -86,4 +86,6 @@ Remove org/class scope branches. List/get endpoints assume global.
 - **Known leftover (out of scope, pre-existing):** `/dashboard/generations` polls a non-existent `/api/v1/breakdowns/{id}/generation-status` — was already dead before this work; generation-monitoring UI cleanup is a separate concern, left as-is.
 - Non-DB suite: 152 passed. Webapp tsc clean.
 
-**F2.5 re-seed TODO (after migration deploys):** recreate the 2 global Syllabus Breakdowns (Dars + NCP G1 English) in `syllabus_breakdowns`/`syllabus_chapters` — chapters in book order, date ranges nullable (admin sets them) or distributed across the academic year. Do via direct insert against staging once the migration is live.
+**F2.5 re-seed — DONE.** 2 published globals re-created in `syllabus_breakdowns` (Dars `7a8bb78e…` 10ch, NCP `566c4244…` 8ch), chapters in book order, dates null (admin sets via dashboard).
+
+**Deploy incident (resolved):** first deploy CRASHED — `DROP TABLE breakdown_slots` failed with `DependentObjectsStillExistError` because `class_*_slots.breakdown_slot_id` FKs into it, and the migration dropped those columns *after* the table. Fixed by reordering (drop FK columns first) in hotfix PR #103. The migration is transactional so it rolled back cleanly each crash — no partial state. Validated the fix against staging in a rolled-back transaction before merging. **Lesson for future migrations: drop dependent FK columns before the referenced table, or use CASCADE.**

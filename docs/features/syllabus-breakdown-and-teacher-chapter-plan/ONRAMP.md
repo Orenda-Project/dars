@@ -40,13 +40,18 @@ Surface conflicts; don't silently pick a side.
 - "gg" when something works; "chammaar" when it breaks.
 
 ## Step 5 — Current state
-**As of 2026-06-02 — plan approved, Phase 1 starting.**
+**As of 2026-06-02 — Phases 1 & 2 ✅ shipped + verified. Phase 3 next.**
 
 | Phase | Scope | Status |
 |---|---|---|
 | Plan + onramp | folder, decision log, data model | ✅ |
-| Phase 1 — rename (copy/docs) | F1.1 UI copy · F1.2 API docstrings · F1.3 docs/memory | ✅ code complete; PR open |
-| Phase 2 — demolition + table rename | F2.1 salvage planners · F2.2 del realize · F2.3 del fork · F2.4 del slot UI/API · F2.5 migration+reseed · F2.6 global-only | ✅ code complete; PR open. Re-seed of 2 globals pending migration deploy. |
+| Phase 1 — rename (copy/docs) | F1.1 UI copy · F1.2 API docstrings · F1.3 docs/memory | ✅ shipped PR #101 (webapp green) |
+| Phase 2 — demolition + table rename | F2.1 salvage planners · F2.2 del realize · F2.3 del fork · F2.4 del slot UI/API · F2.5 migration+reseed · F2.6 global-only | ✅ shipped PR #102 + hotfix PR #103 (FK-order migration crash); server+webapp green; 2 globals re-seeded into syllabus_* tables (Dars 10ch, NCP 8ch, dates null) |
+| Phase 3 — teacher Chapter Plan | F3.1 syllabus-by-today · F3.2 slot-count · F3.3 generate · F3.4 UI · F3.5 periods | ⬜ next |
+
+**Live staging state:** `syllabus_breakdowns` (2 published globals: Dars `7a8bb78e…` 10ch, NCP `566c4244…` 8ch) + `syllabus_chapters` (dates null — admin sets via dashboard). Old breakdown tables dropped. `class_*_slots` have `page_start/end`, no `breakdown_slot_id`. Planners live in `breakdown/chapter_plan_service.py`.
+
+**Next thing to do:** open bead `feat-syllabus-breakdown-phase-3-teacher-chapter-plan`, branch from staging, build F3.1→F3.5 (slot-count = `len(compute_teaching_days(...))` per D-9/D-14).
 | Phase 3 — teacher Chapter Plan | F3.1 syllabus-by-today · F3.2 slot-count · F3.3 generate · F3.4 UI · F3.5 periods | ⬜ |
 
 **Next thing to do:** open bead `feat-syllabus-breakdown-phase-1-rename`, branch from staging, do the user-facing rename (Phase 1 is copy/docs only — the code+table rename is in Phase 2 where the migration lives).
