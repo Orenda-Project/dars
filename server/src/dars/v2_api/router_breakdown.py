@@ -32,6 +32,11 @@ from dars.breakdown.auto_build_service import (
     auto_build_breakdown,
 )
 from dars.config import settings
+from dars.breakdown.chapter_calendar import (
+    compute_range_warnings,
+    derived_teaching_days,
+    resolve_breakdown_holidays,
+)
 from dars.breakdown.fork_service import fork_breakdown
 from dars.breakdown.realize_service import realize_class_breakdown
 from dars.breakdown.slo_breakdown_service import (
@@ -251,7 +256,8 @@ async def _hydrate_breakdown(
 ) -> BreakdownRead:
     chapters = await conn.fetch(
         """
-        SELECT id, breakdown_id, book_chapter_id, position, teaching_days
+        SELECT id, breakdown_id, book_chapter_id, position, teaching_days,
+               start_date, end_date
         FROM breakdown_chapters
         WHERE breakdown_id = $1
         ORDER BY position
@@ -285,9 +291,19 @@ async def _hydrate_breakdown(
                 BreakdownSlotTopicRead(topic_id=er["topic_id"], position=er["position"])
             )
 
+    # D-2 / D-5: derive teaching days per chapter and advisory range warnings
+    # against the breakdown's best-effort academic calendar.
+    holidays = await resolve_breakdown_holidays(conn, row["id"])
+    chapter_dicts = [dict(c) for c in chapters]
+    for c in chapter_dicts:
+        c["derived_teaching_days"] = derived_teaching_days(
+            c["start_date"], c["end_date"], holidays
+        )
+    warnings = compute_range_warnings(chapter_dicts, holidays)
+
     return BreakdownRead(
         **dict(row),
-        chapters=[BreakdownChapterRead(**dict(c)) for c in chapters],
+        chapters=[BreakdownChapterRead(**c) for c in chapter_dicts],
         slots=[
             BreakdownSlotRead(
                 **dict(s),
@@ -295,6 +311,7 @@ async def _hydrate_breakdown(
             )
             for s in slots
         ],
+        chapter_range_warnings=warnings,
     )
 
 
@@ -610,11 +627,14 @@ async def add_chapter(
     try:
         row = await conn.fetchrow(
             """
-            INSERT INTO breakdown_chapters (breakdown_id, book_chapter_id, position, teaching_days)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, breakdown_id, book_chapter_id, position, teaching_days
+            INSERT INTO breakdown_chapters
+                (breakdown_id, book_chapter_id, position, teaching_days, start_date, end_date)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, breakdown_id, book_chapter_id, position, teaching_days,
+                      start_date, end_date
             """,
             breakdown_id, payload.book_chapter_id, payload.position, payload.teaching_days,
+            payload.start_date, payload.end_date,
         )
     except asyncpg.UniqueViolationError:
         raise HTTPException(
@@ -645,9 +665,18 @@ async def update_chapter(
     if payload.teaching_days is not None:
         params.append(payload.teaching_days)
         sets.append(f"teaching_days = ${len(params)}")
+    # D-8: None means "omit" (consistent with the other PATCH fields); clearing
+    # a date range is not supported via this endpoint in the prototype.
+    if payload.start_date is not None:
+        params.append(payload.start_date)
+        sets.append(f"start_date = ${len(params)}")
+    if payload.end_date is not None:
+        params.append(payload.end_date)
+        sets.append(f"end_date = ${len(params)}")
     if not sets:
         row = await conn.fetchrow(
-            "SELECT id, breakdown_id, book_chapter_id, position, teaching_days FROM breakdown_chapters WHERE id = $1",
+            "SELECT id, breakdown_id, book_chapter_id, position, teaching_days, "
+            "start_date, end_date FROM breakdown_chapters WHERE id = $1",
             chapter_id,
         )
         return BreakdownChapterRead(**dict(row))
@@ -658,7 +687,8 @@ async def update_chapter(
             UPDATE breakdown_chapters
             SET {", ".join(sets)}
             WHERE id = ${len(params)}
-            RETURNING id, breakdown_id, book_chapter_id, position, teaching_days
+            RETURNING id, breakdown_id, book_chapter_id, position, teaching_days,
+                      start_date, end_date
             """,
             *params,
         )

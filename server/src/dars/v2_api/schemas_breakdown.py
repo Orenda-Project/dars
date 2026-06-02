@@ -36,6 +36,11 @@ class BreakdownChapterRead(BaseModel):
     book_chapter_id: UUID
     position: int
     teaching_days: int
+    start_date: date | None = None
+    end_date: date | None = None
+    # D-2: derived from the date range against the academic calendar.
+    # None when no range is set (fall back to teaching_days).
+    derived_teaching_days: int | None = None
 
 
 class BreakdownRead(BaseModel):
@@ -54,6 +59,9 @@ class BreakdownRead(BaseModel):
     updated_at: datetime
     chapters: list[BreakdownChapterRead] = []
     slots: list[BreakdownSlotRead] = []
+    # D-5: advisory, non-blocking chapter date-range warnings.
+    # Each: {"type": "overlap"|"gap"|"zero_teaching_days", "chapter_ids": [UUID, ...]}
+    chapter_range_warnings: list[dict] = []
 
 
 class BreakdownListItem(BaseModel):
@@ -98,11 +106,15 @@ class BreakdownChapterCreate(BaseModel):
     book_chapter_id: UUID
     position: int
     teaching_days: int
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 class BreakdownChapterUpdate(BaseModel):
     position: int | None = None
     teaching_days: int | None = None
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 class BreakdownSlotCreate(BaseModel):

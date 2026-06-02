@@ -1,7 +1,8 @@
 /**
- * Breakdown editor — chapter days, anchor placement, and per-slot editing.
+ * Breakdown editor — Chapter Breakdown (date ranges), anchor placement, and per-slot editing.
  *
- * - Day budget editing: draft breakdowns only.
+ * - Chapter Breakdown: explicit per-chapter date ranges (D-2). Draft only.
+ *   Teaching days are derived from the range; advisory warnings (D-5) shown inline.
  * - Anchor placement: draft global/org breakdowns only (D-7 of the v2 rebuild).
  * - Slot editing (slot_type, lp_type, topic_id) + add/delete: draft + org-scope
  *   only. See docs/features/breakdown-slot-editing/.
@@ -33,6 +34,12 @@ import {
   parseComboValue,
   type SlotCombo,
 } from "@/lib/slot-types";
+
+const CHAPTER_WARNING_LABELS: Record<string, string> = {
+  overlap: "Overlaps next chapter",
+  gap: "Gap before next chapter",
+  zero_teaching_days: "No teaching days in range",
+};
 
 export default function BreakdownEditorPage() {
   const params = useParams<{ breakdown_id: string }>();
@@ -106,11 +113,16 @@ export default function BreakdownEditorPage() {
     void ensureTopicsForBookChapter(bch.book_chapter_id);
   }, [selectedSlot, data, breakdownChaptersById, ensureTopicsForBookChapter]);
 
-  async function handleSetChapterDays(chapterId: string, days: number) {
-    if (!data) return;
+  // D-2: explicit per-chapter date range. Either bound may be patched alone.
+  async function handleSetChapterDate(
+    chapterId: string,
+    field: "start_date" | "end_date",
+    value: string,
+  ) {
+    if (!data || !value) return;
     setBusy(true);
     try {
-      await breakdownsApi.patchChapter(data.id, chapterId, { teaching_days: days });
+      await breakdownsApi.patchChapter(data.id, chapterId, { [field]: value });
       await load();
     } catch (err) {
       setError(formatErr(err));
@@ -213,6 +225,19 @@ export default function BreakdownEditorPage() {
     }
   }
 
+  // D-5: map each chapter to its advisory warning types for inline display.
+  const warningsByChapter = useMemo(() => {
+    const out = new Map<string, Set<string>>();
+    for (const w of data?.chapter_range_warnings ?? []) {
+      for (const cid of w.chapter_ids) {
+        const set = out.get(cid) ?? new Set<string>();
+        set.add(w.type);
+        out.set(cid, set);
+      }
+    }
+    return out;
+  }, [data]);
+
   const slotsByChapter = useMemo(() => {
     if (!data) return new Map<string, BreakdownSlot[]>();
     const out = new Map<string, BreakdownSlot[]>();
@@ -274,19 +299,44 @@ export default function BreakdownEditorPage() {
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-5">
         <ul className="space-y-3">
-          {data.chapters.map((c) => {
+          {[...data.chapters]
+            .sort((a, b) => {
+              // D-2: order by explicit start_date when set; fall back to position.
+              if (a.start_date && b.start_date) return a.start_date.localeCompare(b.start_date);
+              if (a.start_date) return -1;
+              if (b.start_date) return 1;
+              return a.position - b.position;
+            })
+            .map((c) => {
             const book = bookChaptersById.get(c.book_chapter_id);
             const slots = slotsByChapter.get(c.id) ?? [];
+            const warnings = warningsByChapter.get(c.id);
             return (
               <li key={c.id} className="rounded-md border border-dars-rule-light bg-dars-parchment-mid">
-                <header className="p-3 border-b border-dars-rule-light flex items-center justify-between gap-2">
+                <header className="p-3 border-b border-dars-rule-light flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-dars-ink">
                       Ch {c.position} · {book?.title ?? "—"}
                     </p>
                     <p className="text-[10px] text-dars-muted-light">
                       {slots.length} slot{slots.length === 1 ? "" : "s"}
+                      {c.derived_teaching_days != null ? (
+                        <> · {c.derived_teaching_days} teaching day{c.derived_teaching_days === 1 ? "" : "s"}</>
+                      ) : null}
                     </p>
+                    {warnings && warnings.size > 0 ? (
+                      <p className="mt-1 flex flex-wrap gap-1">
+                        {[...warnings].map((w) => (
+                          <span
+                            key={w}
+                            title={CHAPTER_WARNING_LABELS[w] ?? w}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-dars-terra/10 text-dars-terra border border-dars-terra/30"
+                          >
+                            {CHAPTER_WARNING_LABELS[w] ?? w}
+                          </span>
+                        ))}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     {slotEditAllowed ? (
@@ -299,22 +349,33 @@ export default function BreakdownEditorPage() {
                         + Add slot
                       </button>
                     ) : null}
-                    <label className="text-xs text-dars-ink-soft">
-                      Days{" "}
+                    <div className="flex items-center gap-1 text-xs text-dars-ink-soft">
                       <input
-                        type="number"
-                        min={1}
-                        defaultValue={c.teaching_days}
+                        type="date"
+                        aria-label={`Chapter ${c.position} start date`}
+                        defaultValue={c.start_date ?? ""}
                         disabled={!editable || busy}
                         onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v) && v !== c.teaching_days) {
-                            void handleSetChapterDays(c.id, v);
+                          if (e.target.value && e.target.value !== c.start_date) {
+                            void handleSetChapterDate(c.id, "start_date", e.target.value);
                           }
                         }}
-                        className="w-16 px-2 py-1 rounded border border-dars-rule-light bg-white text-sm font-mono"
+                        className="px-1.5 py-1 rounded border border-dars-rule-light bg-white text-xs font-mono"
                       />
-                    </label>
+                      <span className="text-dars-muted-light">→</span>
+                      <input
+                        type="date"
+                        aria-label={`Chapter ${c.position} end date`}
+                        defaultValue={c.end_date ?? ""}
+                        disabled={!editable || busy}
+                        onBlur={(e) => {
+                          if (e.target.value && e.target.value !== c.end_date) {
+                            void handleSetChapterDate(c.id, "end_date", e.target.value);
+                          }
+                        }}
+                        className="px-1.5 py-1 rounded border border-dars-rule-light bg-white text-xs font-mono"
+                      />
+                    </div>
                   </div>
                 </header>
                 <SlotList
