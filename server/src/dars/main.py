@@ -1,3 +1,4 @@
+# Deploy trigger: 2026-06-02 — force server rebuild (Railway builder wedged on #106).
 import logging
 from contextlib import asynccontextmanager
 
