@@ -33,6 +33,14 @@ export interface ProgressSlot {
   topicTitle: string | null;
 }
 
+/** The syllabus chapter the class should be on today, when it has no
+ * generated slots yet (so "break it down" hasn't run). */
+export interface CurrentChapterToPlan {
+  bookChapterId: string;
+  chapterNumber: number;
+  title: string;
+}
+
 export interface ClassTodayTabProps {
   /** Long-form date string, e.g. "Monday, 1 June 2026". */
   todayLabel: string;
@@ -45,6 +53,9 @@ export interface ClassTodayTabProps {
   onViewLP: () => void;
   onMarkTaught: () => void;
   onViewExam: () => void;
+  /** Set when today falls in a syllabus chapter that hasn't been broken down. */
+  currentChapterToPlan?: CurrentChapterToPlan | null;
+  onBreakDown?: (bookChapterId: string) => void;
 }
 
 export function ClassTodayTab({
@@ -58,6 +69,8 @@ export function ClassTodayTab({
   onViewLP,
   onMarkTaught,
   onViewExam,
+  currentChapterToPlan,
+  onBreakDown,
 }: ClassTodayTabProps) {
   return (
     <div className="space-y-5">
@@ -72,6 +85,8 @@ export function ClassTodayTab({
         onMarkTaught={onMarkTaught}
         onViewExam={onViewExam}
         nextSlot={nextSlot}
+        currentChapterToPlan={currentChapterToPlan}
+        onBreakDown={onBreakDown}
       />
 
       <ProgressStrip
@@ -94,6 +109,8 @@ function TodayWorkCard({
   onMarkTaught,
   onViewExam,
   nextSlot,
+  currentChapterToPlan,
+  onBreakDown,
 }: {
   work: TodayWork;
   busy: boolean;
@@ -101,8 +118,36 @@ function TodayWorkCard({
   onMarkTaught: () => void;
   onViewExam: () => void;
   nextSlot: ProgressSlot | null;
+  currentChapterToPlan?: CurrentChapterToPlan | null;
+  onBreakDown?: (bookChapterId: string) => void;
 }) {
   if (work === null) {
+    // Distinguish "you're in a chapter you haven't planned yet" from "course over".
+    if (currentChapterToPlan) {
+      return (
+        <div className="rounded-lg border border-dars-terra/40 bg-dars-terra/5 p-5">
+          <p className="text-[10px] uppercase tracking-wide text-dars-terra font-semibold">
+            You should be teaching
+          </p>
+          <h2 className="font-[var(--font-cormorant)] text-2xl font-bold text-dars-ink mt-1">
+            Chapter {currentChapterToPlan.chapterNumber}: {currentChapterToPlan.title}
+          </h2>
+          <p className="text-sm text-dars-ink-soft mt-1">
+            Break this chapter down to plan your lessons and see today&apos;s work.
+          </p>
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled={busy || !onBreakDown}
+              onClick={() => onBreakDown?.(currentChapterToPlan.bookChapterId)}
+              className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Breaking down…" : "Break it down"}
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="rounded-lg border border-dashed border-dars-rule-light bg-dars-parchment p-6">
         <p className="text-sm font-medium text-dars-ink">
