@@ -826,6 +826,17 @@ export interface BreakdownChapter {
   book_chapter_id: UUID;
   position: number;
   teaching_days: number;
+  /** Chapter-Breakdown explicit date range (D-2). Null until set. */
+  start_date: ISODate | null;
+  end_date: ISODate | null;
+  /** Teaching days derived from the range vs. the academic calendar; null when no range. */
+  derived_teaching_days: number | null;
+}
+
+/** Advisory, non-blocking chapter date-range warning (D-5). */
+export interface ChapterRangeWarning {
+  type: "overlap" | "gap" | "zero_teaching_days";
+  chapter_ids: UUID[];
 }
 
 export interface BreakdownSlot {
@@ -846,6 +857,7 @@ export interface BreakdownWithChapters extends Breakdown {
 
 export interface BreakdownDetail extends BreakdownWithChapters {
   slots: BreakdownSlot[];
+  chapter_range_warnings: ChapterRangeWarning[];
 }
 
 export const breakdowns = {
@@ -878,7 +890,11 @@ export const breakdowns = {
       { method: "POST", body },
     ),
 
-  patchChapter: (breakdownId: UUID, chapterId: UUID, body: { teaching_days?: number; position?: number }) =>
+  patchChapter: (
+    breakdownId: UUID,
+    chapterId: UUID,
+    body: { teaching_days?: number; position?: number; start_date?: ISODate; end_date?: ISODate },
+  ) =>
     request<BreakdownChapter>(
       `/api/v2/breakdowns/${breakdownId}/chapters/${chapterId}`,
       { method: "PATCH", body },

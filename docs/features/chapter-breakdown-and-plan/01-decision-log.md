@@ -1,0 +1,21 @@
+# Decision Log — Chapter Breakdown & Chapter Plan
+
+Frozen architectural decisions. To revise: ask the user, mark the old "Superseded by D-N+1 on YYYY-MM-DD", add the new referencing the supersession. Both stay.
+
+---
+
+**D-1: The two authoring actions are made explicit and separate on the dashboard, not merged into one auto-build flow.** *Rationale:* User wants to (a) decide chapter order + timing and (b) decide what happens inside a chapter, as two distinct, independently-editable operations. Today the auto-build algorithm does both implicitly. *Apply:* Phase 1 = Chapter Breakdown (dates/order); Phase 2 = Chapter Plan (slots). *Decided:* 2026-06-02 (design conversation).
+
+**D-2: Chapter timing is modelled as explicit calendar date ranges (`start_date`/`end_date` on `breakdown_chapters`), and these become the primary editing surface. Teaching-day count is derived from the range against the academic calendar.** *Rationale:* User chose "explicit date ranges" over ordered day-counts — wants to literally say "Chapter 1: Jun 10 – Jun 25". Order is implied by dates. *Apply:* Phase 1. `teaching_days` column kept but becomes display/derived, not authored. *Decided:* 2026-06-02. *Risk noted:* introduces gap/overlap/holiday-collision validation that the day-count model deliberately avoided — see D-5.
+
+**D-3: Chapter Plan is manual-first. Auto-build is demoted to an optional "seed a starting point" action whose output is then edited manually.** *Rationale:* User: "for now we do this manually… we manually decide the inputs." Manual entry of slot type + pages is the default; auto-build stays available but as a first-draft generator, not the primary path. *Apply:* Phase 2. The existing `auto_build_service.py` is reused as the seed generator; the per-chapter manual editor is the new default UI. *Decided:* 2026-06-02.
+
+**D-4: Slots gain an explicit page range (`page_start`/`page_end` on `breakdown_slots`), both nullable.** *Rationale:* User chose structured page range over free-text. Matches "LP1: pages 1–10" exactly; validatable against book length; sortable. Nullable because not every slot maps to pages (e.g. revision). *Apply:* Phase 2 schema delta + manual editor inputs. *Decided:* 2026-06-02.
+
+**D-5: Date-range validation is advisory (warn), not blocking, for the prototype.** *Rationale:* Gaps, overlaps, and ranges that fall entirely on non-teaching days are real risks (D-2). Hard-blocking edits on every validation failure would make the dashboard frustrating during iterative planning. Surface warnings (overlap, gap, zero-teaching-day range) in the UI but let the user save. *Apply:* Phase 1. Revisit if it causes real data problems. *Decided:* 2026-06-02.
+
+**D-6: All authoring stays on the dashboard; the teacher-app remains read-only on breakdowns.** *Rationale:* Per `dars/CLAUDE.md` the teacher-app is a consume-only demo. The "global = teacher's default to compare against" concept is surfaced via the existing scope/fork mechanism (D-7 from the breakdown work), not a new teacher-app editor. *Apply:* both phases — no teacher-app editing routes added. *Decided:* 2026-06-02.
+
+**D-7: Existing global→org→class scope + fork mechanism is reused unchanged for "reference vs. teacher default".** *Rationale:* The global-scope breakdown already serves as the reference; forking already produces an editable class/org copy. No new scoping primitives needed. *Apply:* no schema or endpoint change for scoping. *Decided:* 2026-06-02.
+
+**D-8: Derived teaching days use "Mon–Fri minus org holidays", resolved best-effort by the breakdown's scope; clearing a chapter's date range via PATCH is unsupported in the prototype.** *Rationale:* A breakdown has no CST, so the CST-scoped calendar helper can't apply. Global scope → plain Mon–Fri (no holidays); org scope → that org's holidays; class scope → the class's academic-year holidays (`chapter_calendar.resolve_breakdown_holidays`). Reuses `projector.compute_teaching_days` verbatim. `BreakdownChapterUpdate` treats `None` as "omit" (matching existing fields), so a set range can be changed but not nulled out — acceptable for the prototype. *Apply:* Phase 1, F1.2/F1.4. *Decided:* 2026-06-02 (user chose "Mon–Fri minus org holidays").
