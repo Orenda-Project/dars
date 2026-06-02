@@ -9,7 +9,12 @@
 --
 -- See docs/features/syllabus-breakdown-and-teacher-chapter-plan/02-data-model.md.
 
--- 1. Drop old breakdown tables (children/FK first).
+-- 1. Drop the class-slot FK columns that reference breakdown_slots FIRST,
+--    otherwise the breakdown_slots drop fails (DependentObjectsStillExist).
+ALTER TABLE class_lesson_slots     DROP COLUMN IF EXISTS breakdown_slot_id;
+ALTER TABLE class_assessment_slots DROP COLUMN IF EXISTS breakdown_slot_id;
+
+-- 2. Drop old breakdown tables (children/FK first).
 DROP TABLE IF EXISTS breakdown_slot_topics;
 DROP TABLE IF EXISTS breakdown_slots;
 DROP TABLE IF EXISTS breakdown_chapters;
@@ -39,11 +44,8 @@ CREATE TABLE syllabus_chapters (
     UNIQUE (syllabus_breakdown_id, position)
 );
 
--- 3. Class slots lose their old breakdown source (D-6).
-ALTER TABLE class_lesson_slots     DROP COLUMN IF EXISTS breakdown_slot_id;
-ALTER TABLE class_assessment_slots DROP COLUMN IF EXISTS breakdown_slot_id;
-
 -- 4. Teacher Chapter Plan page ranges on the class slots (D-15).
+--    (breakdown_slot_id columns were dropped in step 1, above.)
 ALTER TABLE class_lesson_slots     ADD COLUMN IF NOT EXISTS page_start INT,
                                    ADD COLUMN IF NOT EXISTS page_end   INT;
 ALTER TABLE class_assessment_slots ADD COLUMN IF NOT EXISTS page_start INT,
