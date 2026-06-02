@@ -93,6 +93,12 @@ Kept. Now written by the teacher's break-it-down action (Phase 3), not realizati
 - Drop `breakdown_slot_id` (above).
 - **Page range kept (D-15):** `page_start`/`page_end` added to both slot tables (above) —
   on the class slots, NOT on any breakdown table.
+- **`book_chapter_id` (D-16, Phase 3):** added to both slot tables via
+  `20260605000000_class_slots_book_chapter.sql` (`UUID REFERENCES book_chapters(id)`,
+  nullable, indexed). The slot's direct chapter link — replaces the old
+  `breakdown_slots`→`breakdown_chapters` join that the timeline used. Stamped by
+  break-it-down generation. Lessons + assessments for a CST share ONE global
+  `position` sequence (the projector merges both tables by position).
 
 ## Schema-touching code to update in lockstep
 

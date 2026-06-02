@@ -69,4 +69,12 @@ formula reads these rows.
 ---
 
 ## Notes from execution
-_(append during implementation; don't alter specs)_
+
+**2026-06-02 — Phase 3 implemented (PR open).**
+- F3.1: `GET /csts/{cst_id}/syllabus` → chapters + date ranges, per-chapter `slot_count`, `is_planned`, `is_current` (today via `_pick_current_chapter`, D-10), `periods_per_week`.
+- F3.2: slot count = `len(compute_teaching_days(start, end, cst_weekdays, effective_holidays))` (D-9/D-14) in `chapter_plan_service.chapter_slot_count`. 5 unit tests (`test_chapter_slot_count.py`).
+- F3.3: `POST /csts/{cst_id}/chapters/{book_chapter_id}/plan` → `generate_chapter_plan` reuses salvaged planners, writes into `class_lesson_slots`/`class_assessment_slots` with a **single shared global position sequence** (projector merges both tables by position), stamps `book_chapter_id` (D-16), page ranges null. Refuses if no dates / no syllabus / already planned (422).
+- F3.4: `class-syllabus-tab.tsx` + wired into teacher-app class page (tab after Today). Break-it-down button per chapter; "Now" marker; planned/set-dates states.
+- F3.5: periods entry reuses the existing Timetable tab — `periods_per_week` = count of timetable weekdays (default 5).
+- **D-16 + migration `20260605000000_class_slots_book_chapter.sql`:** class slots gained `book_chapter_id` (their chapter link). This also **fixed Phase-2 regressions** — `get_cst_timeline`, the lesson/assessment list endpoints, `onboarding_service`, and `generated_lps/service.py` all still JOINed the dropped `breakdown_slots`/`breakdown_chapters`; rewired to read `book_chapter_id` directly. `onboard_cst` rewritten to resolve against class slots; `OnboardResponse.breakdown_id` dropped. (service.py also had a pre-existing `cst.curriculum_id`/`cst.grade_id` bug — fixed via org/class joins.)
+- Migrations validated against staging in rolled-back transactions. Non-DB suite 157 passed; webapp tsc clean.

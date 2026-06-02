@@ -1,14 +1,19 @@
 """
-F2.13 — Mid-year onboarding (D-12).
+Mid-year onboarding.
 
-A teacher onboarding mid-year declares (chapter_position, chapter_day).
-We resolve that to a global sequence `position` via the CST's
-published class breakdown, then write cst_state.
+A teacher onboarding mid-year declares (chapter_position, chapter_day):
+the Nth chapter of their syllabus and the Nth teaching day within that
+chapter's generated Chapter Plan. We resolve that to the class slot's global
+`position` and write cst_state.
 
-Slots before joined_at_position remain `planned` with no slot_progress
-event. The sub-SLO coverage report (F2.12 GET endpoint) distinguishes
-"unknown" (no event, position < joined_at) from "not_taught" (no event,
-position >= joined_at).
+Post the syllabus re-architecture, this resolves against the CST's own
+generated class slots (class_lesson_slots / class_assessment_slots stamped
+with book_chapter_id, D-16) — there is no class-scope breakdown anymore.
+`chapter_position` is the 1-based index into the CST's syllabus chapters
+(ordered by book chapter_number); `chapter_day` is the 1-based ordinal of the
+slot within that chapter's slots (ordered by global position).
+
+Slots before joined_at_position remain `planned` with no slot_progress event.
 """
 import logging
 from dataclasses import dataclass
@@ -16,30 +21,32 @@ from uuid import UUID
 
 import asyncpg
 
+from dars.breakdown.chapter_plan_service import resolve_cst_syllabus_context
+
 log = logging.getLogger("breakdown.onboarding")
 
 
 @dataclass
 class OnboardResult:
     cst_id: UUID
-    breakdown_id: UUID
     resolved_position: int
     joined_at_position: int
 
 
-async def find_class_breakdown_for_cst(
-    conn: asyncpg.Connection, cst_id: UUID
+async def _chapter_at_position(
+    conn: asyncpg.Connection, syllabus_breakdown_id: UUID, chapter_position: int
 ) -> asyncpg.Record | None:
-    """Return the most recently published class breakdown for the CST."""
+    """The book chapter at the 1-based syllabus position (by book chapter_number)."""
     return await conn.fetchrow(
         """
-        SELECT id, scope, scope_ref_id, status, created_at
-        FROM breakdowns
-        WHERE scope = 'class' AND scope_ref_id = $1 AND status = 'published'
-        ORDER BY created_at DESC
-        LIMIT 1
+        SELECT sch.book_chapter_id, bc.chapter_number
+        FROM syllabus_chapters sch
+        JOIN book_chapters bc ON bc.id = sch.book_chapter_id
+        WHERE sch.syllabus_breakdown_id = $1
+        ORDER BY bc.chapter_number
+        OFFSET $2 LIMIT 1
         """,
-        cst_id,
+        syllabus_breakdown_id, chapter_position - 1,
     )
 
 
@@ -53,36 +60,41 @@ async def onboard_cst(
     if chapter_position < 1 or chapter_day < 1:
         raise ValueError("chapter_position and chapter_day must be >= 1")
 
-    bd = await find_class_breakdown_for_cst(conn, cst_id)
-    if bd is None:
+    ctx = await resolve_cst_syllabus_context(conn, cst_id)
+    if ctx.syllabus_breakdown_id is None:
         raise ValueError(
-            f"cst {cst_id} has no published class-scope breakdown; cannot onboard"
+            f"cst {cst_id} has no published syllabus breakdown; cannot onboard"
         )
 
-    chapter = await conn.fetchrow(
-        """
-        SELECT id, position
-        FROM breakdown_chapters
-        WHERE breakdown_id = $1 AND position = $2
-        """,
-        bd["id"], chapter_position,
+    chapter = await _chapter_at_position(
+        conn, ctx.syllabus_breakdown_id, chapter_position
     )
     if chapter is None:
         raise ValueError(
-            f"breakdown {bd['id']} has no chapter at position {chapter_position}"
+            f"syllabus has no chapter at position {chapter_position}"
         )
+    book_chapter_id = chapter["book_chapter_id"]
 
+    # The Nth generated class slot (lesson or assessment) within that chapter,
+    # ordered by the global position sequence.
     slot = await conn.fetchrow(
         """
-        SELECT id, position
-        FROM breakdown_slots
-        WHERE breakdown_chapter_id = $1 AND chapter_position = $2
+        SELECT position FROM (
+            SELECT position FROM class_lesson_slots
+              WHERE cst_id = $1 AND book_chapter_id = $2
+            UNION ALL
+            SELECT position FROM class_assessment_slots
+              WHERE cst_id = $1 AND book_chapter_id = $2
+        ) s
+        ORDER BY position
+        OFFSET $3 LIMIT 1
         """,
-        chapter["id"], chapter_day,
+        cst_id, book_chapter_id, chapter_day - 1,
     )
     if slot is None:
         raise ValueError(
-            f"chapter {chapter_position} has no slot at chapter_position {chapter_day}"
+            f"chapter {chapter_position} has no generated slot at day {chapter_day} "
+            "(break the chapter down first)"
         )
 
     resolved_position = slot["position"]
@@ -98,12 +110,11 @@ async def onboard_cst(
         cst_id, resolved_position,
     )
     log.info(
-        "onboard_cst: cst=%s breakdown=%s chapter=%d day=%d → position=%d",
-        cst_id, bd["id"], chapter_position, chapter_day, resolved_position,
+        "onboard_cst: cst=%s chapter=%d day=%d → position=%d",
+        cst_id, chapter_position, chapter_day, resolved_position,
     )
     return OnboardResult(
         cst_id=cst_id,
-        breakdown_id=bd["id"],
         resolved_position=resolved_position,
         joined_at_position=resolved_position,
     )

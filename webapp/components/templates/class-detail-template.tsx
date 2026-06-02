@@ -10,6 +10,7 @@ import Link from "next/link";
 
 export type ClassDetailTab =
   | "today"
+  | "syllabus"
   | "timeline"
   | "timetable"
   | "book"
@@ -30,6 +31,7 @@ interface ClassDetailTemplateProps extends ClassDetailHeaderProps {
 
 const TABS: { key: ClassDetailTab; label: string }[] = [
   { key: "today", label: "Today" },
+  { key: "syllabus", label: "Syllabus" },
   { key: "timeline", label: "Timeline" },
   { key: "timetable", label: "Timetable" },
   { key: "book", label: "Book" },

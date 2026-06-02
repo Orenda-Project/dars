@@ -960,7 +960,48 @@ export const slots = {
       `/api/v2/class-assessment-slots/${slot_id}/skip`,
       { method: "POST", body },
     ),
+
+  /** F3.1 — the class's syllabus (chapters + date ranges), each with its
+   * computed slot count + current/planned flags, positioned by today. */
+  getSyllabus: (cst_id: UUID) =>
+    request<SyllabusForCstResponse>(`/api/v2/csts/${cst_id}/syllabus`),
+
+  /** F3.3 — "break it down": generate a chapter's Chapter Plan into the class
+   * slots, sized by the teacher's timetable. */
+  breakDownChapter: (cst_id: UUID, book_chapter_id: UUID) =>
+    request<GenerateChapterPlanResponse>(
+      `/api/v2/csts/${cst_id}/chapters/${book_chapter_id}/plan`,
+      { method: "POST" },
+    ),
 };
+
+/** F3.1 — per-chapter syllabus entry for a class. */
+export interface SyllabusChapterForCst {
+  book_chapter_id: UUID;
+  chapter_number: number;
+  title: string;
+  start_date: ISODate | null;
+  end_date: ISODate | null;
+  slot_count: number;
+  is_planned: boolean;
+  is_current: boolean;
+}
+
+export interface SyllabusForCstResponse {
+  cst_id: UUID;
+  syllabus_breakdown_id: UUID | null;
+  periods_per_week: number;
+  chapters: SyllabusChapterForCst[];
+}
+
+export interface GenerateChapterPlanResponse {
+  cst_id: UUID;
+  book_chapter_id: UUID;
+  slot_count: number;
+  lesson_slot_count: number;
+  assessment_slot_count: number;
+  warnings: string[];
+}
 
 // ---------------------------------------------------------------------------
 // Generations (`/api/v1/*`)

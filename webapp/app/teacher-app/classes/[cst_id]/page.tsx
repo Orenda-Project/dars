@@ -35,6 +35,7 @@ import {
   type SLOProgressGroup,
   type SLOTreeSubSLO,
 } from "@/components/templates/class-slos-tab";
+import { ClassSyllabusTab } from "@/components/templates/class-syllabus-tab";
 import { ClassTimetableTab } from "@/components/templates/class-timetable-tab";
 import {
   ClassTodayTab,
@@ -56,12 +57,14 @@ import {
   type Holiday,
   type SLO,
   type SubSLOCoverageEntry,
+  type SyllabusForCstResponse,
   type TodayEntry,
   type Topic,
 } from "@/lib/dars-api";
 
 const TAB_NAMES: ClassDetailTab[] = [
   "today",
+  "syllabus",
   "timeline",
   "timetable",
   "book",
@@ -142,6 +145,10 @@ export default function ClassDetailPage() {
   const [timeline, setTimeline] = useState<CstTimelineItem[] | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<TimelineKindFilter>("all");
+  // Syllabus tab: published syllabus broken into chapters + planning state.
+  const [syllabus, setSyllabus] = useState<SyllabusForCstResponse | null>(null);
+  const [syllabusError, setSyllabusError] = useState<string | null>(null);
+  const [busyChapterId, setBusyChapterId] = useState<string | null>(null);
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [selectedBookChapterId, setSelectedBookChapterId] = useState<string | null>(null);
@@ -210,6 +217,37 @@ export default function ClassDetailPage() {
       setTimelineError(formatErr(err));
     }
   }, [cstId]);
+
+  // Syllabus tab data
+  const loadSyllabus = useCallback(async () => {
+    setSyllabusError(null);
+    try {
+      const res = await slotsApi.getSyllabus(cstId);
+      setSyllabus(res);
+    } catch (err) {
+      setSyllabusError(formatErr(err));
+    }
+  }, [cstId]);
+
+  const handleBreakDown = useCallback(
+    async (book_chapter_id: string) => {
+      setSyllabusError(null);
+      setBusyChapterId(book_chapter_id);
+      try {
+        await slotsApi.breakDownChapter(cstId, book_chapter_id);
+        await Promise.all([
+          loadSyllabus(),
+          // Timeline now has new slots; refetch if it was already loaded.
+          timeline !== null ? loadTimeline() : Promise.resolve(),
+        ]);
+      } catch (err) {
+        setSyllabusError(formatErr(err));
+      } finally {
+        setBusyChapterId(null);
+      }
+    },
+    [cstId, loadSyllabus, loadTimeline, timeline],
+  );
 
   // Holidays tab data
   const loadHolidays = useCallback(async () => {
@@ -381,6 +419,7 @@ export default function ClassDetailPage() {
       // Today entry pins the "Now" marker to today's date when available.
       if (!todayLoaded) loadToday();
     }
+    if (activeTab === "syllabus" && syllabus === null) loadSyllabus();
     if (activeTab === "timetable" && holidaysData === null) loadHolidays();
     if (activeTab === "book" && bookChapters === null && header) loadBook();
     if (activeTab === "slos" && sloGroups === null && header) loadSLOs();
@@ -388,6 +427,7 @@ export default function ClassDetailPage() {
     activeTab,
     lessons,
     timeline,
+    syllabus,
     holidaysData,
     bookChapters,
     sloGroups,
@@ -396,6 +436,7 @@ export default function ClassDetailPage() {
     loadToday,
     loadLessons,
     loadTimeline,
+    loadSyllabus,
     loadHolidays,
     loadBook,
     loadSLOs,
@@ -673,6 +714,20 @@ export default function ClassDetailPage() {
                   });
                 }
               }}
+            />
+          )
+        ) : null}
+
+        {activeTab === "syllabus" ? (
+          syllabusError ? (
+            <TabError message={syllabusError} />
+          ) : syllabus === null ? (
+            <TabLoading label="Loading syllabus…" />
+          ) : (
+            <ClassSyllabusTab
+              data={syllabus}
+              onBreakDown={handleBreakDown}
+              busyChapterId={busyChapterId}
             />
           )
         ) : null}

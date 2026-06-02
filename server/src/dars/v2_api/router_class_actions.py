@@ -5,11 +5,18 @@ Auth: X-API-Key (per-org). All endpoints check that the targeted slot
 or CST belongs to the calling org (Critical Rule #3).
 """
 import logging
+from datetime import date as date_cls
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from dars.breakdown.chapter_plan_service import (
+    _cst_weekday_set,
+    chapter_slot_count,
+    generate_chapter_plan,
+    resolve_cst_syllabus_context,
+)
 from dars.breakdown.mark_taught_service import (
     mark_assessment_slot,
     mark_lesson_slot,
@@ -24,6 +31,7 @@ from dars.v2_api.schemas_class_actions import (
     ClassLessonSlotListResponse,
     CompleteAssessmentBody,
     CstTimelineResponse,
+    GenerateChapterPlanResponse,
     MarkActionResponse,
     MarkTaughtBody,
     OnboardBody,
@@ -31,6 +39,8 @@ from dars.v2_api.schemas_class_actions import (
     SkipBody,
     SubSLOCoverageEntry,
     SubSLOCoverageResponse,
+    SyllabusChapterForCst,
+    SyllabusForCstResponse,
     TimelineAssessmentItem,
     TimelineLessonItem,
 )
@@ -301,14 +311,12 @@ async def list_lesson_slots(
             cls.id, cls.cst_id, cls.position, cls.slot_type, cls.lp_type,
             cls.topic_id, cls.anchor_date, cls.status, cls.generated_lp_id,
             t.title              AS topic_title,
-            bc.id                AS breakdown_chapter_id,
-            bc.position          AS breakdown_chapter_position,
+            book_chapter.id      AS breakdown_chapter_id,
+            book_chapter.chapter_number AS breakdown_chapter_position,
             book_chapter.title   AS breakdown_chapter_title,
             gl.status            AS lp_status
         FROM class_lesson_slots cls
-        JOIN breakdown_slots bs       ON bs.id = cls.breakdown_slot_id
-        JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
-        JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+        LEFT JOIN book_chapters book_chapter ON book_chapter.id = cls.book_chapter_id
         LEFT JOIN topics t          ON t.id = cls.topic_id
         LEFT JOIN generated_lps gl  ON gl.id = cls.generated_lp_id
         WHERE cls.cst_id = $1
@@ -353,8 +361,8 @@ async def list_assessment_slots(
         SELECT
             cas.id, cas.cst_id, cas.position, cas.assessment_type,
             cas.anchor_date, cas.status, cas.generated_exam_id,
-            bc.id                AS breakdown_chapter_id,
-            bc.position          AS breakdown_chapter_position,
+            book_chapter.id      AS breakdown_chapter_id,
+            book_chapter.chapter_number AS breakdown_chapter_position,
             book_chapter.title   AS breakdown_chapter_title,
             ge.status            AS exam_status,
             COALESCE(
@@ -368,15 +376,13 @@ async def list_assessment_slots(
                 ARRAY[]::TEXT[]
             ) AS topic_titles
         FROM class_assessment_slots cas
-        JOIN breakdown_slots bs       ON bs.id = cas.breakdown_slot_id
-        JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
-        JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+        LEFT JOIN book_chapters book_chapter ON book_chapter.id = cas.book_chapter_id
         LEFT JOIN class_assessment_slot_topics cast2
             ON cast2.class_assessment_slot_id = cas.id
         LEFT JOIN topics t            ON t.id = cast2.topic_id
         LEFT JOIN generated_exams ge  ON ge.id = cas.generated_exam_id
         WHERE cas.cst_id = $1
-        GROUP BY cas.id, bc.id, book_chapter.id, ge.status
+        GROUP BY cas.id, book_chapter.id, ge.status
         ORDER BY cas.position
         """,
         cst_id,
@@ -436,14 +442,12 @@ async def get_cst_timeline(
                 cls.id, cls.position, cls.slot_type, cls.lp_type,
                 cls.topic_id, cls.status, cls.generated_lp_id,
                 t.title              AS topic_title,
-                bc.id                AS breakdown_chapter_id,
-                bc.position          AS breakdown_chapter_position,
+                book_chapter.id      AS breakdown_chapter_id,
+                book_chapter.chapter_number AS breakdown_chapter_position,
                 book_chapter.title   AS breakdown_chapter_title,
                 gl.status            AS lp_status
             FROM class_lesson_slots cls
-            JOIN breakdown_slots bs       ON bs.id = cls.breakdown_slot_id
-            JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
-            JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+            LEFT JOIN book_chapters book_chapter ON book_chapter.id = cls.book_chapter_id
             LEFT JOIN topics t          ON t.id = cls.topic_id
             LEFT JOIN generated_lps gl  ON gl.id = cls.generated_lp_id
             WHERE cls.cst_id = $1
@@ -457,8 +461,8 @@ async def get_cst_timeline(
             SELECT
                 cas.id, cas.position, cas.assessment_type,
                 cas.status, cas.generated_exam_id,
-                bc.id                AS breakdown_chapter_id,
-                bc.position          AS breakdown_chapter_position,
+                book_chapter.id      AS breakdown_chapter_id,
+                book_chapter.chapter_number AS breakdown_chapter_position,
                 book_chapter.title   AS breakdown_chapter_title,
                 ge.status            AS exam_status,
                 COALESCE(
@@ -472,15 +476,13 @@ async def get_cst_timeline(
                     ARRAY[]::TEXT[]
                 ) AS topic_titles
             FROM class_assessment_slots cas
-            JOIN breakdown_slots bs       ON bs.id = cas.breakdown_slot_id
-            JOIN breakdown_chapters bc    ON bc.id = bs.breakdown_chapter_id
-            JOIN book_chapters book_chapter ON book_chapter.id = bc.book_chapter_id
+            LEFT JOIN book_chapters book_chapter ON book_chapter.id = cas.book_chapter_id
             LEFT JOIN class_assessment_slot_topics cast2
                 ON cast2.class_assessment_slot_id = cas.id
             LEFT JOIN topics t            ON t.id = cast2.topic_id
             LEFT JOIN generated_exams ge  ON ge.id = cas.generated_exam_id
             WHERE cas.cst_id = $1
-            GROUP BY cas.id, bc.id, book_chapter.id, ge.status
+            GROUP BY cas.id, book_chapter.id, ge.status
             ORDER BY cas.position
             """,
             cst_id,
@@ -538,3 +540,136 @@ async def get_cst_timeline(
     except Exception:
         log.error("get_cst_timeline: failed cst=%s", cst_id, exc_info=True)
         raise
+
+
+# ---------------------------------------------------------------------------
+# Teacher Chapter Plan — syllabus view + break-it-down (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+def _pick_current_chapter(chapters: list[dict], today: date_cls) -> UUID | None:
+    """D-10: the chapter whose date range contains today; else the next upcoming;
+    else the last dated chapter. None if no chapter has dates."""
+    dated = [c for c in chapters if c["start_date"] and c["end_date"]]
+    if not dated:
+        return None
+    for c in dated:
+        if c["start_date"] <= today <= c["end_date"]:
+            return c["book_chapter_id"]
+    upcoming = [c for c in dated if c["start_date"] > today]
+    if upcoming:
+        return min(upcoming, key=lambda c: c["start_date"])["book_chapter_id"]
+    return max(dated, key=lambda c: c["end_date"])["book_chapter_id"]
+
+
+@router.get("/csts/{cst_id}/syllabus", response_model=SyllabusForCstResponse)
+async def get_cst_syllabus(
+    cst_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F3.1 — the class's syllabus (chapters + date ranges), each with its
+    computed slot count and current/planned flags, positioned by today (D-10)."""
+    log.info("get_cst_syllabus: entry cst=%s", cst_id)
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    ctx = await resolve_cst_syllabus_context(conn, cst_id)
+    weekdays = await _cst_weekday_set(conn, cst_id)
+    periods_per_week = len(weekdays)
+
+    if ctx.syllabus_breakdown_id is None:
+        return SyllabusForCstResponse(
+            cst_id=cst_id, syllabus_breakdown_id=None,
+            periods_per_week=periods_per_week, chapters=[],
+        )
+
+    rows = await conn.fetch(
+        """
+        SELECT sch.book_chapter_id, bc.chapter_number, bc.title,
+               sch.start_date, sch.end_date
+        FROM syllabus_chapters sch
+        JOIN book_chapters bc ON bc.id = sch.book_chapter_id
+        WHERE sch.syllabus_breakdown_id = $1
+        ORDER BY bc.chapter_number
+        """,
+        ctx.syllabus_breakdown_id,
+    )
+    chapters = [dict(r) for r in rows]
+    current_id = _pick_current_chapter(chapters, date_cls.today())
+
+    # which chapters already have generated class slots?
+    planned_ids = {
+        r["book_chapter_id"]
+        for r in await conn.fetch(
+            """
+            SELECT book_chapter_id FROM class_lesson_slots
+              WHERE cst_id = $1 AND book_chapter_id IS NOT NULL
+            UNION
+            SELECT book_chapter_id FROM class_assessment_slots
+              WHERE cst_id = $1 AND book_chapter_id IS NOT NULL
+            """,
+            cst_id,
+        )
+    }
+
+    items: list[SyllabusChapterForCst] = []
+    for c in chapters:
+        items.append(SyllabusChapterForCst(
+            book_chapter_id=c["book_chapter_id"],
+            chapter_number=c["chapter_number"],
+            title=c["title"],
+            start_date=c["start_date"],
+            end_date=c["end_date"],
+            slot_count=await chapter_slot_count(
+                conn, cst_id, c["start_date"], c["end_date"]
+            ),
+            is_planned=c["book_chapter_id"] in planned_ids,
+            is_current=c["book_chapter_id"] == current_id,
+        ))
+
+    log.info(
+        "get_cst_syllabus: exit cst=%s chapters=%d periods/wk=%d",
+        cst_id, len(items), periods_per_week,
+    )
+    return SyllabusForCstResponse(
+        cst_id=cst_id,
+        syllabus_breakdown_id=ctx.syllabus_breakdown_id,
+        periods_per_week=periods_per_week,
+        chapters=items,
+    )
+
+
+@router.post(
+    "/csts/{cst_id}/chapters/{book_chapter_id}/plan",
+    response_model=GenerateChapterPlanResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def break_down_chapter(
+    cst_id: UUID,
+    book_chapter_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> GenerateChapterPlanResponse:
+    """F3.3 — "break it down": generate a chapter's Chapter Plan into the class
+    slots, sized by the teacher's real timetable (D-9)."""
+    log.info("break_down_chapter: entry cst=%s chapter=%s", cst_id, book_chapter_id)
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        result = await generate_chapter_plan(
+            conn, cst_id=cst_id, book_chapter_id=book_chapter_id, org_id=org.id,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    log.info(
+        "break_down_chapter: exit cst=%s chapter=%s slots=%d",
+        cst_id, book_chapter_id, result.slot_count,
+    )
+    return GenerateChapterPlanResponse(
+        cst_id=result.cst_id,
+        book_chapter_id=result.book_chapter_id,
+        slot_count=result.slot_count,
+        lesson_slot_count=result.lesson_slot_count,
+        assessment_slot_count=result.assessment_slot_count,
+        warnings=result.warnings,
+    )
