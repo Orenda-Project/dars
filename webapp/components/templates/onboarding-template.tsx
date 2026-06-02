@@ -36,7 +36,7 @@ export function OnboardingTemplate(props: OnboardingTemplateProps) {
   const selectedChapter = chapters.find((c) => c.position === chapterPosition);
 
   if (loading) {
-    return <p className="text-sm text-dars-muted">Loading breakdown…</p>;
+    return <p className="text-sm text-dars-muted">Loading syllabus breakdown…</p>;
   }
   if (error) {
     return (
@@ -49,9 +49,9 @@ export function OnboardingTemplate(props: OnboardingTemplateProps) {
   if (chapters.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
-        <p className="text-sm font-medium text-dars-ink">No breakdown yet</p>
+        <p className="text-sm font-medium text-dars-ink">No syllabus breakdown yet</p>
         <p className="text-xs text-dars-muted mt-1">
-          This class hasn't had a breakdown published; nothing to onboard against.
+          This class hasn't had a syllabus breakdown published; nothing to onboard against.
         </p>
       </div>
     );

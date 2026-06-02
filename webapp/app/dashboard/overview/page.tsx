@@ -82,12 +82,12 @@ export default function OverviewPage() {
             <StatCard label="Teachers" value={counts.teachers} />
             <StatCard label="Classes (CSTs)" value={counts.csts} />
             <StatCard
-              label="Published breakdowns"
+              label="Published syllabus breakdowns"
               value={counts.breakdownsPublished}
               href="/dashboard/breakdowns"
             />
             <StatCard
-              label="Draft breakdowns"
+              label="Draft syllabus breakdowns"
               value={counts.breakdownsDraft}
               href="/dashboard/breakdowns"
             />
@@ -108,7 +108,7 @@ export default function OverviewPage() {
               ) : null}
               {counts.breakdownsDraft > 0 ? (
                 <li>
-                  You have {counts.breakdownsDraft} draft breakdown{counts.breakdownsDraft === 1 ? "" : "s"} —{" "}
+                  You have {counts.breakdownsDraft} draft syllabus breakdown{counts.breakdownsDraft === 1 ? "" : "s"} —{" "}
                   <Link className="underline" href="/dashboard/breakdowns">review and publish</Link>.
                 </li>
               ) : null}

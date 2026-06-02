@@ -88,7 +88,7 @@ export default function BreakdownsPage() {
       <div className="flex items-end justify-between mb-4 gap-3">
         <div>
           <h1 className="font-[var(--font-cormorant)] text-3xl font-bold text-dars-ink">
-            Breakdowns
+            Syllabus Breakdowns
           </h1>
           <p className="text-sm text-dars-muted mt-1 max-w-2xl">
             Your org's master plans, one per grade × subject. Fork a published
@@ -107,7 +107,7 @@ export default function BreakdownsPage() {
       {orgItems.length === 0 ? (
         <div className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-4">
           <p className="text-sm font-medium text-dars-ink">
-            No org breakdowns yet.
+            No org syllabus breakdowns yet.
           </p>
           <p className="text-xs text-dars-muted mt-1">
             Visit{" "}

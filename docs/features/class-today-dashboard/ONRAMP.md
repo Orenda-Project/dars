@@ -18,7 +18,7 @@ this file lists.
 
 ## Step 3 — Who you are
 - One phase, one bead, one PR to `staging`. NEVER main.
-- After merge, watch BOTH deploys (server unaffected here; webapp via Vercel).
+- After merge, watch BOTH deploys (server unaffected here; webapp on Railway).
 - Decision log is frozen.
 
 ## Step 4 — Conversational style

@@ -128,13 +128,13 @@ export default function GenerationsPage() {
         Generation status
       </h1>
       <p className="text-xs text-dars-muted mb-4">
-        Recent published breakdowns. Live-polls while there's anything in flight.
+        Recent published syllabus breakdowns. Live-polls while there's anything in flight.
       </p>
 
       {error ? <p className="text-sm text-dars-terra mb-3">{error}</p> : null}
 
       {rows.length === 0 ? (
-        <p className="text-sm text-dars-muted">No published breakdowns yet.</p>
+        <p className="text-sm text-dars-muted">No published syllabus breakdowns yet.</p>
       ) : (
         <ul className="space-y-2">
           {rows.map((r) => (
