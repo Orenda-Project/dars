@@ -849,6 +849,9 @@ export interface BreakdownSlot {
   lp_type: string | null;
   topic_id: UUID | null;
   anchor_date: ISODate | null;
+  /** Chapter Plan page range (D-4). Null when the slot maps to no pages. */
+  page_start: number | null;
+  page_end: number | null;
 }
 
 export interface BreakdownWithChapters extends Breakdown {
@@ -916,6 +919,8 @@ export const breakdowns = {
       lp_type: string | null;
       topic_id: UUID | null;
       anchor_date: ISODate | null;
+      page_start?: number | null;
+      page_end?: number | null;
       extra_topic_ids?: UUID[];
     },
   ) =>
@@ -931,6 +936,8 @@ export const breakdowns = {
       slot_type?: BreakdownSlot["slot_type"];
       lp_type?: string | null;
       topic_id?: UUID | null;
+      page_start?: number | null;
+      page_end?: number | null;
     },
   ) =>
     request<BreakdownSlot>(
@@ -942,6 +949,17 @@ export const breakdowns = {
     request<void>(`/api/v2/breakdowns/${breakdownId}/slots/${slotId}`, {
       method: "DELETE",
     }),
+
+  /** F2.3 / D-9 — seed an editable starting set of slots for one empty chapter. */
+  seedChapter: (
+    breakdownId: UUID,
+    chapterId: UUID,
+    body: { day_budget?: number; fa_cadence?: number; sa_per_chapter?: number } = {},
+  ) =>
+    request<{ chapter_id: UUID; inserted_slot_count: number; warnings: string[] }>(
+      `/api/v2/breakdowns/${breakdownId}/chapters/${chapterId}/seed`,
+      { method: "POST", body },
+    ),
 };
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,8 @@ class BreakdownSlotRead(BaseModel):
     lp_type: str | None
     topic_id: UUID | None
     anchor_date: date | None
+    page_start: int | None = None
+    page_end: int | None = None
     extra_topics: list[BreakdownSlotTopicRead] = []
     created_at: datetime
     updated_at: datetime
@@ -125,6 +127,8 @@ class BreakdownSlotCreate(BaseModel):
     lp_type: str | None = None
     topic_id: UUID | None = None
     anchor_date: date | None = None
+    page_start: int | None = None
+    page_end: int | None = None
     extra_topic_ids: list[UUID] = Field(
         default_factory=list,
         description="Additional topics covered (e.g. for assessment slots). The primary topic_id is recorded separately.",
@@ -138,6 +142,8 @@ class BreakdownSlotUpdate(BaseModel):
     lp_type: str | None = None
     topic_id: UUID | None = None
     anchor_date: date | None = None
+    page_start: int | None = None
+    page_end: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +171,25 @@ class AutoBuildResponse(BaseModel):
     sa_slot_count: int
     revision_slot_count: int
     total_slot_count: int
+    warnings: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Per-chapter seed (F2.3 / D-9)
+# ---------------------------------------------------------------------------
+
+
+class SeedChapterBody(BaseModel):
+    # Day budget for the seed. Defaults to the chapter's derived teaching days
+    # (D-2), falling back to its topic count, when omitted.
+    day_budget: int | None = Field(default=None, ge=1)
+    fa_cadence: int = Field(default=5, ge=1)
+    sa_per_chapter: int = Field(default=1, ge=0)
+
+
+class SeedChapterResponse(BaseModel):
+    chapter_id: UUID
+    inserted_slot_count: int
     warnings: list[str] = []
 
 

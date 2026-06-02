@@ -164,7 +164,13 @@ export default function BreakdownEditorPage() {
 
   async function handleSaveSlot(
     slot: BreakdownSlot,
-    patch: { slot_type?: BreakdownSlot["slot_type"]; lp_type?: string | null; topic_id?: string | null },
+    patch: {
+      slot_type?: BreakdownSlot["slot_type"];
+      lp_type?: string | null;
+      topic_id?: string | null;
+      page_start?: number | null;
+      page_end?: number | null;
+    },
   ) {
     if (!data) return;
     setBusy(true);
@@ -188,6 +194,26 @@ export default function BreakdownEditorPage() {
     try {
       await breakdownsApi.deleteSlot(data.id, slot.id);
       setSelectedSlot(null);
+      await load();
+    } catch (err) {
+      setError(formatErr(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // F2.3 / D-9: seed a starting set of slots for an empty chapter.
+  async function handleSeedChapter(chapter: BreakdownChapter) {
+    if (!data) return;
+    const existing = data.slots.filter((s) => s.breakdown_chapter_id === chapter.id);
+    if (existing.length > 0) {
+      setError("This chapter already has slots — seed only an empty chapter.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await breakdownsApi.seedChapter(data.id, chapter.id, {});
       await load();
     } catch (err) {
       setError(formatErr(err));
@@ -340,14 +366,27 @@ export default function BreakdownEditorPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {slotEditAllowed ? (
-                      <button
-                        type="button"
-                        onClick={() => handleAddSlot(c)}
-                        disabled={busy}
-                        className="text-xs px-2 py-1 rounded border border-dars-rule-light text-dars-ink hover:bg-dars-parchment-deep disabled:opacity-50"
-                      >
-                        + Add slot
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleAddSlot(c)}
+                          disabled={busy}
+                          className="text-xs px-2 py-1 rounded border border-dars-rule-light text-dars-ink hover:bg-dars-parchment-deep disabled:opacity-50"
+                        >
+                          + Add slot
+                        </button>
+                        {slots.length === 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSeedChapter(c)}
+                            disabled={busy}
+                            title="Generate an editable starting set of slots for this chapter"
+                            className="text-xs px-2 py-1 rounded border border-dashed border-dars-rule-light text-dars-muted hover:bg-dars-parchment-deep disabled:opacity-50"
+                          >
+                            Seed plan
+                          </button>
+                        ) : null}
+                      </>
                     ) : null}
                     <div className="flex items-center gap-1 text-xs text-dars-ink-soft">
                       <input
@@ -447,6 +486,8 @@ interface SlotEditorProps {
     slot_type?: BreakdownSlot["slot_type"];
     lp_type?: string | null;
     topic_id?: string | null;
+    page_start?: number | null;
+    page_end?: number | null;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
   onAnchorChange: (value: string) => void;
@@ -471,6 +512,9 @@ function SlotEditor({
 
   const [comboValue, setComboValue] = useState<string>(currentCombo);
   const [topicId, setTopicId] = useState<string | null>(slot.topic_id);
+  // D-4: page range as strings so the inputs can be cleared; "" → null.
+  const [pageStart, setPageStart] = useState<string>(slot.page_start?.toString() ?? "");
+  const [pageEnd, setPageEnd] = useState<string>(slot.page_end?.toString() ?? "");
 
   const parsed = useMemo(() => parseComboValue(comboValue), [comboValue]);
   const isAssessment =
@@ -478,15 +522,27 @@ function SlotEditor({
 
   const topics = bookChapterId ? topicsByBookChapter.get(bookChapterId) ?? [] : [];
 
+  const toPageNum = (s: string): number | null => {
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
   const comboDirty = comboValue !== currentCombo;
   const topicDirty = topicId !== slot.topic_id;
-  const dirty = comboDirty || topicDirty;
+  const pageStartDirty = toPageNum(pageStart) !== slot.page_start;
+  const pageEndDirty = toPageNum(pageEnd) !== slot.page_end;
+  const pagesInvalid =
+    toPageNum(pageStart) != null &&
+    toPageNum(pageEnd) != null &&
+    (toPageNum(pageEnd) as number) < (toPageNum(pageStart) as number);
+  const dirty = comboDirty || topicDirty || pageStartDirty || pageEndDirty;
 
   function buildPatch() {
     const patch: {
       slot_type?: BreakdownSlot["slot_type"];
       lp_type?: string | null;
       topic_id?: string | null;
+      page_start?: number | null;
+      page_end?: number | null;
     } = {};
     if (comboDirty) {
       patch.slot_type = parsed.slot_type;
@@ -495,12 +551,16 @@ function SlotEditor({
     if (topicDirty) {
       patch.topic_id = topicId;
     }
+    if (pageStartDirty) patch.page_start = toPageNum(pageStart);
+    if (pageEndDirty) patch.page_end = toPageNum(pageEnd);
     return patch;
   }
 
   function handleCancel() {
     setComboValue(currentCombo);
     setTopicId(slot.topic_id);
+    setPageStart(slot.page_start?.toString() ?? "");
+    setPageEnd(slot.page_end?.toString() ?? "");
   }
 
   return (
@@ -549,6 +609,36 @@ function SlotEditor({
         ) : null}
       </label>
 
+      <div className="block mb-3">
+        <span className="text-xs text-dars-ink-soft">Pages</span>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            placeholder="start"
+            aria-label="Page start"
+            value={pageStart}
+            disabled={busy}
+            onChange={(e) => setPageStart(e.target.value)}
+            className="w-20 px-2 py-1 rounded border border-dars-rule-light bg-white text-sm font-mono"
+          />
+          <span className="text-dars-muted-light text-xs">–</span>
+          <input
+            type="number"
+            min={1}
+            placeholder="end"
+            aria-label="Page end"
+            value={pageEnd}
+            disabled={busy}
+            onChange={(e) => setPageEnd(e.target.value)}
+            className="w-20 px-2 py-1 rounded border border-dars-rule-light bg-white text-sm font-mono"
+          />
+        </div>
+        {pagesInvalid ? (
+          <p className="text-[10px] text-dars-terra mt-1">End page is before start page.</p>
+        ) : null}
+      </div>
+
       <label className="block mb-3">
         <span className="text-xs text-dars-ink-soft">Anchor date</span>
         <input
@@ -582,7 +672,7 @@ function SlotEditor({
       <div className="flex items-center gap-2 mt-4">
         <button
           type="button"
-          disabled={!dirty || busy}
+          disabled={!dirty || busy || pagesInvalid}
           onClick={() => void onSave(buildPatch())}
           className="px-3 py-1 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90 disabled:opacity-50"
         >
@@ -694,6 +784,13 @@ interface SlotRun {
   topic_id: string | null;
 }
 
+/** D-4: compact "pp 1–10" label, or null when the slot has no page range. */
+function pageLabel(s: BreakdownSlot): string | null {
+  if (s.page_start == null && s.page_end == null) return null;
+  if (s.page_start != null && s.page_end != null) return `pp ${s.page_start}–${s.page_end}`;
+  return `pp ${s.page_start ?? s.page_end}`;
+}
+
 function groupSlotsIntoRuns(slots: BreakdownSlot[]): SlotRun[] {
   const runs: SlotRun[] = [];
   for (const s of slots) {
@@ -765,6 +862,9 @@ function SlotList({
               {first.lp_type ? (
                 <span className="text-[10px] text-dars-muted-light">{first.lp_type}</span>
               ) : null}
+              {pageLabel(first) ? (
+                <span className="text-[10px] text-dars-muted-light font-mono">{pageLabel(first)}</span>
+              ) : null}
               {first.anchor_date ? (
                 <span className="ml-auto text-[10px] text-dars-terra font-mono">
                   📌 {first.anchor_date}
@@ -809,6 +909,9 @@ function SlotList({
                   >
                     <span className="font-mono text-dars-muted">#{s.position}</span>
                     <span className="text-[10px] text-dars-muted">{s.slot_type}</span>
+                    {pageLabel(s) ? (
+                      <span className="text-[10px] text-dars-muted-light font-mono">{pageLabel(s)}</span>
+                    ) : null}
                     {s.anchor_date ? (
                       <span className="ml-auto text-[10px] text-dars-terra font-mono">
                         📌 {s.anchor_date}

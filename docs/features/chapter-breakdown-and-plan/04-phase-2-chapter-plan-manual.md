@@ -34,4 +34,10 @@ Make breaking a single chapter into typed slots a **manual-first** action on the
 ---
 
 ## Notes from execution
-_(append findings here during implementation; don't alter the specs above)_
+
+**2026-06-02 — all features implemented (PR open to staging).**
+- F2.1: migration `20260603000000_breakdown_slots_page_range.sql` (`page_start`/`page_end` INT NULL); slot read/create/update schemas + all five slot SQL projections in `router_breakdown.py` updated.
+- F2.2: reused existing `add_slot`/`update_slot` endpoints — `update_slot`'s field loop already iterates a tuple, so page fields slotted in cleanly. No new slot endpoint needed.
+- F2.3: per-chapter seed is a **new** endpoint `POST /breakdowns/{id}/chapters/{chapter_id}/seed` + `seed_chapter_slots()` in `auto_build_service.py`, reusing `allocate_chapter_days` + `plan_chapter_slots` + `pick_lp_type` (D-9). Day budget defaults to the chapter's derived teaching days (D-2), else topic count. Refuses a non-empty chapter (422).
+- F2.4: `SlotEditor` gains page-start/end inputs with advisory "end before start" guard (Save disabled while invalid); `SlotList` shows a "pp N–M" badge on single + expanded rows; chapter header shows a "Seed plan" button only when the chapter has 0 slots.
+- New decision D-9 logged. Tests: backend non-DB suite 152 passed (planners already covered); webapp tsc + eslint clean.
