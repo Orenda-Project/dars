@@ -40,13 +40,28 @@ def _asyncpg_url(database_url: str) -> str:
 
 
 async def _run_all_steps(conn: asyncpg.Connection) -> None:
-    """Run every Phase 1 seed step in order. Each step is idempotent."""
+    """
+    Run the data-bank seed steps in order. Each step is idempotent.
+
+    Only the foundational "data bank" is auto-seeded (lookups, SLOs, book +
+    chapters + topics). The demo *operational* data (tenancy + breakdown) is
+    NO LONGER auto-seeded — orgs/schools/teachers/classes/CSTs/breakdowns are
+    created through the product's own tools instead. See
+    docs/features/.../ (operational-data is user-created, 2026-06-02).
+    """
     # F1.2 — lookups
     await seed_lookups(conn)
     # F1.3 — SLOs + sub-SLOs for Dars Curriculum × Grade 1 × English
     await seed_dars_english_g1_slos(conn)
     # F1.4 — Book + chapters + topics + SLO/sub-SLO mappings
     await seed_dars_english_g1_book(conn)
+    # NOTE: seed_demo_tenancy + seed_demo_breakdown intentionally NOT run on
+    # startup anymore (2026-06-02). They are run only via `make seed --with-demo`
+    # (see _run_demo_steps); staging/prod build operational data via the dashboard.
+
+
+async def _run_demo_steps(conn: asyncpg.Connection) -> None:
+    """Demo *operational* data — only for local dev / explicit `make seed --with-demo`."""
     # F1.5 — Demo tenancy: org, school, AY, class, teacher, CST, timetable
     await seed_demo_tenancy(conn)
     # F2.14 — Demo breakdown: published global → org → class with realized slots
@@ -54,7 +69,7 @@ async def _run_all_steps(conn: asyncpg.Connection) -> None:
 
 
 async def main() -> None:
-    """Standalone entrypoint: `make seed`."""
+    """Standalone entrypoint: `make seed` (add --with-demo for operational demo data)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     database_url = os.environ.get("DATABASE_URL")
@@ -62,12 +77,15 @@ async def main() -> None:
         log.error("DATABASE_URL not set")
         sys.exit(1)
 
+    with_demo = "--with-demo" in sys.argv
     url = _asyncpg_url(database_url)
-    log.info("v2_seed: connecting to %s", url.split("@")[-1])  # hide creds
+    log.info("v2_seed: connecting to %s (with_demo=%s)", url.split("@")[-1], with_demo)  # hide creds
 
     conn = await asyncpg.connect(url)
     try:
         await _run_all_steps(conn)
+        if with_demo:
+            await _run_demo_steps(conn)
         log.info("v2_seed: done")
     finally:
         await conn.close()
