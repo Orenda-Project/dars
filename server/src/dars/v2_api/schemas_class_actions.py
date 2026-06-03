@@ -184,25 +184,52 @@ class CstTimelineResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SyllabusChapterForCst(BaseModel):
+# Teacher-adjustable syllabus (Phase 1): the class's own teaching path
+# (`class_chapters`), not the advisory global. Each entry is a chapter the
+# teacher picked, in teaching order, with teacher-set dates + derived status.
+
+
+class ClassPathChapter(BaseModel):
     book_chapter_id: UUID
     chapter_number: int
     title: str
-    start_date: date | None
+    position: int  # teaching order within the class path (1..N)
+    start_date: date | None  # teacher-set (D-7); None until dated
     end_date: date | None
     # D-9/D-14: real teaching periods in the range for THIS class (0 if no dates).
     slot_count: int
-    # whether the teacher has already broken this chapter down.
-    is_planned: bool
-    # D-10: the chapter the class should be on today.
-    is_current: bool
+    # D-4: derived from the chapter's class slots.
+    status: str  # 'yet_to_start' | 'in_progress' | 'done'
+
+
+class RecommendedNextChapter(BaseModel):
+    book_chapter_id: UUID
+    chapter_number: int
+    title: str
 
 
 class SyllabusForCstResponse(BaseModel):
     cst_id: UUID
-    syllabus_breakdown_id: UUID | None  # None if no published syllabus for this class
+    syllabus_breakdown_id: UUID | None  # the advisory global; None if none published
     periods_per_week: int
-    chapters: list[SyllabusChapterForCst]
+    chapters: list[ClassPathChapter]  # the class path, ordered by position
+    recommended_next: RecommendedNextChapter | None  # D-3 suggestion
+
+
+# --- Request bodies for the class-path edit endpoints (Phase 1, F1.4) ---
+
+
+class PickChapterBody(BaseModel):
+    book_chapter_id: UUID
+
+
+class SetChapterDatesBody(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class ReorderChaptersBody(BaseModel):
+    book_chapter_ids: list[UUID]
 
 
 class GenerateChapterPlanResponse(BaseModel):

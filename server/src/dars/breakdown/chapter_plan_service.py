@@ -372,32 +372,34 @@ async def generate_chapter_plan(
     F3.3: "break it down" — generate a chapter's slots into the class slot
     tables for this CST, sized by the teacher's real timetable (D-9).
 
-    - slot_count = teaching periods in the chapter's syllabus date range.
+    - slot_count = teaching periods in the chapter's class-path date range
+      (the CST's `class_chapters` row, D-5/F1.6 — not the advisory global).
     - planners (allocate_chapter_days + plan_chapter_slots + pick_lp_type)
       distribute lessons/FAs/SAs/revision and pick lp_type per topic.
     - rows are appended after the CST's current max position, stamped with
       book_chapter_id (D-16) and page ranges left null (teacher fills).
-    - Refuses (ValueError) if the chapter already has class slots for this CST,
-      or if the chapter has no date range yet (slot_count == 0).
+    - Refuses (ValueError) if the chapter isn't in the class path, already has
+      class slots for this CST, or has no date range yet (slot_count == 0).
     Caller does org/access checks.
     """
     log.info(
         "generate_chapter_plan: entry cst=%s chapter=%s", cst_id, book_chapter_id
     )
     ctx = await resolve_cst_syllabus_context(conn, cst_id)
-    if ctx.syllabus_breakdown_id is None:
-        raise ValueError("no published syllabus breakdown for this class")
 
+    # F1.6 (D-5): the chapter's dates come from the class's own teaching path
+    # (`class_chapters`), set by the teacher (D-7) — not from the advisory
+    # global `syllabus_chapters`. The chapter must be in the class path first.
     chapter = await conn.fetchrow(
         """
-        SELECT sch.start_date, sch.end_date
-        FROM syllabus_chapters sch
-        WHERE sch.syllabus_breakdown_id = $1 AND sch.book_chapter_id = $2
+        SELECT start_date, end_date
+        FROM class_chapters
+        WHERE cst_id = $1 AND book_chapter_id = $2
         """,
-        ctx.syllabus_breakdown_id, book_chapter_id,
+        cst_id, book_chapter_id,
     )
     if chapter is None:
-        raise ValueError("chapter not in this class's syllabus breakdown")
+        raise ValueError("chapter not in this class's plan; add it to your plan first")
 
     slot_count = await chapter_slot_count(
         conn, cst_id, chapter["start_date"], chapter["end_date"]

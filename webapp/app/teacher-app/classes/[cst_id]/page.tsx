@@ -145,10 +145,18 @@ export default function ClassDetailPage() {
   const [timeline, setTimeline] = useState<CstTimelineItem[] | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<TimelineKindFilter>("all");
-  // Syllabus tab: published syllabus broken into chapters + planning state.
+  // Syllabus tab: the class teaching path + planning state.
   const [syllabus, setSyllabus] = useState<SyllabusForCstResponse | null>(null);
   const [syllabusError, setSyllabusError] = useState<string | null>(null);
   const [busyChapterId, setBusyChapterId] = useState<string | null>(null);
+  // Set while a path mutation (pick/dates/reorder/remove) is in flight.
+  const [pathBusy, setPathBusy] = useState(false);
+  // The whole book's chapters, so the teacher can pick ANY chapter into the
+  // path (not just the recommended one). Fetched alongside the syllabus tab;
+  // null = not loaded / no book on the CST.
+  const [syllabusBookChapters, setSyllabusBookChapters] = useState<
+    BookChapter[] | null
+  >(null);
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [selectedBookChapterId, setSelectedBookChapterId] = useState<string | null>(null);
@@ -218,7 +226,8 @@ export default function ClassDetailPage() {
     }
   }, [cstId]);
 
-  // Syllabus tab data
+  // Syllabus tab data — the class path plus the whole book's chapters (so the
+  // teacher can pick any chapter, not just the recommended one).
   const loadSyllabus = useCallback(async () => {
     setSyllabusError(null);
     try {
@@ -229,6 +238,21 @@ export default function ClassDetailPage() {
     }
   }, [cstId]);
 
+  // Whole-book chapter list for the "pick any chapter" picker. Lazy + once.
+  const loadSyllabusBookChapters = useCallback(async () => {
+    if (!header?.bookId) {
+      setSyllabusBookChapters(null);
+      return;
+    }
+    try {
+      const { items } = await booksApi.getBookChapters(header.bookId);
+      setSyllabusBookChapters(items);
+    } catch {
+      // Non-fatal: the recommended-pick path still works without the full list.
+      setSyllabusBookChapters(null);
+    }
+  }, [header?.bookId]);
+
   const handleBreakDown = useCallback(
     async (book_chapter_id: string) => {
       setSyllabusError(null);
@@ -236,6 +260,7 @@ export default function ClassDetailPage() {
       try {
         await slotsApi.breakDownChapter(cstId, book_chapter_id);
         await Promise.all([
+          // Re-fetch the path: status + slot_count change after break-down.
           loadSyllabus(),
           // Timeline + Today now have new slots; refetch if already loaded.
           timeline !== null ? loadTimeline() : Promise.resolve(),
@@ -248,6 +273,50 @@ export default function ClassDetailPage() {
       }
     },
     [cstId, loadSyllabus, loadTimeline, timeline, todayLoaded, loadToday],
+  );
+
+  // --- Path mutations (Action 1). Each endpoint returns the full updated
+  //     SyllabusForCstResponse, so set state from the result (no extra GET).
+  //     422s (e.g. reorder/remove of a started chapter) surface via the tab's
+  //     existing error display. ---
+  const runPathMutation = useCallback(
+    async (mutate: () => Promise<SyllabusForCstResponse>) => {
+      setSyllabusError(null);
+      setPathBusy(true);
+      try {
+        const res = await mutate();
+        setSyllabus(res);
+      } catch (err) {
+        setSyllabusError(formatErr(err));
+      } finally {
+        setPathBusy(false);
+      }
+    },
+    [],
+  );
+
+  const handlePick = useCallback(
+    (book_chapter_id: string) =>
+      runPathMutation(() => slotsApi.pickChapter(cstId, book_chapter_id)),
+    [cstId, runPathMutation],
+  );
+
+  const handleSetDates = useCallback(
+    (book_chapter_id: string, body: { start_date?: string; end_date?: string }) =>
+      runPathMutation(() => slotsApi.setChapterDates(cstId, book_chapter_id, body)),
+    [cstId, runPathMutation],
+  );
+
+  const handleReorder = useCallback(
+    (book_chapter_ids: string[]) =>
+      runPathMutation(() => slotsApi.reorderChapters(cstId, book_chapter_ids)),
+    [cstId, runPathMutation],
+  );
+
+  const handleRemove = useCallback(
+    (book_chapter_id: string) =>
+      runPathMutation(() => slotsApi.removeChapter(cstId, book_chapter_id)),
+    [cstId, runPathMutation],
   );
 
   // Holidays tab data
@@ -423,7 +492,12 @@ export default function ClassDetailPage() {
       // Today entry pins the "Now" marker to today's date when available.
       if (!todayLoaded) loadToday();
     }
-    if (activeTab === "syllabus" && syllabus === null) loadSyllabus();
+    if (activeTab === "syllabus") {
+      if (syllabus === null) loadSyllabus();
+      // Book chapters back the "pick any chapter" picker; load once the
+      // header (and thus book_id) is known.
+      if (syllabusBookChapters === null && header) loadSyllabusBookChapters();
+    }
     if (activeTab === "timetable" && holidaysData === null) loadHolidays();
     if (activeTab === "book" && bookChapters === null && header) loadBook();
     if (activeTab === "slos" && sloGroups === null && header) loadSLOs();
@@ -432,6 +506,7 @@ export default function ClassDetailPage() {
     lessons,
     timeline,
     syllabus,
+    syllabusBookChapters,
     holidaysData,
     bookChapters,
     sloGroups,
@@ -441,6 +516,7 @@ export default function ClassDetailPage() {
     loadLessons,
     loadTimeline,
     loadSyllabus,
+    loadSyllabusBookChapters,
     loadHolidays,
     loadBook,
     loadSLOs,
@@ -718,12 +794,19 @@ export default function ClassDetailPage() {
                 }
               }}
               currentChapterToPlan={(() => {
-                // Only relevant when today has no generated slot. Find the
-                // chapter today falls in that hasn't been broken down yet.
+                // Only relevant when today has no generated slot. Surface the
+                // next path chapter the teacher should be teaching that isn't
+                // broken down yet (slot_count === 0 ⇒ yet_to_start). Require
+                // dates so the offered "break it down" won't 422.
                 if (todayView.work !== null) return null;
-                const c = syllabus?.chapters.find(
-                  (ch) => ch.is_current && !ch.is_planned && ch.slot_count > 0,
-                );
+                const c = [...(syllabus?.chapters ?? [])]
+                  .sort((a, b) => a.position - b.position)
+                  .find(
+                    (ch) =>
+                      ch.slot_count === 0 &&
+                      ch.start_date != null &&
+                      ch.end_date != null,
+                  );
                 return c
                   ? {
                       bookChapterId: c.book_chapter_id,
@@ -746,8 +829,14 @@ export default function ClassDetailPage() {
           ) : (
             <ClassSyllabusTab
               data={syllabus}
+              bookChapters={syllabusBookChapters}
+              onPick={handlePick}
+              onSetDates={handleSetDates}
+              onReorder={handleReorder}
+              onRemove={handleRemove}
               onBreakDown={handleBreakDown}
               busyChapterId={busyChapterId}
+              pathBusy={pathBusy}
             />
           )
         ) : null}
