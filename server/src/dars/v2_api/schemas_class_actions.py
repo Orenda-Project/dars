@@ -197,7 +197,12 @@ class ClassPathChapter(BaseModel):
     start_date: date | None  # teacher-set (D-7); None until dated
     end_date: date | None
     # D-9/D-14: real teaching periods in the range for THIS class (0 if no dates).
+    # This is CAPACITY (non-zero as soon as dates are set), NOT a sign the
+    # chapter is generated — use `is_generated` for that.
     slot_count: int
+    # True once the chapter has actually been broken down (has generated class
+    # slots). Distinct from slot_count; drives "Broken down ✓" + the button.
+    is_generated: bool = False
     # D-4: derived from the chapter's class slots.
     status: str  # 'yet_to_start' | 'in_progress' | 'done'
 

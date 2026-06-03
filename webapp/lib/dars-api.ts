@@ -1030,7 +1030,10 @@ export interface ClassPathChapter {
   position: number;
   start_date: ISODate | null;
   end_date: ISODate | null;
+  /** Capacity: teaching periods in the date range (non-zero once dated). NOT "generated". */
   slot_count: number;
+  /** True once the chapter has actually been broken down (has generated slots). */
+  is_generated: boolean;
   status: ClassPathChapterStatus;
 }
 
