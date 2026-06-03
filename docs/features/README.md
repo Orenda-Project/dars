@@ -6,6 +6,7 @@ The v2 rebuild (`docs/plans/2026-05-15-dars-v2-rebuild/`) predates this conventi
 
 ## Active
 
+- [intelligent-chapter-planner](intelligent-chapter-planner/README.md) — replace the deterministic chapter-plan core with an **LLM-driven planner**: given a chapter, its SLOs/sub-SLOs, and the period count, it emits LP units (LLM-defined, may merge/split book topics — inputs to the LP Assistant) + Formative Assessments, with the existing heuristic planner kept as a fallback. New `class_lesson_slot_topics` join table; wired behind the existing `/plan` endpoint; FA + LPs only (no summative). `PlannerLLM` interface — API-key backend in prod, Agents SDK in dev (D-10). Phase 1 in flight.
 - [class-today-dashboard](class-today-dashboard/README.md) — new **Today** tab as the default class view in the teacher app: today's date, today's LP/assessment with view + mark-taught, a Covered/Now/Next strip, and a sub-SLO coverage meter. Frontend-only. Phase 1 in flight.
 - [ncp-english-g1-seed](ncp-english-g1-seed/README.md) — real NCP curriculum data (English × G1) alongside the synthetic Dars seed: SLOs from `fde_staging.slo_ncpslo`, sub-SLOs via Schema-style breakdown, lp_type via Claude, book 1171 prose from `book.book_text`. Phase 1 in flight.
 

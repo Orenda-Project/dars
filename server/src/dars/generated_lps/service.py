@@ -70,8 +70,28 @@ def _build_cache_key_global(curriculum_id: UUID, topic_id: UUID, lp_type: str) -
 def _build_cache_key_class(
     curriculum_id: UUID, cst_id: UUID, topic_id: UUID, lp_type: str
 ) -> str:
-    """`{curriculum_id}:{cst_id}:{topic_id}:{lp_type}` per spec."""
+    """`{curriculum_id}:{cst_id}:{topic_id}:{lp_type}` per spec.
+
+    Single-topic class-scope key (back-compat). Multi-topic LP units use
+    `_build_cache_key_class_topic_set` instead (D-9/D-12).
+    """
     return f"{curriculum_id}:{cst_id}:{topic_id}:{lp_type}"
+
+
+def _build_cache_key_class_topic_set(
+    curriculum_id: UUID, cst_id: UUID, topic_ids: list[UUID], lp_type: str
+) -> str:
+    """Class-scope cache key keyed on the *ordered* topic set (D-12).
+
+    Hashes the ordered list (order is pedagogically meaningful for a merged
+    LP unit) so two distinct multi-topic units on the same CST never collide,
+    and never collide with a single-topic class key. A single-topic unit still
+    hashes to a distinct value from the legacy `_build_cache_key_class` form
+    (the `:set:` segment disambiguates).
+    """
+    canonical = ",".join(str(t) for t in topic_ids)
+    topic_set_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"{curriculum_id}:{cst_id}:set:{topic_set_hash}:{lp_type}"
 
 
 def _build_callback_url(job_id: UUID) -> str:
@@ -141,6 +161,28 @@ async def _load_lesson_slot_context(
             f"topic_id={row['topic_id']} has empty topic_text — LP Assistant would fall back to DB lookup"
         )
     return row
+
+
+async def _load_lesson_slot_topic_set(
+    conn: asyncpg.Connection, lesson_slot_id: UUID
+) -> list[tuple[UUID, str]]:
+    """Ordered (topic_id, topic_text) for an LP unit's full topic set (D-4/D-9).
+
+    Reads `class_lesson_slot_topics` (ordered by `position`). Returns [] when
+    the slot has no join rows (legacy / single-topic-only slots that predate
+    the planner); callers then fall back to the slot's single `topic_id`.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT clst.topic_id AS topic_id, t.topic_text AS topic_text
+        FROM class_lesson_slot_topics clst
+        JOIN topics t ON t.id = clst.topic_id
+        WHERE clst.class_lesson_slot_id = $1
+        ORDER BY clst.position
+        """,
+        lesson_slot_id,
+    )
+    return [(r["topic_id"], r["topic_text"] or "") for r in rows]
 
 
 async def _load_curriculum_code(conn: asyncpg.Connection, curriculum_id: UUID) -> str:
@@ -452,10 +494,29 @@ async def get_or_generate_class_specific_lp(
     ctx = await _load_lesson_slot_context(conn, lesson_slot_id)
     curriculum_id = ctx["curriculum_id"]
     cst_id = ctx["cst_id"]
-    topic_id = ctx["topic_id"]
+    topic_id = ctx["topic_id"]  # primary topic (D-4)
     lp_type = ctx["lp_type"]
 
-    cache_key = _build_cache_key_class(curriculum_id, cst_id, topic_id, lp_type)
+    # D-9/D-12: an LP unit may merge >1 topic. Load the ordered topic set from
+    # class_lesson_slot_topics. When the unit spans multiple topics we key the
+    # cache on the ordered set (so two distinct multi-topic units don't
+    # collide), concatenate their topic_texts in order as page_content, and
+    # union their sub-SLOs. Single-topic / legacy slots keep the old behaviour.
+    topic_set = await _load_lesson_slot_topic_set(conn, lesson_slot_id)
+    topic_ids = [t[0] for t in topic_set] or [topic_id]
+    is_multi_topic = len(topic_ids) > 1
+
+    if is_multi_topic:
+        cache_key = _build_cache_key_class_topic_set(
+            curriculum_id, cst_id, topic_ids, lp_type
+        )
+        page_content = "\n\n".join(text for _, text in topic_set)
+        sub_slo_pairs = await _load_union_topic_sub_slos(conn, topic_ids)
+    else:
+        cache_key = _build_cache_key_class(curriculum_id, cst_id, topic_id, lp_type)
+        page_content = ctx["topic_text"]
+        sub_slo_pairs = await _load_topic_sub_slos(conn, topic_id)
+
     # Class-scoped rows are not in the partial unique index (only `global`
     # is enforced UNIQUE). We do best-effort dedup at the service layer.
     existing = await conn.fetchrow(
@@ -477,7 +538,6 @@ async def get_or_generate_class_specific_lp(
         )
         return _record_to_dataclass(existing)
 
-    sub_slo_pairs = await _load_topic_sub_slos(conn, topic_id)
     requested_ids = [p[0] for p in sub_slo_pairs]
     sub_slo_statements = [p[1] for p in sub_slo_pairs]
 
@@ -498,7 +558,7 @@ async def get_or_generate_class_specific_lp(
         curriculum_code=curriculum_code,
         grade_code=ctx["grade_code"],
         subject_code=ctx["subject_code"],
-        topic_text=ctx["topic_text"],
+        topic_text=page_content,
         lp_type=lp_type,
         sub_slo_statements=sub_slo_statements,
         dispatcher=dispatcher or default_request_lp_generation,
