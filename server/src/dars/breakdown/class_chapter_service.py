@@ -255,6 +255,12 @@ async def set_chapter_dates(
     """
     Set a path chapter's date range (D-7). Raises ValueError (→ 422) if the
     chapter isn't in the path.
+
+    Only the dates that are provided (non-None) are updated; a None leaves the
+    existing value untouched (COALESCE). This is the fix for the bug where
+    saving just the end date wiped the start date (and vice versa) — the UI
+    sends one field at a time. Clearing a date via this endpoint is therefore
+    unsupported (acceptable for the prototype).
     """
     log.info(
         "set_chapter_dates: entry cst=%s chapter=%s start=%s end=%s",
@@ -263,7 +269,9 @@ async def set_chapter_dates(
     row = await conn.fetchrow(
         """
         UPDATE class_chapters
-           SET start_date = $3, end_date = $4, updated_at = now()
+           SET start_date = COALESCE($3, start_date),
+               end_date   = COALESCE($4, end_date),
+               updated_at = now()
          WHERE cst_id = $1 AND book_chapter_id = $2
         RETURNING book_chapter_id, position, start_date, end_date
         """,
