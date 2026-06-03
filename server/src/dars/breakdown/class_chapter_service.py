@@ -174,9 +174,17 @@ async def list_class_path(conn: asyncpg.Connection, cst_id: UUID) -> list[dict]:
                 "end_date": r["end_date"],
                 "chapter_number": r["chapter_number"],
                 "title": r["title"],
+                # slot_count = projected teaching periods in the date range
+                # (capacity), NOT generated slots. Used for the "{N} periods"
+                # label + sizing the plan.
                 "slot_count": await chapter_slot_count(
                     conn, cst_id, r["start_date"], r["end_date"]
                 ),
+                # is_generated = the chapter actually has generated class slots
+                # (it's been broken down). Distinct from slot_count, which is
+                # non-zero the moment dates are set. Drives the "Broken down ✓"
+                # state + whether the Generate button shows.
+                "is_generated": bool(status_map.get(r["book_chapter_id"])),
                 "status": derive_chapter_status(
                     status_map.get(r["book_chapter_id"], [])
                 ),

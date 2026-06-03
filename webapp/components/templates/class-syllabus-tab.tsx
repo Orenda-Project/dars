@@ -224,7 +224,11 @@ function PathRow({
   const hasDates = Boolean(ch.start_date && ch.end_date);
   const isCurrent = ch.status === "in_progress";
   const isYetToStart = ch.status === "yet_to_start";
-  const brokenDown = ch.slot_count > 0;
+  // "Broken down" = the chapter actually has generated slots — NOT slot_count,
+  // which is just the projected period count and is non-zero the moment dates
+  // are set (that bug made every dated chapter look "Broken down ✓" and hid the
+  // Generate button).
+  const brokenDown = ch.is_generated;
 
   // D-6 reorder lock: only yet_to_start chapters move, and only into a slot
   // currently held by another yet_to_start chapter. Disabling a direction when
