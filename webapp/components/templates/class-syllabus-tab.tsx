@@ -284,6 +284,9 @@ function PathRow({
 
           {/* Date range (D-7) — dashboard's date-range pattern: patch on blur
               when the value actually changed. */}
+          {/* Date range (D-7). Send BOTH dates together on every change so a
+              partial save can never wipe the other end (the bug). Backend also
+              COALESCEs, but sending both keeps the row internally consistent. */}
           <div className="flex items-center gap-1 text-xs text-dars-ink-soft">
             <input
               type="date"
@@ -291,8 +294,12 @@ function PathRow({
               defaultValue={ch.start_date ?? ""}
               disabled={pathBusy}
               onBlur={(e) => {
-                if (e.target.value && e.target.value !== ch.start_date) {
-                  onSetDates(ch.book_chapter_id, { start_date: e.target.value });
+                const v = e.target.value || null;
+                if (v !== ch.start_date) {
+                  onSetDates(ch.book_chapter_id, {
+                    start_date: v ?? undefined,
+                    end_date: ch.end_date ?? undefined,
+                  });
                 }
               }}
               className="px-1.5 py-1 rounded border border-dars-rule-light bg-white text-xs font-mono disabled:opacity-50"
@@ -304,8 +311,12 @@ function PathRow({
               defaultValue={ch.end_date ?? ""}
               disabled={pathBusy}
               onBlur={(e) => {
-                if (e.target.value && e.target.value !== ch.end_date) {
-                  onSetDates(ch.book_chapter_id, { end_date: e.target.value });
+                const v = e.target.value || null;
+                if (v !== ch.end_date) {
+                  onSetDates(ch.book_chapter_id, {
+                    start_date: ch.start_date ?? undefined,
+                    end_date: v ?? undefined,
+                  });
                 }
               }}
               className="px-1.5 py-1 rounded border border-dars-rule-light bg-white text-xs font-mono disabled:opacity-50"
@@ -331,7 +342,7 @@ function PathRow({
               disabled={breakingDown || pathBusy}
               className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90 disabled:opacity-50"
             >
-              {breakingDown ? "Generating…" : "Break it down"}
+              {breakingDown ? "Generating…" : "Generate chapter plan"}
             </button>
           )}
 
