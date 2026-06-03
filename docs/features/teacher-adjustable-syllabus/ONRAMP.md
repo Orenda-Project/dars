@@ -31,7 +31,7 @@ You will NOT execute code, open beads, or write files until you've read what thi
 - Autonomous; no pre-action narration. One question at a time via AskUserQuestion. Sub-agents for big self-contained builds. Re-read a file before editing if edited earlier. "gg"/"chammaar".
 
 ## Step 5 — Current state
-**As of 2026-06-03 — both phases built; one PR open to staging.**
+**As of 2026-06-03 — ✅ CLOSED. Shipped PR #109, server+webapp green, class_chapters live.**
 
 | Phase | Scope | Status |
 |---|---|---|
