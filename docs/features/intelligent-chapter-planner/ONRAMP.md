@@ -35,10 +35,14 @@ You will NOT execute any code, open beads, or write files until you have read ev
 
 | Phase | Status | PR | Notes |
 |-------|--------|----|-------|
-| Phase 1 — Planner core (pure): data structures, PlanValidator, `PlannerLLM` interface + 2 backends, deterministic fallback, orchestrator | 🟢 built, awaiting PR | — | Implemented in worktree `agent-ace8f70793ef27265`; 25 new tests, full suite 182 passed / 34 pre-existing skips. New: `breakdown/chapter_planner_service.py` + `tests/test_chapter_planner_service.py`; `config.py` `planner_llm_backend`; `pyproject.toml` optional extra `planner-agent-sdk`. New decision **D-11**. PR pending. |
-| Phase 2 — Persist & wire: migration, build inputs from DB, multi-topic persist, swap behind `/plan`, verify downstream | 🟢 built, awaiting PR | — | Same worktree. Migration `20260606000000_class_lesson_slot_topics.sql`; `build_plan_inputs` + `persist_chapter_plan` + `GeneratePlanResult.source` in planner/plan services; class-scope cache extended to ordered topic-set (**D-12**). Full suite 186 passed / 41 skipped (7 new DB-gated tests skip without Postgres). Bundled into ONE combined PR with Phase 1. |
+| Phase 1 — Planner core (pure): data structures, PlanValidator, `PlannerLLM` interface + 2 backends, deterministic fallback, orchestrator | ✅ Closed | #108 | Shipped. `breakdown/chapter_planner_service.py` + tests; `config.py` `planner_llm_backend`; `pyproject.toml` optional extra `planner-agent-sdk`. Decisions D-11, D-13 (dev-backend fixes verified live). |
+| Phase 2 — Persist & wire: migration, build inputs from DB, multi-topic persist, swap behind `/plan`, verify downstream | ✅ Closed | #108 | Shipped. Migration `20260606000000_class_lesson_slot_topics.sql` applied on deploy; `build_plan_inputs` + `persist_chapter_plan` + `GeneratePlanResult.source`; class-scope cache extended to ordered topic-set (D-12). |
 
-**Next thing to do:** Open ONE combined PR (Phase 1 + 2) from worktree `agent-ace8f70793ef27265` → `staging`. After merge, watch BOTH Railway deploys; the migration applies automatically on deploy. Then mark both phases ✅ and close beads. Known pre-existing bug to track separately: `generated_lps/service._parse_grade_int` expects `'G<n>'` but `grades.code` is INT — see bead `dars-grade-int-parse`.
+**Status: ✅ Closed.** Merged via PR #108 (squash, admin) onto `staging` as `e3e1895` on 2026-06-03, after #109 deployed stable. Backend deploy SUCCESS (migration applied), `/health` 200; webapp unchanged (backend-only feature), 200. Live dry-run against seeded G1 English Ch.1 confirmed the LLM produces valid plans (merges thin topics, splits dense ones, places FAs) passing the validator.
+
+**Open follow-ups (separate beads):**
+- `dars-icp-json-retry` (D-14) — add a one-shot JSON-only retry in `plan_with_llm` before falling back; the planner LLM occasionally returns non-strict JSON.
+- `dars-grade-int-parse` — pre-existing: `generated_lps/service._parse_grade_int` expects `'G<n>'` but `grades.code` is INT.
 
 ## Step 6 — Where to find supporting context
 - Existing planners being fronted/fallen-back-to: `server/src/dars/breakdown/chapter_plan_service.py`, `lp_type_heuristics.py`.
