@@ -21,7 +21,6 @@ from uuid import UUID
 import asyncpg
 
 from dars.breakdown.holidays import get_effective_holidays, resolve_cst_context
-from dars.breakdown.lp_type_heuristics import pick_lp_type
 from dars.breakdown.projector import compute_teaching_days
 
 log = logging.getLogger("breakdown.chapter_plan")
@@ -357,6 +356,10 @@ class GeneratePlanResult:
     lesson_slot_count: int = 0
     assessment_slot_count: int = 0
     warnings: list[str] = field(default_factory=list)
+    # Provenance of the plan that produced these slots (D-1): 'llm' when the
+    # LLM plan passed validation, 'fallback' when the deterministic planner
+    # was used. Endpoint contract is otherwise unchanged (D-7).
+    source: str = "fallback"
 
 
 async def generate_chapter_plan(
@@ -423,116 +426,44 @@ async def generate_chapter_plan(
     if existing:
         raise ValueError("chapter already broken down; clear it first to regenerate")
 
-    # Topics + lp_type preference per topic (same data access as old auto-build).
-    topic_rows = await conn.fetch(
-        "SELECT id, title, topic_text FROM topics WHERE book_chapter_id = $1 ORDER BY topic_number",
-        book_chapter_id,
-    )
-    topic_sub_slo_lp: dict[UUID, str | None] = {}
-    topic_slo_lp: dict[UUID, str | None] = {}
-    if topic_rows:
-        rec_rows = await conn.fetch(
-            """
-            SELECT tss.topic_id,
-                   ss.recommended_lp_type AS sub_slo_lp_type,
-                   s.recommended_lp_type  AS slo_lp_type
-            FROM topic_sub_slos tss
-            JOIN sub_slos ss ON ss.id = tss.sub_slo_id
-            JOIN slos s ON s.id = ss.slo_id
-            WHERE tss.topic_id = ANY($1::uuid[])
-            ORDER BY tss.topic_id, ss.position
-            """,
-            [t["id"] for t in topic_rows],
-        )
-        for r in rec_rows:
-            if r["sub_slo_lp_type"] is not None:
-                topic_sub_slo_lp.setdefault(r["topic_id"], r["sub_slo_lp_type"])
-            if r["slo_lp_type"] is not None:
-                topic_slo_lp.setdefault(r["topic_id"], r["slo_lp_type"])
-
     result = GeneratePlanResult(
         cst_id=cst_id, book_chapter_id=book_chapter_id, slot_count=slot_count
     )
 
-    allocation = allocate_chapter_days(
-        chapter_days=slot_count,
-        topic_count=len(topic_rows),
-        fa_cadence=fa_cadence,
-        sa_per_chapter=sa_per_chapter,
+    # Intelligent Chapter Planner (D-1): build inputs from DB, plan via the LLM
+    # (deterministic fallback inside make_chapter_plan), persist via the
+    # multi-topic-aware writer. D-6: no summative this round; sa_per_chapter is
+    # ignored by the new path (kept on the signature for endpoint compat).
+    from dars.breakdown.chapter_planner_service import (
+        build_plan_inputs,
+        get_planner_llm,
+        make_chapter_plan,
+        persist_chapter_plan,
     )
-    topic_lp_types: list[str] = []
-    for topic in topic_rows:
-        lp = pick_lp_type(
-            subject_code=ctx.subject_code,
-            topic_title=topic["title"],
-            topic_text=topic["topic_text"],
-            recommended_lp_type=topic_slo_lp.get(topic["id"]),
-            sub_slo_recommended_lp_type=topic_sub_slo_lp.get(topic["id"]),
-        )
-        topic_lp_types.append(lp)
+    from dars.config import settings as _settings
 
-    planned = plan_chapter_slots(
-        topic_ids=[t["id"] for t in topic_rows],
-        topic_lp_types=topic_lp_types,
-        allocation=allocation,
-        fa_cadence=fa_cadence,
+    inputs = await build_plan_inputs(
+        conn,
+        book_chapter_id=book_chapter_id,
+        subject_code=ctx.subject_code,
+        period_count=slot_count,
     )
+    plan = await make_chapter_plan(inputs, llm=get_planner_llm(_settings))
+    result.source = plan.source
 
-    async with conn.transaction():
-        # Lessons + assessments share ONE global position sequence per CST
-        # (the projector merges both tables by position; 1 slot = 1 teaching day).
-        pos = await conn.fetchval(
-            """
-            SELECT greatest(
-              (SELECT coalesce(max(position), 0) FROM class_lesson_slots WHERE cst_id = $1),
-              (SELECT coalesce(max(position), 0) FROM class_assessment_slots WHERE cst_id = $1)
-            )
-            """,
-            cst_id,
-        )
-        for plan in planned:
-            pos += 1
-            if plan.slot_type in ("lesson", "revision"):
-                await conn.execute(
-                    """
-                    INSERT INTO class_lesson_slots
-                      (org_id, cst_id, position, slot_type, lp_type, topic_id,
-                       book_chapter_id, status)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, 'planned')
-                    """,
-                    org_id, cst_id, pos, plan.slot_type, plan.lp_type,
-                    plan.topic_id, book_chapter_id,
-                )
-                result.lesson_slot_count += 1
-            else:  # formative/summative assessment
-                # class_assessment_slots uses the short form ('formative'/'summative')
-                # and status 'scheduled' (DB CHECK constraints), unlike the planner's
-                # '*_assessment' slot_type + lesson 'planned'.
-                assessment_type = (
-                    "formative" if plan.slot_type == "formative_assessment" else "summative"
-                )
-                slot_id = await conn.fetchval(
-                    """
-                    INSERT INTO class_assessment_slots
-                      (org_id, cst_id, position, assessment_type, book_chapter_id, status)
-                    VALUES ($1, $2, $3, $4, $5, 'scheduled')
-                    RETURNING id
-                    """,
-                    org_id, cst_id, pos, assessment_type, book_chapter_id,
-                )
-                for i, t_id in enumerate(plan.covered_topic_ids, start=1):
-                    await conn.execute(
-                        """
-                        INSERT INTO class_assessment_slot_topics
-                          (class_assessment_slot_id, topic_id, position)
-                        VALUES ($1, $2, $3)
-                        """,
-                        slot_id, t_id, i,
-                    )
-                result.assessment_slot_count += 1
+    counts = await persist_chapter_plan(
+        conn,
+        cst_id=cst_id,
+        org_id=org_id,
+        book_chapter_id=book_chapter_id,
+        plan=plan,
+    )
+    result.lesson_slot_count = counts.lesson_slot_count
+    result.assessment_slot_count = counts.assessment_slot_count
 
     log.info(
-        "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d assessments=%d",
-        cst_id, book_chapter_id, result.lesson_slot_count, result.assessment_slot_count,
+        "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d assessments=%d source=%s",
+        cst_id, book_chapter_id, result.lesson_slot_count,
+        result.assessment_slot_count, result.source,
     )
     return result
