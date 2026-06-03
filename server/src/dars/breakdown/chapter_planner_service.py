@@ -285,7 +285,10 @@ class AgentSdkPlannerLLM:
 
     async def complete(self, system: str, user: str) -> str:
         try:
-            from claude_agent_sdk import query  # type: ignore[import-not-found]
+            from claude_agent_sdk import (  # type: ignore[import-not-found]
+                ClaudeAgentOptions,
+                query,
+            )
         except ImportError as exc:  # pragma: no cover - exercised only in dev
             raise PlannerLLMError(
                 "claude-agent-sdk is not installed; install the dev extra or use "
@@ -294,10 +297,17 @@ class AgentSdkPlannerLLM:
 
         chunks: list[str] = []
         try:
-            async for message in query(prompt=user, options={"system_prompt": system}):
-                text = getattr(message, "text", None)
-                if isinstance(text, str):
-                    chunks.append(text)
+            async for message in query(
+                prompt=user,
+                options=ClaudeAgentOptions(system_prompt=system),
+            ):
+                # Assistant text lives in content blocks (TextBlock.text), not a
+                # top-level .text attribute. Collect text from every block that
+                # exposes a string `.text`.
+                for block in getattr(message, "content", None) or []:
+                    text = getattr(block, "text", None)
+                    if isinstance(text, str):
+                        chunks.append(text)
         except Exception as exc:  # pragma: no cover - dev path
             raise PlannerLLMError(f"agent-sdk query failed: {exc}") from exc
         return "".join(chunks)
