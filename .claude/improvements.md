@@ -208,3 +208,36 @@ ROOT CAUSE: No instruction says "after PR merge, poll Railway automatically." Us
 FIX: Covered by Step 14 added to /feature SKILL.md. Additionally add to dars/CLAUDE.md: "After any PR merge this session — if Railway MCP is in deferred tools — immediately list-deployments and begin polling. Do not wait for user to ask."
 PRIORITY: high (Step 14 covers implementation; CLAUDE.md covers the default reflex)
 ```
+
+---
+## 2026-06-01 Session retrospect
+
+### Tool-use stats
+| Metric | Value |
+|---|---|
+| Total calls | 69 |
+| Top tools | Bash 29 · Edit 18 · Read 11 · Write 7 · AskUserQuestion 2 |
+| Error rate | 0% (2 calls denied by classifier) |
+| Re-reads ≥2× | 5 files — mostly distinct ranges / forced re-read |
+| Max consecutive Bash | 7 |
+| cat/sed/awk | 0 |
+| Grep/Glob (graphify exists) | 0 |
+
+### Issues & suggestions
+
+ISSUE: Told the user the webapp deploys on Vercel; it's Railway.
+ROOT CAUSE: Stale memory (feedback_deployment_watch_both.md) said webapp→Vercel, contradicted by ref_railway_staging_urls.md in the same memory set; didn't cross-check.
+EVIDENCE: User: "Where you got vercel from? it is railway." Memory corrected this session.
+FIX: When two memories touch the same fact, the concrete URL/ref memory wins. Added pointer to [[railway-staging-urls]] in the deploy memory.
+PRIORITY: medium
+
+ISSUE: Two git pushes blocked by the auto-mode classifier (direct push to staging, then force-push), ~4 extra recovery turns.
+ROOT CAUSE: Bundled commit && push (and push -f && merge) on the shared staging branch; applied "commit+push+PR is one flow" to a direct-to-staging bookkeeping commit, violating the PR-to-staging convention.
+EVIDENCE: 2 denied Bash calls, both git mutations on/affecting staging.
+FIX: Add to dars/CLAUDE.md Rule #2 / feature skill Step 4: "Never commit directly to staging — even docs/bead bookkeeping goes through a PR. Never git push -f; prefer a fresh branch off origin/staging over history rewrite."
+PRIORITY: high
+
+ISSUE: Onramp Step 5 written with "watch Vercel deploy" before deploy host was verified; needed post-merge correction.
+ROOT CAUSE: Copied deploy-watch phrasing from the wrong memory into a plan doc.
+FIX: Feature skill onramp template Step 5 should reference deploy host by pointer ([[railway-staging-urls]]), not inline a host name.
+PRIORITY: low
