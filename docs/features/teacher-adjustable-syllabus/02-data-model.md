@@ -13,8 +13,8 @@ Base: the shipped `syllabus_breakdowns` / `syllabus_chapters` (global) +
 
 - `syllabus_breakdowns` / `syllabus_chapters` — unchanged. The global stays global and
   advisory (D-1). No `scope`/`cst_id` added (that was an abandoned approach).
-- `class_lesson_slots` / `class_assessment_slots` — unchanged shape. Break-it-down still
-  writes here. (Assessments simply stop being *generated* per D-8/D-9.)
+- `class_lesson_slots` / `class_assessment_slots` — unchanged. Break-it-down still writes
+  here; this feature doesn't change what gets written (D-8).
 
 ## NEW — `class_chapters` (the class teaching path, D-2)
 
@@ -55,8 +55,8 @@ terminal = status IN ('taught','completed','skipped')
   all terminal (and ≥1 slot)   -> 'done'
 ```
 
-(With assessments dropped per D-8, in practice this reads `class_lesson_slots` only, but
-the union keeps it correct if assessment slots exist from earlier data.)
+(The union covers whatever the `/plan` flow generates — lessons and/or assessments.
+This feature is agnostic to that mix, D-8.)
 
 ## Resolution / suggestion (D-3) — code only
 
@@ -66,23 +66,17 @@ the union keeps it correct if assessment slots exist from earlier data.)
 
 ## Break-it-down (Action 2, D-5) — uses class-path dates
 
-`generate_chapter_plan` already takes `(cst_id, book_chapter_id)`. Change: it reads the
-date range from the **`class_chapters`** row (not `syllabus_chapters`) and, per D-8,
-generates lesson slots only.
-
-## Assessments dropped (D-8 / D-9)
-
-- **Generation-only (default, D-9a):** the planner's output is filtered to lesson/revision
-  slots before insert; no `class_assessment_slots` rows created. Tables/endpoints/UI stay.
-- **Full teardown (D-9b):** additionally remove assessment slots from timeline/today/
-  mark-complete + drop the tables/UI. *Decide before Phase 2.*
+`generate_chapter_plan` already takes `(cst_id, book_chapter_id)`. Only change here: it
+reads the date range from the **`class_chapters`** row (not `syllabus_chapters`). **What it
+generates is untouched** — LP/assessment content is `intelligent-chapter-planner`'s domain
+(D-8), not this feature's.
 
 ## Schema-touching code
 
 | Layer | What |
 |---|---|
 | Migration | `20260603100000_class_chapters.sql` |
-| Path service | new: list path, pick (insert), reorder, remove, recommended-next, derived status |
-| Resolution | `get_cst_syllabus` (Phase-1-shipped) now reads the class path + status + recommendation |
-| Break-it-down | `generate_chapter_plan` reads dates from `class_chapters`; lessons-only (D-8) |
-| Frontend | teacher-app: suggestion prompt, pick, statuses, reorder, set dates, break-it-down |
+| Path service | new `class_chapter_service.py`: list, pick, set-dates, reorder, remove, recommended-next (+ optional derived status, F1.5) |
+| Resolution | `get_cst_syllabus` reworked to read the class path + recommendation |
+| Break-it-down | `generate_chapter_plan` reads dates from `class_chapters` (no generation change) |
+| Frontend | teacher-app: recommendation prompt, pick, set dates, reorder, break-it-down |

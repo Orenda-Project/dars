@@ -1,38 +1,39 @@
 # Teacher-Adjustable Syllabus (suggestion-led)
 
-Reframes the syllabus from a binding plan into a **suggestion**, and gives each class
-its own real **teaching path**.
+**Scope (deliberately narrow):** let the teacher decide *which chapters to teach, and in
+what order*, guided by a recommendation from the global syllabus. That's the whole job.
 
 Today a class is implicitly bound to the published **global** Syllabus Breakdown for its
-(curriculum, grade, subject), and the teacher-app derives "what's today" from generated
-slots. This feature makes the global syllabus **advisory** and lets the teacher drive
-their own path, chapter by chapter:
+(curriculum, grade, subject). This feature makes the global **advisory** and gives the
+class its own ordered chapter path:
 
-- The class records its **own ordered list of chapters** it is teaching (`class_chapters`),
-  each with a status: **yet-to-start / in-progress / done** (derived from taught LPs).
-- The global syllabus only **suggests** what to teach next. At session start (nothing
-  taught), the app shows *"Nothing planned. The default suggests Chapter 1 — what would
-  you like to teach?"* with Ch 1 recommended but **any** chapter selectable.
-- **Picking a chapter records the choice** (appends it to the class path); **breaking it
-  down** into Chapter-Plan slots stays a separate explicit step.
-- The teacher can **reorder upcoming** (yet-to-start) chapters; chapters that are
-  in-progress/done are **locked** (the past is immutable).
+- The class has its **own ordered list of chapters** it will teach (`class_chapters`).
+- The global only **recommends** what to teach next. At session start (empty path), the
+  app shows *"Nothing planned — the default suggests Chapter 1. What would you like to
+  teach?"* — Ch 1 recommended, **any** chapter selectable.
+- **Pick a chapter** → records it in the path. **Set its dates.** **Reorder** chapters in
+  the path. That's Action 1 — this feature.
+- **Break it down** (Action 2) is the **already-shipped** `/plan` flow, unchanged. This
+  feature just points it at a chapter from the class path. **What break-it-down generates
+  (LPs, assessments, LLM units) is NOT this feature's concern** — that belongs to the
+  separate `intelligent-chapter-planner`.
 
-This **dissolves the "half-taught chapter" problem**: there's no rigid plan to diverge
-from. A partially-taught chapter is simply `in-progress`; choosing a different chapter
-next is a normal pick. Taught history is never rewritten.
+### Explicitly NOT in scope
+- How a chapter breaks into LPs/assessments, LPs-only, LLM planning → `intelligent-chapter-planner`.
+- Per-class syllabus *scope*/forking (an early draft explored this — dropped, D-1).
+- Chapter **status** (in-progress/done) and **locking** taught chapters from reorder are
+  **nice-to-have, not blocking** — included as optional polish (Phase 2), can be cut.
 
 ---
 
 ## Documents
 
-1. [`00-glossary.md`](00-glossary.md) — terms (suggestion, class path, class_chapters, chapter status, lock).
+1. [`00-glossary.md`](00-glossary.md) — terms (class path, recommendation, pick, reorder).
 2. [`01-decision-log.md`](01-decision-log.md) — frozen decisions D-1….
-3. [`02-data-model.md`](02-data-model.md) — `class_chapters` table + status derivation.
-4. [`03-phase-1-class-chapters.md`](03-phase-1-class-chapters.md) — `class_chapters` table, pick/record + status, suggestion resolution.
-5. [`04-phase-2-reorder-lock-breakdown.md`](04-phase-2-reorder-lock-breakdown.md) — reorder upcoming + lock taught; wire break-it-down to a chosen chapter.
-6. [`05-phase-3-teacher-ui.md`](05-phase-3-teacher-ui.md) — teacher-app: suggestion prompt, pick, chapter statuses, reorder.
-7. [`ONRAMP.md`](ONRAMP.md) — single entry point for any agent picking this up.
+3. [`02-data-model.md`](02-data-model.md) — `class_chapters` table.
+4. [`03-phase-1-class-chapters.md`](03-phase-1-class-chapters.md) — `class_chapters` + pick/date/list + recommended-next (backend).
+5. [`04-phase-2-teacher-ui.md`](04-phase-2-teacher-ui.md) — teacher-app: recommendation prompt, pick, set dates, reorder; (optional) status badges + lock.
+6. [`ONRAMP.md`](ONRAMP.md) — single entry point for any agent picking this up.
 
 ## Document precedence
 
@@ -48,7 +49,6 @@ If two docs disagree, this is the order. Surface conflicts; don't silently pick 
 
 ## Builds on
 
-The shipped `syllabus-breakdown-and-teacher-chapter-plan` (global syllabus + teacher
-Chapter Plan + class slots). This feature does **not** reintroduce per-class syllabus
-*scope* (an earlier draft of this plan did — superseded by the suggestion-led model,
-D-1). The global stays global and advisory; the class's path lives in `class_chapters`.
+The shipped `syllabus-breakdown-and-teacher-chapter-plan` (global syllabus + the
+break-it-down `/plan` flow + class slots). The global stays global and advisory; the
+class's path lives in `class_chapters`. Action 2 (`/plan`) is reused untouched.

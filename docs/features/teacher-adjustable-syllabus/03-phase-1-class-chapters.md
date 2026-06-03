@@ -1,8 +1,8 @@
-# Phase 1 — Class chapter path: pick, status, recommendation (backend)
+# Phase 1 — Class chapter path (backend): pick, date, reorder, recommend
 
-The core of Action 1. Introduces `class_chapters` (the class's own teaching path), the
-pick/list endpoints, derived chapter status, and the "recommended next" suggestion from
-the global. One PR → staging.
+All of Action 1's backend. Introduces `class_chapters` (the class's own teaching path) and
+the endpoints to build/edit it, plus the "recommended next" suggestion from the global.
+One PR → staging.
 
 **Bead:** `feat-teacher-adjustable-syllabus-phase-1-class-chapters`
 **Depends on:** nothing (additive; builds on shipped syllabus + class slots).
@@ -16,51 +16,67 @@ against staging in a rolled-back transaction before merge.
 
 **Acceptance.** Table exists with both unique constraints + org/cst cascades. Non-DB suite green.
 
-## F1.2 — Path service: list + pick + remove
+## F1.2 — Path service: list / pick / set-dates / remove / reorder
 
-**Spec.** New `class_chapter_service.py` (or extend `chapter_plan_service.py`):
-- `list_class_path(conn, cst_id)` → chapters ordered by `position`, each with derived
-  status (D-4) + dates.
-- `pick_chapter(conn, cst_id, org_id, book_chapter_id)` → insert a `class_chapters` row at
-  the next `position` (end of path). Idempotent-ish: 422 if the chapter is already in the
-  path (unique constraint). Undated (D-7).
-- `remove_chapter(conn, cst_id, book_chapter_id)` → delete the path row **only if its
-  status is yet_to_start** (D-6 lock); else 422. (Does not touch generated slots.)
+**Spec.** New `class_chapter_service.py`:
+- `list_class_path(conn, cst_id)` → chapters ordered by `position`, with dates +
+  `slot_count` (real teaching periods in the chapter's date range, via the existing
+  `chapter_slot_count`) + **status** (D-4; see F1.5 — optional but cheap to derive).
+- `pick_chapter(conn, cst_id, org_id, book_chapter_id)` → insert at next `position` (end).
+  422 if already in path (unique constraint). Undated (D-7).
+- `set_chapter_dates(conn, cst_id, book_chapter_id, start, end)` → set the row's dates.
+- `remove_chapter(conn, cst_id, book_chapter_id)` → delete the path row. (Does NOT touch
+  generated class slots.) If status-lock (F1.5) is in, reject removing a started chapter.
+- `reorder_path(conn, cst_id, ordered_book_chapter_ids)` → rewrite `position` 1..N in one
+  transaction. (Lock rule optional — see F1.5.)
 
-**Acceptance.** Picking Ch 1 then Ch 3 yields a 2-chapter path in pick order. Removing a
-yet-to-start chapter works; removing an in-progress one is rejected.
+**Acceptance.** Pick Ch1 then Ch3 → 2-chapter path in order. Set dates → persists. Reorder
+to [Ch3,Ch1] → positions rewritten. Remove → row gone, slots untouched.
 
 ## F1.3 — Recommended next (D-3)
 
 **Spec.** `recommended_next_chapter(conn, cst_id)` → the global default's lowest-position
-chapter not already in the class path (empty path → global's first). Returns the
-book_chapter_id + label, or None if the path already covers the syllabus.
+chapter not already in the class path (empty path → global's first). Returns
+book_chapter_id + label, or None if the path already covers the global.
 
-**Acceptance.** Empty path recommends the global's Ch 1. After picking Ch 1, recommends
-the global's next chapter (by global order).
+**Acceptance.** Empty path recommends the global's Ch 1. After picking Ch 1, recommends the
+global's next chapter (by global order).
 
-## F1.4 — Surface path + recommendation on the teacher syllabus endpoint
+## F1.4 — Endpoints (teacher-scoped, tenancy enforced)
 
-**Spec.** Rework `GET /csts/{cst_id}/syllabus` (the Phase-1-shipped endpoint) to return:
-the **class path** (chapters with position, dates, derived status, slot_count) + the
-**recommended next** chapter + `periods_per_week`. When the path is empty, the response
-makes clear "nothing planned yet" + the recommendation. Keep it backward-tolerant for the
-teacher app (Phase 3 consumes the new shape).
+**Spec.**
+- `GET /csts/{cst_id}/syllabus` — **rework** the shipped endpoint to return: the class
+  path (chapters: book_chapter_id, position, dates, slot_count, status) + `recommended_next`
+  + `periods_per_week`. Empty path → `[]` + recommendation.
+- `POST /csts/{cst_id}/chapters` `{ book_chapter_id }` → pick.
+- `PATCH /csts/{cst_id}/chapters/{book_chapter_id}` `{ start_date?, end_date? }` → set dates.
+- `PUT /csts/{cst_id}/chapters/order` `{ book_chapter_ids: [...] }` → reorder.
+- `DELETE /csts/{cst_id}/chapters/{book_chapter_id}` → remove.
 
-**Acceptance.** A CST with an empty path returns `[]` chapters + a recommendation of the
-global Ch 1. After picking + dating a chapter, it appears in the path with status
-`yet_to_start` and a computed slot_count.
+**Acceptance.** Full pick→date→reorder→remove cycle works via the API; a CST outside the
+caller's org 404s on every endpoint.
 
-## F1.5 — Pick / set-dates endpoints
+## F1.5 — (Optional polish) chapter status + reorder lock
 
-**Spec.** Teacher-scoped (tenancy enforced):
-- `POST /csts/{cst_id}/chapters` body `{ book_chapter_id }` → pick (F1.2).
-- `PATCH /csts/{cst_id}/chapters/{book_chapter_id}` body `{ start_date?, end_date? }` → set
-  the path row's dates (D-7).
-- `DELETE /csts/{cst_id}/chapters/{book_chapter_id}` → remove (yet-to-start only).
+**Spec.** *Not blocking — ship F1.1–F1.4 even if this is cut.* Derive chapter **status**
+(yet_to_start / in_progress / done) from the CST's generated slots for the chapter (D-4)
+and include it on `list_class_path`. If included, make `reorder_path`/`remove_chapter`
+reject moving/removing a chapter whose status ≠ yet_to_start (D-6 — the past is locked).
 
-**Acceptance.** Pick → date → appears with a slot_count derived from the dates + timetable.
-Tenancy: a CST outside the caller's org 404s.
+**Acceptance (if included).** A chapter with a taught slot reads `in_progress` and cannot
+be reordered/removed; yet_to_start chapters reorder freely. If cut: reorder/remove are
+unrestricted and status is omitted from the response.
+
+## F1.6 — Break-it-down reads class-path dates (D-5)
+
+**Spec.** `generate_chapter_plan` currently reads the chapter's date range from
+`syllabus_chapters` (the global). Point it at the CST's `class_chapters` row for that
+`book_chapter_id`. 422 if the chapter isn't in the class path, has no dates, or already has
+generated slots (existing guard). **No change to what it generates** (D-8 — that's
+`intelligent-chapter-planner`'s domain).
+
+**Acceptance.** Break-it-down on a dated class-path chapter generates slots sized by the
+class-path date range. On a chapter not in the path → 422 ("add it to your plan first").
 
 ---
 
