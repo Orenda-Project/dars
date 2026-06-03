@@ -5,7 +5,6 @@ Auth: X-API-Key (per-org). All endpoints check that the targeted slot
 or CST belongs to the calling org (Critical Rule #3).
 """
 import logging
-from datetime import date as date_cls
 from uuid import UUID
 
 import asyncpg
@@ -13,9 +12,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from dars.breakdown.chapter_plan_service import (
     _cst_weekday_set,
-    chapter_slot_count,
     generate_chapter_plan,
     resolve_cst_syllabus_context,
+)
+from dars.breakdown.class_chapter_service import (
+    list_class_path,
+    pick_chapter,
+    recommended_next_chapter,
+    remove_chapter,
+    reorder_path,
+    set_chapter_dates,
 )
 from dars.breakdown.mark_taught_service import (
     mark_assessment_slot,
@@ -29,6 +35,7 @@ from dars.v2_api.schemas_class_actions import (
     ClassAssessmentSlotListResponse,
     ClassLessonSlotListItem,
     ClassLessonSlotListResponse,
+    ClassPathChapter,
     CompleteAssessmentBody,
     CstTimelineResponse,
     GenerateChapterPlanResponse,
@@ -36,10 +43,13 @@ from dars.v2_api.schemas_class_actions import (
     MarkTaughtBody,
     OnboardBody,
     OnboardResponse,
+    PickChapterBody,
+    RecommendedNextChapter,
+    ReorderChaptersBody,
+    SetChapterDatesBody,
     SkipBody,
     SubSLOCoverageEntry,
     SubSLOCoverageResponse,
-    SyllabusChapterForCst,
     SyllabusForCstResponse,
     TimelineAssessmentItem,
     TimelineLessonItem,
@@ -547,19 +557,36 @@ async def get_cst_timeline(
 # ---------------------------------------------------------------------------
 
 
-def _pick_current_chapter(chapters: list[dict], today: date_cls) -> UUID | None:
-    """D-10: the chapter whose date range contains today; else the next upcoming;
-    else the last dated chapter. None if no chapter has dates."""
-    dated = [c for c in chapters if c["start_date"] and c["end_date"]]
-    if not dated:
-        return None
-    for c in dated:
-        if c["start_date"] <= today <= c["end_date"]:
-            return c["book_chapter_id"]
-    upcoming = [c for c in dated if c["start_date"] > today]
-    if upcoming:
-        return min(upcoming, key=lambda c: c["start_date"])["book_chapter_id"]
-    return max(dated, key=lambda c: c["end_date"])["book_chapter_id"]
+def _path_chapter(row: dict) -> ClassPathChapter:
+    """Map a `list_class_path` row dict to the response schema."""
+    return ClassPathChapter(
+        book_chapter_id=row["book_chapter_id"],
+        chapter_number=row["chapter_number"],
+        title=row["title"],
+        position=row["position"],
+        start_date=row["start_date"],
+        end_date=row["end_date"],
+        slot_count=row["slot_count"],
+        status=row["status"],
+    )
+
+
+async def _build_syllabus_response(
+    conn: asyncpg.Connection, cst_id: UUID
+) -> SyllabusForCstResponse:
+    """Shared assembly: the class path + recommended-next + periods/week.
+    Used by the GET and by the edit endpoints that echo the updated path."""
+    ctx = await resolve_cst_syllabus_context(conn, cst_id)
+    weekdays = await _cst_weekday_set(conn, cst_id)
+    path = await list_class_path(conn, cst_id)
+    rec = await recommended_next_chapter(conn, cst_id)
+    return SyllabusForCstResponse(
+        cst_id=cst_id,
+        syllabus_breakdown_id=ctx.syllabus_breakdown_id,
+        periods_per_week=len(weekdays),
+        chapters=[_path_chapter(r) for r in path],
+        recommended_next=RecommendedNextChapter(**rec) if rec else None,
+    )
 
 
 @router.get("/csts/{cst_id}/syllabus", response_model=SyllabusForCstResponse)
@@ -568,74 +595,128 @@ async def get_cst_syllabus(
     org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> SyllabusForCstResponse:
-    """F3.1 — the class's syllabus (chapters + date ranges), each with its
-    computed slot count and current/planned flags, positioned by today (D-10)."""
+    """F1.4 — the class's own teaching path (`class_chapters`): the chapters the
+    teacher picked, in teaching order, each with dates, slot count and derived
+    status (D-4), plus the global's recommended-next chapter (D-3) and the
+    class's periods/week. Empty path → `[]` + a recommendation."""
     log.info("get_cst_syllabus: entry cst=%s", cst_id)
     await _ensure_cst_in_org(conn, cst_id, org.id)
-    ctx = await resolve_cst_syllabus_context(conn, cst_id)
-    weekdays = await _cst_weekday_set(conn, cst_id)
-    periods_per_week = len(weekdays)
-
-    if ctx.syllabus_breakdown_id is None:
-        return SyllabusForCstResponse(
-            cst_id=cst_id, syllabus_breakdown_id=None,
-            periods_per_week=periods_per_week, chapters=[],
-        )
-
-    rows = await conn.fetch(
-        """
-        SELECT sch.book_chapter_id, bc.chapter_number, bc.title,
-               sch.start_date, sch.end_date
-        FROM syllabus_chapters sch
-        JOIN book_chapters bc ON bc.id = sch.book_chapter_id
-        WHERE sch.syllabus_breakdown_id = $1
-        ORDER BY bc.chapter_number
-        """,
-        ctx.syllabus_breakdown_id,
-    )
-    chapters = [dict(r) for r in rows]
-    current_id = _pick_current_chapter(chapters, date_cls.today())
-
-    # which chapters already have generated class slots?
-    planned_ids = {
-        r["book_chapter_id"]
-        for r in await conn.fetch(
-            """
-            SELECT book_chapter_id FROM class_lesson_slots
-              WHERE cst_id = $1 AND book_chapter_id IS NOT NULL
-            UNION
-            SELECT book_chapter_id FROM class_assessment_slots
-              WHERE cst_id = $1 AND book_chapter_id IS NOT NULL
-            """,
-            cst_id,
-        )
-    }
-
-    items: list[SyllabusChapterForCst] = []
-    for c in chapters:
-        items.append(SyllabusChapterForCst(
-            book_chapter_id=c["book_chapter_id"],
-            chapter_number=c["chapter_number"],
-            title=c["title"],
-            start_date=c["start_date"],
-            end_date=c["end_date"],
-            slot_count=await chapter_slot_count(
-                conn, cst_id, c["start_date"], c["end_date"]
-            ),
-            is_planned=c["book_chapter_id"] in planned_ids,
-            is_current=c["book_chapter_id"] == current_id,
-        ))
-
+    resp = await _build_syllabus_response(conn, cst_id)
     log.info(
-        "get_cst_syllabus: exit cst=%s chapters=%d periods/wk=%d",
-        cst_id, len(items), periods_per_week,
+        "get_cst_syllabus: exit cst=%s chapters=%d periods/wk=%d recommended=%s",
+        cst_id, len(resp.chapters), resp.periods_per_week,
+        resp.recommended_next.book_chapter_id if resp.recommended_next else None,
     )
-    return SyllabusForCstResponse(
-        cst_id=cst_id,
-        syllabus_breakdown_id=ctx.syllabus_breakdown_id,
-        periods_per_week=periods_per_week,
-        chapters=items,
+    return resp
+
+
+@router.post(
+    "/csts/{cst_id}/chapters",
+    response_model=SyllabusForCstResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def pick_class_chapter(
+    cst_id: UUID,
+    payload: PickChapterBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F1.4 — pick a chapter into the class path (Action 1, D-2). Records the
+    choice undated; does not generate slots. Returns the updated path."""
+    log.info("pick_class_chapter: entry cst=%s chapter=%s", cst_id, payload.book_chapter_id)
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await pick_chapter(conn, cst_id, org.id, payload.book_chapter_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("pick_class_chapter: exit cst=%s chapters=%d", cst_id, len(resp.chapters))
+    return resp
+
+
+@router.patch(
+    "/csts/{cst_id}/chapters/{book_chapter_id}",
+    response_model=SyllabusForCstResponse,
+)
+async def set_class_chapter_dates(
+    cst_id: UUID,
+    book_chapter_id: UUID,
+    payload: SetChapterDatesBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F1.4 — set a path chapter's date range (D-7). Returns the updated path."""
+    log.info(
+        "set_class_chapter_dates: entry cst=%s chapter=%s start=%s end=%s",
+        cst_id, book_chapter_id, payload.start_date, payload.end_date,
     )
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await set_chapter_dates(
+            conn, cst_id, book_chapter_id, payload.start_date, payload.end_date
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("set_class_chapter_dates: exit cst=%s chapter=%s", cst_id, book_chapter_id)
+    return resp
+
+
+@router.put(
+    "/csts/{cst_id}/chapters/order",
+    response_model=SyllabusForCstResponse,
+)
+async def reorder_class_chapters(
+    cst_id: UUID,
+    payload: ReorderChaptersBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F1.4 — reorder the upcoming chapters (D-6). Started chapters are locked
+    to the front in their current order. Returns the updated path."""
+    log.info(
+        "reorder_class_chapters: entry cst=%s submitted=%d",
+        cst_id, len(payload.book_chapter_ids),
+    )
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await reorder_path(conn, cst_id, payload.book_chapter_ids)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("reorder_class_chapters: exit cst=%s chapters=%d", cst_id, len(resp.chapters))
+    return resp
+
+
+@router.delete(
+    "/csts/{cst_id}/chapters/{book_chapter_id}",
+    response_model=SyllabusForCstResponse,
+)
+async def remove_class_chapter(
+    cst_id: UUID,
+    book_chapter_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F1.4 — remove a chapter from the path (D-2). Rejected if the chapter has
+    started (D-6). Does not touch generated class slots. Returns updated path."""
+    log.info("remove_class_chapter: entry cst=%s chapter=%s", cst_id, book_chapter_id)
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await remove_chapter(conn, cst_id, book_chapter_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("remove_class_chapter: exit cst=%s chapters=%d", cst_id, len(resp.chapters))
+    return resp
 
 
 @router.post(
