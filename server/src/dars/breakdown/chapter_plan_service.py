@@ -21,6 +21,7 @@ from uuid import UUID
 import asyncpg
 
 from dars.breakdown.holidays import get_effective_holidays, resolve_cst_context
+from dars.breakdown.lp_type_heuristics import pick_lp_type
 from dars.breakdown.projector import compute_teaching_days
 
 log = logging.getLogger("breakdown.chapter_plan")
@@ -356,10 +357,11 @@ class GeneratePlanResult:
     lesson_slot_count: int = 0
     assessment_slot_count: int = 0
     warnings: list[str] = field(default_factory=list)
-    # Provenance of the plan that produced these slots (D-1): 'llm' when the
-    # LLM plan passed validation, 'fallback' when the deterministic planner
-    # was used. Endpoint contract is otherwise unchanged (D-7).
-    source: str = "fallback"
+    # Provenance of the plan. Currently always 'placeholder' (the simple
+    # one-lesson-per-topic + final-FA generator). The intelligent LLM planner
+    # was removed from the backend (being iterated on separately); this field
+    # is kept so callers that read `.source` keep working.
+    source: str = "placeholder"
 
 
 async def generate_chapter_plan(
@@ -377,10 +379,15 @@ async def generate_chapter_plan(
 
     - slot_count = teaching periods in the chapter's class-path date range
       (the CST's `class_chapters` row, D-5/F1.6 — not the advisory global).
-    - planners (allocate_chapter_days + plan_chapter_slots + pick_lp_type)
-      distribute lessons/FAs/SAs/revision and pick lp_type per topic.
+      It still gates generation (a chapter with no teaching days is refused),
+      but the placeholder does NOT try to fill exactly slot_count periods.
+    - PLACEHOLDER generator: one lesson slot per book topic (in topic order),
+      followed by one formative assessment covering all the chapter's topics.
+      lp_type per lesson comes from `pick_lp_type`. This is a deliberately
+      simple stand-in; the intelligent LLM planner was removed from the
+      backend and is being iterated on separately.
     - rows are appended after the CST's current max position, stamped with
-      book_chapter_id (D-16) and page ranges left null (teacher fills).
+      book_chapter_id and page ranges left null (teacher fills).
     - Refuses (ValueError) if the chapter isn't in the class path, already has
       class slots for this CST, or has no date range yet (slot_count == 0).
     Caller does org/access checks.
@@ -430,36 +437,75 @@ async def generate_chapter_plan(
         cst_id=cst_id, book_chapter_id=book_chapter_id, slot_count=slot_count
     )
 
-    # Intelligent Chapter Planner (D-1): build inputs from DB, plan via the LLM
-    # (deterministic fallback inside make_chapter_plan), persist via the
-    # multi-topic-aware writer. D-6: no summative this round; sa_per_chapter is
-    # ignored by the new path (kept on the signature for endpoint compat).
-    from dars.breakdown.chapter_planner_service import (
-        build_plan_inputs,
-        get_planner_llm,
-        make_chapter_plan,
-        persist_chapter_plan,
-    )
-    from dars.config import settings as _settings
+    # PLACEHOLDER breakdown: one lesson per topic + one final formative
+    # assessment over all topics. Simple, deterministic, no LLM. (The
+    # intelligent planner was removed from the backend; sa_per_chapter and
+    # fa_cadence are ignored here but kept on the signature for compat.)
+    result.source = "placeholder"
 
-    inputs = await build_plan_inputs(
-        conn,
-        book_chapter_id=book_chapter_id,
-        subject_code=ctx.subject_code,
-        period_count=slot_count,
+    topic_rows = await conn.fetch(
+        "SELECT id, title, topic_text FROM topics "
+        "WHERE book_chapter_id = $1 ORDER BY topic_number",
+        book_chapter_id,
     )
-    plan = await make_chapter_plan(inputs, llm=get_planner_llm(_settings))
-    result.source = plan.source
+    topic_ids = [t["id"] for t in topic_rows]
 
-    counts = await persist_chapter_plan(
-        conn,
-        cst_id=cst_id,
-        org_id=org_id,
-        book_chapter_id=book_chapter_id,
-        plan=plan,
-    )
-    result.lesson_slot_count = counts.lesson_slot_count
-    result.assessment_slot_count = counts.assessment_slot_count
+    async with conn.transaction():
+        # Lessons + assessments share ONE global position sequence per CST
+        # (the projector merges both tables by position; 1 slot = 1 day).
+        pos = await conn.fetchval(
+            """
+            SELECT greatest(
+              (SELECT coalesce(max(position), 0) FROM class_lesson_slots WHERE cst_id = $1),
+              (SELECT coalesce(max(position), 0) FROM class_assessment_slots WHERE cst_id = $1)
+            )
+            """,
+            cst_id,
+        )
+
+        # One lesson slot per topic, in order.
+        for topic in topic_rows:
+            lp_type = pick_lp_type(
+                subject_code=ctx.subject_code,
+                topic_title=topic["title"],
+                topic_text=topic["topic_text"],
+                recommended_lp_type=None,
+                sub_slo_recommended_lp_type=None,
+            )
+            pos += 1
+            await conn.execute(
+                """
+                INSERT INTO class_lesson_slots
+                  (org_id, cst_id, position, slot_type, lp_type, topic_id,
+                   book_chapter_id, status)
+                VALUES ($1, $2, $3, 'lesson', $4, $5, $6, 'planned')
+                """,
+                org_id, cst_id, pos, lp_type, topic["id"], book_chapter_id,
+            )
+            result.lesson_slot_count += 1
+
+        # One formative assessment at the end, covering all chapter topics.
+        if topic_ids:
+            pos += 1
+            slot_id = await conn.fetchval(
+                """
+                INSERT INTO class_assessment_slots
+                  (org_id, cst_id, position, assessment_type, book_chapter_id, status)
+                VALUES ($1, $2, $3, 'formative', $4, 'scheduled')
+                RETURNING id
+                """,
+                org_id, cst_id, pos, book_chapter_id,
+            )
+            for i, t_id in enumerate(topic_ids, start=1):
+                await conn.execute(
+                    """
+                    INSERT INTO class_assessment_slot_topics
+                      (class_assessment_slot_id, topic_id, position)
+                    VALUES ($1, $2, $3)
+                    """,
+                    slot_id, t_id, i,
+                )
+            result.assessment_slot_count += 1
 
     log.info(
         "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d assessments=%d source=%s",
