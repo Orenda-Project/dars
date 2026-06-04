@@ -153,12 +153,22 @@ export interface Book {
   grade_id: UUID;
   subject_id: UUID;
   title: string;
+  publisher?: string | null;
+  edition?: string | null;
+  published_year?: number | null;
+  total_chapters?: number | null;
+  pdf_url?: string | null;
+  /** Only populated by `?include=book_text` or the tree endpoint; else null. */
+  book_text?: BookTextEntry[] | null;
 }
+
+/** A page slice of OCR'd book/chapter text — `[{ pdf_page_no, text }, ...]`. */
+export type BookTextEntry = Record<string, unknown>;
 
 /**
  * `chapter_text` is a structured page slice — list of objects keyed by
  * page-content type ({ kind, text } pairs etc). It's only populated when
- * the request hits `?include=chapter_text`; otherwise null.
+ * the request hits `?include=chapter_text` or the tree endpoint; otherwise null.
  */
 export type ChapterTextEntry = Record<string, unknown>;
 
@@ -182,6 +192,27 @@ export interface Topic {
   end_line: number | null;
   topic_text: string | null;
   status: string;
+}
+
+/** Minimal SLO / sub-SLO shape returned inside the book tree. */
+export interface SLOMini {
+  id: UUID;
+  code: string;
+  statement: string;
+}
+
+/** Full nested book tree from `GET /api/v2/books/{id}/tree` (OCR included). */
+export interface TopicTree extends Topic {
+  sub_slos: SLOMini[];
+}
+
+export interface BookChapterTree extends BookChapter {
+  slos: SLOMini[];
+  topics: TopicTree[];
+}
+
+export interface BookTree extends Book {
+  chapters: BookChapterTree[];
 }
 
 // ---------------------------------------------------------------------------
@@ -797,6 +828,8 @@ export const books = {
   getBooks: (params: { curriculum_id?: UUID; grade_id?: UUID; subject_id?: UUID } = {}) =>
     request<ListResponse<Book>>("/api/v2/books", { query: params }),
   getBook: (id: UUID) => request<Book>(`/api/v2/books/${id}`),
+  /** Full nested tree: book + chapters (+slos, chapter_text) + topics (+sub_slos). */
+  getBookTree: (id: UUID) => request<BookTree>(`/api/v2/books/${id}/tree`),
 
   getBookChapters: (book_id: UUID) =>
     request<ListResponse<BookChapter>>("/api/v2/book-chapters", {
