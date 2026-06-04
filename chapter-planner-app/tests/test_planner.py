@@ -85,6 +85,37 @@ def units_from(req, raw):
 # --------------------------------------------------------------------------
 # Parser
 # --------------------------------------------------------------------------
+def test_shared_sub_slo_across_topics_is_allowed():
+    # A sub-SLO taught on >1 topic (same id+statement) must NOT be rejected
+    # (real data — e.g. Ch.1 "Hello, World"). Regression for the cross-chapter
+    # uniqueness bug.
+    req = PlanRequest(
+        subject="Eng", grade=1, period_count=2,
+        chapter={"title": "Hello, World", "topics": [
+            {"id": "t1", "topic_text": "greetings",
+             "slos": [{"id": "shared", "statement": "Uses 'I' to refer to self."},
+                      {"id": "a", "statement": "Names greetings."}]},
+            {"id": "t2", "topic_text": "my name",
+             "slos": [{"id": "shared", "statement": "Uses 'I' to refer to self."},
+                      {"id": "b", "statement": "Writes own name."}]},
+        ]},
+    )
+    assert {s.id for t in req.chapter.topics for s in t.slos} == {"shared", "a", "b"}
+
+
+def test_same_slo_id_conflicting_statement_rejected():
+    with pytest.raises(Exception):
+        PlanRequest(
+            subject="Eng", grade=1, period_count=1,
+            chapter={"title": "X", "topics": [
+                {"id": "t1", "topic_text": "x",
+                 "slos": [{"id": "dup", "statement": "statement one"}]},
+                {"id": "t2", "topic_text": "y",
+                 "slos": [{"id": "dup", "statement": "DIFFERENT statement"}]},
+            ]},
+        )
+
+
 def test_parse_plain_json():
     assert len(parse_plan_units(good_units_json())) == 2
 

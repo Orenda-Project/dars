@@ -47,9 +47,20 @@ class Chapter(BaseModel):
         topic_ids = [t.id for t in self.topics]
         if len(topic_ids) != len(set(topic_ids)):
             raise ValueError("topic ids must be unique within the chapter")
-        slo_ids = [s.id for t in self.topics for s in t.slos]
-        if len(slo_ids) != len(set(slo_ids)):
-            raise ValueError("SLO ids must be unique across the chapter")
+        # A sub-SLO (SLO id) MAY appear on more than one topic — the same skill
+        # is often taught across several topics. That's a valid shape, not a
+        # duplicate: it maps to one chapter-wide SLO that the planner must cover
+        # once. We only reject the same id carrying a DIFFERENT statement
+        # (genuinely inconsistent data); identical repeats are fine.
+        statement_by_id: dict[str, str] = {}
+        for t in self.topics:
+            for s in t.slos:
+                prior = statement_by_id.get(s.id)
+                if prior is not None and prior != s.statement:
+                    raise ValueError(
+                        f"SLO id {s.id!r} appears with two different statements"
+                    )
+                statement_by_id[s.id] = s.statement
         return self
 
 
