@@ -38,10 +38,21 @@ write files until you've read everything this file lists.
 | Plan + onramp | ✅ | (branch `feat/chapter-planner-engine-v2`) |
 | P1 — scaffold + stub `/plan` + playground | ✅ | #115 |
 | P2 — LLM planner core | ✅ | (this branch) |
-| P3 — iteration harness | 🟡 next | — |
+| P3 — data-backed frontend (reshaped, D-10) | ✅ | (this branch) |
 
-**Next thing to do:** Execute Phase 3 (`05-phase-3-iteration-harness.md`) — the iteration harness
-(batch chapters, capture prompt/response/plan, UG_LP adapter). Open bead `feat-cpe-phase-3-iteration-harness`.
+**Reshaped (D-10):** Phase 3 became a **data-backed frontend** instead of the generic iteration
+harness (`05-phase-3-iteration-harness.md` is superseded by D-10). Done: read-only `db.py` over
+staging (`DARS_STAGING_DATABASE_URL`, SELECT-only), `GET /books` · `/books/{id}/chapters` ·
+`/books/{id}/chapters/{cid}/plan-input` (per-topic targets = topic's sub-SLOs), and a real UI in
+`static/index.html` (book → chapter → review topics/sub-SLOs → Plan → rendered units, raw-JSON
+toggle). No persistence. Verified: boots, `/books` returns the 2 real Eng books, 10 chapters load,
+live `/plan` on "The Clever Crow" → valid 5-unit plan; 16 tests still green. asyncpg added.
+
+**Run it:** `cd chapter-planner-app && .venv-test/bin/python -m uvicorn main:app --port 4100`,
+open `http://localhost:4100/`.
+
+**Possible next:** the UG_LP adapter (PlanUnit → /generate-lp request) for end-to-end LP generation,
+or production re-integration into dars (D-9, separate feature).
 
 P2 done & verified: `planner_llm.py` (AgentSdkPlannerLLM, D-13 lessons), `prompts.py`,
 `planner.py` (parse + PlanValidator D-8 a–e, fail-loud per D-2), `/plan` wired (502 LLM / 422
