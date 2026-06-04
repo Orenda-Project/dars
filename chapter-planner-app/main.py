@@ -10,12 +10,16 @@ without it (a /plan call then fails loudly with a clear 502).
 """
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from typing import Any
+
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import db
+import ug_lp_client
+from ug_lp_client import UgLpError
 from logging_config import get_logger
 from models import PlanRequest, ChapterPlan
 from planner import (
@@ -149,3 +153,39 @@ async def plan(req: PlanRequest) -> ChapterPlan:
         sum(len(u.slo_ids) for u in result.units),
     )
     return result
+
+
+@app.post("/generate-lp-for-unit")
+async def generate_lp_for_unit(payload: dict = Body(...)) -> dict:
+    """Turn a single Plan Unit into a real lesson plan via UG_LP (D-7).
+
+    Body: { subject, grade, curriculum, unit: <a single PlanUnit dict> }.
+    Returns { lesson_plan: <html>, request: <body we sent for transparency> }.
+    UG_LP missing key -> 503; UG_LP error/non-200/transport -> 502.
+    """
+    subject = payload.get("subject")
+    grade = payload.get("grade")
+    curriculum = payload.get("curriculum", "ICT")
+    unit: Any = payload.get("unit")
+    logger.info(
+        "[GEN_LP] entry — subject=%s grade=%s curriculum=%s lp_type=%s",
+        subject, grade, curriculum,
+        (unit or {}).get("lp_type") if isinstance(unit, dict) else None,
+    )
+    if not unit or subject is None or grade is None:
+        raise HTTPException(status_code=422, detail="subject, grade, and unit are required")
+
+    sent = ug_lp_client.build_lp_request(unit, subject, int(grade), curriculum)
+    try:
+        data = await ug_lp_client.generate_lp(unit, subject, int(grade), curriculum)
+    except UgLpError as exc:
+        msg = str(exc)
+        if "not configured" in msg:
+            logger.error("[GEN_LP] UG_LP key missing")
+            raise HTTPException(status_code=503, detail=msg) from exc
+        logger.error("[GEN_LP] UG_LP error", exc_info=True)
+        raise HTTPException(status_code=502, detail=msg) from exc
+
+    lesson_plan = data.get("lesson_plan") if isinstance(data, dict) else None
+    logger.info("[GEN_LP] exit — lesson_plan_chars=%d", len(lesson_plan or ""))
+    return {"lesson_plan": lesson_plan, "request": sent}

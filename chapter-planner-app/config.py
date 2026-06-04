@@ -9,13 +9,23 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Load environment variables
+# Load environment variables. Pick up dars' shared .env (carries
+# LP_ASSISTANT_API_KEY / DARS_STAGING_DATABASE_URL), then a local .env (no override).
+load_dotenv("/home/hataf/taleemabad/dars/.env")
 load_dotenv()
 
 # ============================================================================
 # Application Configuration
 # ============================================================================
 ENVIRONMENT = os.getenv("ENVIRONMENT", "stage").lower()  # stage or prod
+
+# ============================================================================
+# UG_LessonPlan adapter config (D-7)
+# CPE calls UG_LP over HTTP (D-1: standalone, imports nothing from dars/server).
+# Reuse dars' LP_ASSISTANT_API_KEY from env; never hardcode a key.
+# ============================================================================
+UG_LP_URL = os.getenv("UG_LP_URL", "https://lp-assistant.taleemabad.com").rstrip("/")
+UG_LP_API_KEY = os.getenv("UG_LP_API_KEY") or os.getenv("LP_ASSISTANT_API_KEY")
 
 # ============================================================================
 # Valid lp_type values per subject (D-5)
