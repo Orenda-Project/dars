@@ -36,15 +36,19 @@ write files until you've read everything this file lists.
 | Phase | Status | PR |
 |-------|--------|----|
 | Plan + onramp | ✅ | (branch `feat/chapter-planner-engine-v2`) |
-| P1 — scaffold + stub `/plan` + playground | ✅ | (this branch) |
-| P2 — LLM planner core | 🟡 next | — |
-| P3 — iteration harness | ⬜ | — |
+| P1 — scaffold + stub `/plan` + playground | ✅ | #115 |
+| P2 — LLM planner core | ✅ | (this branch) |
+| P3 — iteration harness | 🟡 next | — |
 
-**Next thing to do:** Execute Phase 2 (`04-phase-2-planner-core.md`) — the real LLM planner
-(Agents-SDK backend, prompt, strict-JSON parse, validator). Open bead `feat-cpe-phase-2-planner-core`.
-P1 verified: `uvicorn main:app --port 4100` boots, `/health` ok, stub `/plan` returns `period_count`
-units, playground renders. Note: stub leaves a trailing empty unit when `period_count > topic_count`
-(acceptable — Phase 2's real planner replaces the stub).
+**Next thing to do:** Execute Phase 3 (`05-phase-3-iteration-harness.md`) — the iteration harness
+(batch chapters, capture prompt/response/plan, UG_LP adapter). Open bead `feat-cpe-phase-3-iteration-harness`.
+
+P2 done & verified: `planner_llm.py` (AgentSdkPlannerLLM, D-13 lessons), `prompts.py`,
+`planner.py` (parse + PlanValidator D-8 a–e, fail-loud per D-2), `/plan` wired (502 LLM / 422
+invalid). 16 unit tests green (fake LLM). **Live acceptance:** "The Clever Crow" / 5 periods → 5
+units, mixed lp_types (reading/comprehension_qa/grammar/revision), split a topic, all 6 SLOs
+covered, validator clean. The parser strips fences + prose preamble (the bug that broke the in-dars
+planner — see PLANNER_REPORT.md). claude-agent-sdk + dev deps (pytest/httpx) added.
 
 ## Step 6 — Supporting context
 - UG_LP reference shape: `06-reference-ug-lp-input.md` (don't re-read UG_LP source unless it changed).

@@ -2,21 +2,27 @@
 FastAPI application for the Chapter Planning Engine (CPE).
 
 Standalone service (D-1) — NOT imported by the dars backend, shares no process with it.
-Phase 1: health, /plan backed by a deterministic stub (D-2/Phase-2 replaces with LLM),
-Pydantic contracts, structured logging, and a static playground.
+/plan is backed by the real LLM planner (D-2: LLM-only, no fallback). The deterministic
+stub remains importable for tests only.
 
-No claude-agent-sdk import in Phase 1 — the app boots without it installed.
+claude-agent-sdk is lazily imported inside the LLM backend, so the app still boots
+without it (a /plan call then fails loudly with a clear 502).
 """
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from logging_config import get_logger
 from models import PlanRequest, ChapterPlan
-from stub_planner import make_stub_plan
+from planner import (
+    PlanParseError,
+    PlanValidationError,
+    make_chapter_plan,
+)
+from planner_llm import AgentSdkPlannerLLM, PlannerLLMError
 
 logger = get_logger(__name__)
 
@@ -61,10 +67,13 @@ async def plan(req: PlanRequest) -> ChapterPlan:
         req.subject, req.grade, req.curriculum, req.period_count, len(req.chapter.topics),
     )
     try:
-        result = make_stub_plan(req)
-    except Exception:
-        logger.error("[PLAN] failed to build plan", exc_info=True)
-        raise
+        result = await make_chapter_plan(req, AgentSdkPlannerLLM())
+    except PlannerLLMError as exc:
+        logger.error("[PLAN] LLM error", exc_info=True)
+        raise HTTPException(status_code=502, detail=f"planner LLM error: {exc}") from exc
+    except (PlanParseError, PlanValidationError) as exc:
+        logger.error("[PLAN] invalid plan — %s", exc)
+        raise HTTPException(status_code=422, detail=f"invalid plan: {exc}") from exc
     logger.info(
         "[PLAN] exit — units=%s slos_covered=%s",
         len(result.units),
