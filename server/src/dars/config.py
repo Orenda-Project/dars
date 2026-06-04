@@ -52,12 +52,6 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
-    # Chapter Planner LLM backend (D-10). 'api_key' (default) uses the
-    # production ANTHROPIC_API_KEY wrapper; 'agent_sdk' uses claude-agent-sdk
-    # against a dev's Claude Code OAuth session (development only — never set
-    # in production). Env: PLANNER_LLM_BACKEND.
-    planner_llm_backend: str = "api_key"
-
     # taleemabad-core DB — set CORE_DB_URL directly, or set the 5 CORE_STAGING_DB_* parts
     core_db_url: str = ""
     core_staging_db_host: str = ""
