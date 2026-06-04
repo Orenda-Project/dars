@@ -19,14 +19,17 @@ from dars.v2_api.deps import get_db_conn
 from dars.v2_api.schemas_book import (
     BookChapterListResponse,
     BookChapterRead,
+    BookChapterTreeRead,
     BookListResponse,
     BookRead,
+    BookTreeRead,
     ChapterSLOsResponse,
     SLOMiniRead,
     SubSLOMiniRead,
     TopicListResponse,
     TopicRead,
     TopicSubSLOsResponse,
+    TopicTreeRead,
 )
 
 log = logging.getLogger("v2_api.book")
@@ -100,6 +103,141 @@ async def get_book(
     if include_text:
         data["book_text"] = _parse_jsonb(data.get("book_text"))
     return BookRead(**data)
+
+
+@router.get("/books/{book_id}/tree", response_model=BookTreeRead)
+async def get_book_tree(
+    book_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> BookTreeRead:
+    """Full nested book tree for the dashboard book viewer.
+
+    Returns the book (book_text included) → chapters (chapter_text + linked SLOs)
+    → topics (topic_text + linked sub-SLOs) in one payload. OCR is always
+    included (D-3). Assembled with 5 fixed bulk queries — no N+1 (D-2). Public,
+    matching the other book endpoints (D-4).
+    """
+    log.info("get_book_tree start book_id=%s", book_id)
+
+    # 1. book
+    book_row = await conn.fetchrow(
+        """
+        SELECT id, curriculum_id, grade_id, subject_id, title, publisher, edition,
+               published_year, total_chapters, pdf_url, book_text, created_at, updated_at
+        FROM books WHERE id = $1
+        """,
+        book_id,
+    )
+    if book_row is None:
+        log.info("get_book_tree not_found book_id=%s", book_id)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+
+    # 2. chapters
+    chapter_rows = await conn.fetch(
+        """
+        SELECT id, book_id, chapter_number, title, start_page, end_page, chapter_text,
+               status, created_at, updated_at
+        FROM book_chapters
+        WHERE book_id = $1
+        ORDER BY chapter_number
+        """,
+        book_id,
+    )
+    chapter_ids = [r["id"] for r in chapter_rows]
+
+    # 3. topics for all chapters (one query)
+    topic_rows = (
+        await conn.fetch(
+            """
+            SELECT id, book_chapter_id, topic_number, title, start_line, end_line,
+                   topic_text, status, created_at, updated_at
+            FROM topics
+            WHERE book_chapter_id = ANY($1::uuid[])
+            ORDER BY book_chapter_id, topic_number
+            """,
+            chapter_ids,
+        )
+        if chapter_ids
+        else []
+    )
+    topic_ids = [r["id"] for r in topic_rows]
+
+    # 4. chapter→SLOs (one query)
+    chapter_slo_rows = (
+        await conn.fetch(
+            """
+            SELECT bcs.book_chapter_id, s.id, s.code, s.statement
+            FROM book_chapter_slos bcs
+            JOIN slos s ON s.id = bcs.slo_id
+            WHERE bcs.book_chapter_id = ANY($1::uuid[])
+            ORDER BY bcs.book_chapter_id, s.position, s.code
+            """,
+            chapter_ids,
+        )
+        if chapter_ids
+        else []
+    )
+
+    # 5. topic→sub-SLOs (one query)
+    topic_sub_slo_rows = (
+        await conn.fetch(
+            """
+            SELECT tss.topic_id, ss.id, ss.code, ss.statement
+            FROM topic_sub_slos tss
+            JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+            WHERE tss.topic_id = ANY($1::uuid[])
+            ORDER BY tss.topic_id, ss.position, ss.code
+            """,
+            topic_ids,
+        )
+        if topic_ids
+        else []
+    )
+
+    # Stitch in Python (no further DB round trips).
+    slos_by_chapter: dict[UUID, list[SLOMiniRead]] = {}
+    for r in chapter_slo_rows:
+        slos_by_chapter.setdefault(r["book_chapter_id"], []).append(
+            SLOMiniRead(id=r["id"], code=r["code"], statement=r["statement"])
+        )
+
+    sub_slos_by_topic: dict[UUID, list[SubSLOMiniRead]] = {}
+    for r in topic_sub_slo_rows:
+        sub_slos_by_topic.setdefault(r["topic_id"], []).append(
+            SubSLOMiniRead(id=r["id"], code=r["code"], statement=r["statement"])
+        )
+
+    topics_by_chapter: dict[UUID, list[TopicTreeRead]] = {}
+    for r in topic_rows:
+        topics_by_chapter.setdefault(r["book_chapter_id"], []).append(
+            TopicTreeRead(
+                **dict(r),
+                sub_slos=sub_slos_by_topic.get(r["id"], []),
+            )
+        )
+
+    chapters = []
+    for r in chapter_rows:
+        data = dict(r)
+        data["chapter_text"] = _parse_jsonb(data.get("chapter_text"))
+        chapters.append(
+            BookChapterTreeRead(
+                **data,
+                slos=slos_by_chapter.get(r["id"], []),
+                topics=topics_by_chapter.get(r["id"], []),
+            )
+        )
+
+    book_data = dict(book_row)
+    book_data["book_text"] = _parse_jsonb(book_data.get("book_text"))
+
+    log.info(
+        "get_book_tree done book_id=%s chapters=%d topics=%d",
+        book_id,
+        len(chapters),
+        len(topic_rows),
+    )
+    return BookTreeRead(**book_data, chapters=chapters)
 
 
 # ---------------------------------------------------------------------------

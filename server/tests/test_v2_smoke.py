@@ -147,6 +147,39 @@ class TestV2Smoke:
         topic_subs = await _get(client, f"/api/v2/topics/{first_topic['id']}/sub-slos")
         assert len(topic_subs["items"]) >= 2
 
+    async def test_book_tree(self, client: AsyncClient) -> None:
+        # Full nested tree (book-viewer F-1.1): book + book_text + chapters
+        # (chapter_text + slos) + topics (topic_text + sub_slos), one payload.
+        curriculums = await _get(client, "/api/v2/curriculums?is_active=true")
+        dars_id = next(c["id"] for c in curriculums["items"] if c["code"] == "DARS")
+        grades = await _get(client, "/api/v2/grades")
+        g1_id = next(g["id"] for g in grades["items"] if g["code"] == 1)
+        subjects = await _get(client, "/api/v2/subjects")
+        eng_id = next(s["id"] for s in subjects["items"] if s["code"] == "Eng")
+        books = await _get(
+            client,
+            f"/api/v2/books?curriculum_id={dars_id}&grade_id={g1_id}&subject_id={eng_id}",
+        )
+        book_id = books["items"][0]["id"]
+
+        tree = await _get(client, f"/api/v2/books/{book_id}/tree")
+        # OCR always included on the tree (D-3)
+        assert isinstance(tree["book_text"], list) and len(tree["book_text"]) >= 30
+        assert len(tree["chapters"]) == 10
+        clever_crow = next(c for c in tree["chapters"] if c["title"] == "The Clever Crow")
+        # chapter_text populated + linked SLOs nested in
+        assert isinstance(clever_crow["chapter_text"], list)
+        slo_codes = {s["code"] for s in clever_crow["slos"]}
+        assert "R1-04" in slo_codes and "C1-01" in slo_codes
+        # topics nested with topic_text + sub_slos
+        assert len(clever_crow["topics"]) >= 3
+        assert all(t["topic_text"] for t in clever_crow["topics"])
+        assert any(len(t["sub_slos"]) >= 2 for t in clever_crow["topics"])
+
+        # 404 on an unknown book
+        resp = await client.get("/api/v2/books/00000000-0000-0000-0000-000000000000/tree")
+        assert resp.status_code == 404
+
     async def test_tenancy_endpoints_require_api_key(self, client: AsyncClient) -> None:
         # Without key → 401
         resp = await client.get("/api/v2/orgs/me")

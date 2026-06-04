@@ -81,3 +81,25 @@ class ChapterSLOsResponse(BaseModel):
 
 class TopicSubSLOsResponse(BaseModel):
     items: list[SubSLOMiniRead]
+
+
+# ---------------------------------------------------------------------------
+# Full book tree (GET /books/{id}/tree) — single nested payload, OCR included.
+# See docs/features/book-viewer/02-data-model.md (D-1..D-3).
+# ---------------------------------------------------------------------------
+
+
+class TopicTreeRead(TopicRead):
+    """A topic plus its linked sub-SLOs."""
+    sub_slos: list[SubSLOMiniRead]
+
+
+class BookChapterTreeRead(BookChapterRead):
+    """A chapter (chapter_text populated) plus its linked SLOs and topics."""
+    slos: list[SLOMiniRead]
+    topics: list[TopicTreeRead]
+
+
+class BookTreeRead(BookRead):
+    """A book (book_text populated) plus its full chapter→topic tree."""
+    chapters: list[BookChapterTreeRead]
