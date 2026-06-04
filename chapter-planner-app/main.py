@@ -10,11 +10,12 @@ without it (a /plan call then fails loudly with a clear 502).
 """
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+import db
 from logging_config import get_logger
 from models import PlanRequest, ChapterPlan
 from planner import (
@@ -58,6 +59,74 @@ async def health() -> dict:
 async def playground() -> FileResponse:
     logger.info("[PLAYGROUND] serving index.html")
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    await db.close_pool()
+
+
+# ============================================================================
+# Browse endpoints — read-only staging DB (D-1, SELECT-only)
+# ============================================================================
+@app.get("/books")
+async def get_books() -> list[dict]:
+    logger.info("[BOOKS] entry")
+    try:
+        books = await db.list_books()
+    except db.StagingDbError as exc:
+        logger.error("[BOOKS] staging DB error", exc_info=True)
+        raise HTTPException(status_code=503, detail=f"staging DB unavailable: {exc}") from exc
+    logger.info("[BOOKS] exit — books=%d", len(books))
+    return books
+
+
+@app.get("/books/{book_id}/chapters")
+async def get_chapters(book_id: str) -> list[dict]:
+    logger.info("[CHAPTERS] entry — book_id=%s", book_id)
+    try:
+        chapters = await db.list_chapters(book_id)
+    except db.StagingDbError as exc:
+        logger.error("[CHAPTERS] staging DB error", exc_info=True)
+        raise HTTPException(status_code=503, detail=f"staging DB unavailable: {exc}") from exc
+    logger.info("[CHAPTERS] exit — book_id=%s chapters=%d", book_id, len(chapters))
+    return chapters
+
+
+@app.get("/books/{book_id}/chapters/{chapter_id}/plan-input")
+async def get_plan_input(
+    book_id: str,
+    chapter_id: str,
+    period_count: int = Query(..., gt=0),
+    subject: str = Query("Eng"),
+    grade: int | None = Query(None),
+    curriculum: str = Query("ICT"),
+) -> dict:
+    logger.info(
+        "[PLAN_INPUT] entry — book_id=%s chapter_id=%s period_count=%s subject=%s grade=%s",
+        book_id, chapter_id, period_count, subject, grade,
+    )
+    try:
+        # Resolve grade from the book if not explicitly provided.
+        if grade is None:
+            books = await db.list_books()
+            match = next((b for b in books if b["id"] == book_id), None)
+            grade = int(match["grade"]) if match else 1
+        plan_input = await db.get_chapter_as_plan_input(
+            book_chapter_id=chapter_id,
+            subject=subject,
+            grade=grade,
+            period_count=period_count,
+            curriculum=curriculum,
+        )
+    except db.StagingDbError as exc:
+        logger.error("[PLAN_INPUT] staging DB error", exc_info=True)
+        raise HTTPException(status_code=503, detail=f"staging DB unavailable: {exc}") from exc
+    logger.info(
+        "[PLAN_INPUT] exit — chapter=%r topics=%d",
+        plan_input["chapter"]["title"], len(plan_input["chapter"]["topics"]),
+    )
+    return plan_input
 
 
 @app.post("/plan", response_model=ChapterPlan)

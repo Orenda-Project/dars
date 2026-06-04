@@ -3,146 +3,243 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chapter Planning Engine — Playground</title>
+  <title>Chapter Planning Engine</title>
   <style>
-    :root { --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --accent:#2d6cdf; --bg:#fafafa; }
+    :root { --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --accent:#2d6cdf; --bg:#fafafa;
+            --ok:#138a36; --err:#c0392b; --chip:#eef3fd; }
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           margin: 0; padding: 2rem; color: var(--fg); background: var(--bg); }
-    h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
-    p.sub { color: var(--muted); margin: 0 0 1.5rem; }
-    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
-    @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
-    label { font-weight: 600; font-size: .85rem; display: block; margin-bottom: .4rem; }
-    textarea { width: 100%; height: 460px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
-               font-size: .8rem; padding: .75rem; border: 1px solid var(--line); border-radius: 8px;
-               resize: vertical; background: #fff; }
-    button { margin-top: .75rem; background: var(--accent); color: #fff; border: none; padding: .6rem 1.4rem;
-             font-size: .95rem; border-radius: 8px; cursor: pointer; }
-    button:disabled { opacity: .6; cursor: default; }
-    .meta { color: var(--muted); font-size: .85rem; margin: 0 0 1rem; }
-    .unit { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.1rem;
-            margin-bottom: 1rem; }
-    .unit-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .5rem; }
-    .seq { background: var(--accent); color: #fff; width: 1.7rem; height: 1.7rem; border-radius: 50%;
-           display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; }
-    .lp { font-weight: 700; }
-    .pill { display: inline-block; background: #eef3fd; color: var(--accent); border-radius: 999px;
-            padding: .1rem .55rem; font-size: .75rem; margin: 0 .25rem .25rem 0; }
-    .row { font-size: .85rem; margin: .35rem 0; }
-    .row b { color: var(--muted); font-weight: 600; }
-    .topictext { white-space: pre-wrap; background: var(--bg); border-radius: 6px; padding: .5rem .6rem;
-                 font-size: .8rem; margin-top: .3rem; }
-    .rationale { font-style: italic; color: #333; margin-top: .5rem; font-size: .85rem; }
-    .err { background: #fdecec; border: 1px solid #f5b5b5; color: #a12020; padding: .75rem 1rem;
-           border-radius: 8px; font-size: .85rem; white-space: pre-wrap; }
+    body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+           margin:0; padding:2rem; color:var(--fg); background:var(--bg); }
+    h1 { font-size:1.5rem; margin:0 0 .25rem; }
+    p.sub { color:var(--muted); margin:0 0 1.5rem; }
+    .wrap { max-width:980px; margin:0 auto; }
+    .panel { background:#fff; border:1px solid var(--line); border-radius:12px;
+             padding:1.25rem 1.4rem; margin-bottom:1.25rem; }
+    label { font-weight:600; font-size:.8rem; display:block; margin-bottom:.35rem; color:var(--muted);
+            text-transform:uppercase; letter-spacing:.03em; }
+    select, input[type=number] { width:100%; padding:.55rem .65rem; border:1px solid var(--line);
+            border-radius:8px; font-size:.95rem; background:#fff; }
+    .row { display:flex; gap:1rem; flex-wrap:wrap; }
+    .row > div { flex:1; min-width:200px; }
+    button { background:var(--accent); color:#fff; border:none; padding:.6rem 1.4rem;
+             font-size:.95rem; border-radius:8px; cursor:pointer; font-weight:600; }
+    button:disabled { opacity:.5; cursor:default; }
+    button.ghost { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+    .chapters { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:.6rem; }
+    .chip { border:1px solid var(--line); border-radius:10px; padding:.7rem .8rem; cursor:pointer;
+            background:#fff; transition:.12s; }
+    .chip:hover { border-color:var(--accent); }
+    .chip.sel { border-color:var(--accent); background:var(--chip); }
+    .chip .n { font-weight:700; color:var(--accent); }
+    .chip .t { font-weight:600; margin:.15rem 0; }
+    .chip .c { font-size:.8rem; color:var(--muted); }
+    details.topic { border:1px solid var(--line); border-radius:10px; padding:.6rem .8rem; margin-bottom:.6rem; }
+    details.topic summary { cursor:pointer; font-weight:600; }
+    .slo { font-size:.88rem; padding:.3rem 0 .3rem .6rem; border-left:3px solid var(--chip);
+           margin:.3rem 0 .3rem .4rem; color:#333; }
+    pre.tt { white-space:pre-wrap; background:var(--bg); border-radius:8px; padding:.6rem .8rem;
+             font-size:.82rem; margin:.5rem 0; color:#444; }
+    .unit { border:1px solid var(--line); border-radius:12px; padding:1rem 1.1rem; margin-bottom:.9rem; background:#fff; }
+    .unit-head { display:flex; align-items:center; gap:.7rem; margin-bottom:.55rem; flex-wrap:wrap; }
+    .seq { background:var(--accent); color:#fff; width:1.8rem; height:1.8rem; border-radius:50%;
+           display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:.85rem; }
+    .badge { background:var(--chip); color:var(--accent); border-radius:999px; padding:.2rem .7rem;
+             font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.02em; }
+    .unit .meta { font-size:.82rem; color:var(--muted); margin:.2rem 0; }
+    .unit .rat { font-size:.9rem; margin-top:.4rem; }
+    .msg { padding:.7rem .9rem; border-radius:8px; font-size:.9rem; margin:.6rem 0; }
+    .msg.err { background:#fdecea; color:var(--err); border:1px solid #f5c6c0; }
+    .msg.info { background:var(--chip); color:var(--accent); }
+    .spin { display:inline-block; width:1rem; height:1rem; border:2px solid #fff; border-top-color:transparent;
+            border-radius:50%; animation:spin .7s linear infinite; vertical-align:-2px; margin-right:.4rem; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .hidden { display:none; }
+    pre.raw { background:#1a1a1a; color:#e6e6e6; padding:1rem; border-radius:10px; overflow:auto; font-size:.78rem; }
+    .small { font-size:.8rem; color:var(--muted); }
   </style>
 </head>
 <body>
+<div class="wrap">
   <h1>Chapter Planning Engine</h1>
-  <p class="sub">Phase 1 playground — POSTs to <code>/plan</code> (deterministic stub).</p>
+  <p class="sub">Pick a real English chapter from staging, review the source topics + sub-SLOs, then let the LLM plan its Plan Units. Nothing is persisted.</p>
 
-  <div class="layout">
-    <div>
-      <label for="req">Plan request (JSON)</label>
-      <textarea id="req"></textarea>
-      <button id="go">Plan</button>
+  <div class="panel">
+    <div class="row">
+      <div>
+        <label for="book">Book</label>
+        <select id="book"><option>Loading…</option></select>
+      </div>
+      <div>
+        <label for="period">Period count</label>
+        <input type="number" id="period" min="1" value="3" />
+      </div>
     </div>
-    <div>
-      <label>Result</label>
-      <div id="out"><p class="meta">Click “Plan” to see the units.</p></div>
+    <div id="bookMsg"></div>
+  </div>
+
+  <div class="panel hidden" id="chaptersPanel">
+    <label>Chapter</label>
+    <div class="chapters" id="chapters"></div>
+    <div style="margin-top:1rem">
+      <button id="loadBtn" disabled>Load chapter</button>
     </div>
   </div>
 
-  <script>
-    const SAMPLE = {
-      subject: "Eng",
-      grade: 1,
-      curriculum: "ICT",
-      period_count: 3,
-      chapter: {
-        title: "Chapter 1 — Myself",
-        topics: [
-          {
-            id: "t1",
-            topic_text: "Greetings and introductions. Saying hello, good morning, and goodbye to friends and teachers.",
-            slos: [
-              { id: "s1", statement: "Student can greet others appropriately." },
-              { id: "s2", statement: "Student can state their own name." }
-            ]
-          },
-          {
-            id: "t2",
-            topic_text: "My family. Naming family members — mother, father, sister, brother — and describing who they are.",
-            slos: [
-              { id: "s3", statement: "Student can name immediate family members." },
-              { id: "s4", statement: "Student can describe a family member in a short sentence." }
-            ]
-          },
-          {
-            id: "t3",
-            topic_text: "Grammar focus: Adverbs of Time (now, today, tomorrow, yesterday) used in simple daily-routine sentences.",
-            slos: [
-              { id: "s5", statement: "Student can identify adverbs of time in a sentence." },
-              { id: "s6", statement: "Student can use 'Adverbs of Time' correctly in a simple sentence." }
-            ]
-          }
-        ]
-      }
-    };
+  <div class="panel hidden" id="inputPanel">
+    <label>Resolved chapter (this is the plan input)</label>
+    <h3 id="chTitle" style="margin:.2rem 0 .8rem"></h3>
+    <div id="topics"></div>
+    <div style="margin-top:1rem">
+      <button id="planBtn">Plan it</button>
+      <span class="small">LLM call, takes ~10–20s</span>
+    </div>
+    <div id="planMsg"></div>
+  </div>
 
-    const reqEl = document.getElementById("req");
-    const outEl = document.getElementById("out");
-    const goEl  = document.getElementById("go");
-    reqEl.value = JSON.stringify(SAMPLE, null, 2);
+  <div class="panel hidden" id="planPanel">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+      <label style="margin:0">Plan</label>
+      <button class="ghost" id="rawToggle">Show raw JSON</button>
+    </div>
+    <div id="units" style="margin-top:.8rem"></div>
+    <pre class="raw hidden" id="raw"></pre>
+  </div>
+</div>
 
-    function esc(s) {
-      return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-    }
+<script>
+const $ = s => document.querySelector(s);
+let chapters = [], selectedChapter = null, planInput = null, lastPlan = null;
 
-    function render(plan) {
-      const head = `<p class="meta">${esc(plan.subject)} · Grade ${esc(plan.grade)} · ${esc(plan.curriculum)} · ${plan.units.length} unit(s)</p>`;
-      const units = plan.units.map(u => `
-        <div class="unit">
-          <div class="unit-head">
-            <span class="seq">${esc(u.sequence)}</span>
-            <span class="lp">${esc(u.lp_type)}</span>
-          </div>
-          <div class="row"><b>Topics:</b> ${u.topic_ids.map(t => `<span class="pill">${esc(t)}</span>`).join("") || "—"}</div>
-          <div class="row"><b>SLOs:</b> ${u.slo_ids.map(s => `<span class="pill">${esc(s)}</span>`).join("") || "—"}</div>
-          <div class="topictext">${esc(u.topic_text || "—")}</div>
-          <div class="rationale">${esc(u.rationale || "")}</div>
-        </div>`).join("");
-      outEl.innerHTML = head + units;
-    }
+function msg(el, text, kind) {
+  el.innerHTML = text ? `<div class="msg ${kind||'info'}">${text}</div>` : '';
+}
 
-    async function plan() {
-      let body;
-      try { body = JSON.parse(reqEl.value); }
-      catch (e) { outEl.innerHTML = `<div class="err">Invalid JSON: ${esc(e.message)}</div>`; return; }
+async function jget(url) {
+  const r = await fetch(url);
+  if (!r.ok) { const b = await r.json().catch(()=>({})); throw new Error(b.detail || r.statusText); }
+  return r.json();
+}
 
-      goEl.disabled = true;
-      outEl.innerHTML = `<p class="meta">Planning…</p>`;
-      try {
-        const res = await fetch("/plan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          outEl.innerHTML = `<div class="err">HTTP ${res.status}\n${esc(JSON.stringify(data, null, 2))}</div>`;
-        } else {
-          render(data);
-        }
-      } catch (e) {
-        outEl.innerHTML = `<div class="err">Request failed: ${esc(e.message)}</div>`;
-      } finally {
-        goEl.disabled = false;
-      }
-    }
+async function loadBooks() {
+  try {
+    const books = await jget('/books');
+    const sel = $('#book');
+    sel.innerHTML = '';
+    books.forEach(b => {
+      const o = document.createElement('option');
+      o.value = b.id;
+      o.textContent = `${b.title} (G${b.grade}, ${b.total_chapters} ch)`;
+      sel.appendChild(o);
+    });
+    if (books.length) { sel.value = books[0].id; loadChapters(); }
+  } catch (e) { msg($('#bookMsg'), 'Could not load books: ' + e.message, 'err'); }
+}
 
-    goEl.addEventListener("click", plan);
-  </script>
+async function loadChapters() {
+  const bookId = $('#book').value;
+  selectedChapter = null; $('#loadBtn').disabled = true;
+  $('#inputPanel').classList.add('hidden'); $('#planPanel').classList.add('hidden');
+  try {
+    chapters = await jget(`/books/${bookId}/chapters`);
+    const c = $('#chapters'); c.innerHTML = '';
+    chapters.forEach(ch => {
+      const d = document.createElement('div');
+      d.className = 'chip';
+      d.innerHTML = `<div class="n">Ch ${ch.chapter_number}</div><div class="t">${ch.title}</div><div class="c">${ch.topic_count} topic${ch.topic_count===1?'':'s'}</div>`;
+      d.onclick = () => selectChapter(ch, d);
+      c.appendChild(d);
+    });
+    $('#chaptersPanel').classList.remove('hidden');
+  } catch (e) { msg($('#bookMsg'), 'Could not load chapters: ' + e.message, 'err'); }
+}
+
+function selectChapter(ch, el) {
+  selectedChapter = ch;
+  document.querySelectorAll('.chip').forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+  $('#loadBtn').disabled = false;
+  if (ch.topic_count > 0) $('#period').value = ch.topic_count;
+}
+
+async function loadInput() {
+  if (!selectedChapter) return;
+  const bookId = $('#book').value;
+  const period = Math.max(1, parseInt($('#period').value || '1', 10));
+  $('#planPanel').classList.add('hidden');
+  try {
+    planInput = await jget(`/books/${bookId}/chapters/${selectedChapter.id}/plan-input?period_count=${period}&subject=Eng`);
+    $('#chTitle').textContent = planInput.chapter.title;
+    const t = $('#topics'); t.innerHTML = '';
+    planInput.chapter.topics.forEach((tp, i) => {
+      const d = document.createElement('details'); d.className = 'topic';
+      const slos = tp.slos.map(s => `<div class="slo">${s.statement}</div>`).join('');
+      d.innerHTML = `<summary>${tp.title || ('Topic ' + (i+1))} — ${tp.slos.length} sub-SLO${tp.slos.length===1?'':'s'}</summary>`
+        + `<pre class="tt">${(tp.topic_text||'').replace(/</g,'&lt;')}</pre>` + slos;
+      t.appendChild(d);
+    });
+    $('#inputPanel').classList.remove('hidden');
+    msg($('#planMsg'), '');
+  } catch (e) { msg($('#bookMsg'), 'Could not load chapter: ' + e.message, 'err'); }
+}
+
+async function planIt() {
+  if (!planInput) return;
+  const btn = $('#planBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Planning…';
+  msg($('#planMsg'), '<span class="spin"></span>Calling the planner LLM (~10–20s)…', 'info');
+  try {
+    const r = await fetch('/plan', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(planInput)
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail));
+    lastPlan = body;
+    renderPlan(body);
+    msg($('#planMsg'), '');
+  } catch (e) {
+    msg($('#planMsg'), 'Plan failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Plan it';
+  }
+}
+
+function statementsFor(ids) {
+  const map = {};
+  planInput.chapter.topics.forEach(t => t.slos.forEach(s => map[s.id] = s.statement));
+  return ids.map(id => map[id] || id);
+}
+function topicTitlesFor(ids) {
+  const map = {};
+  planInput.chapter.topics.forEach((t,i) => map[t.id] = t.title || ('Topic ' + (i+1)));
+  return ids.map(id => map[id] || id);
+}
+
+function renderPlan(plan) {
+  const u = $('#units'); u.innerHTML = '';
+  plan.units.forEach(unit => {
+    const slos = statementsFor(unit.slo_ids).map(s => `<div class="slo">${s}</div>`).join('');
+    const tops = topicTitlesFor(unit.topic_ids).join(', ');
+    const d = document.createElement('div'); d.className = 'unit';
+    d.innerHTML = `<div class="unit-head"><span class="seq">${unit.sequence}</span>`
+      + `<span class="badge">${unit.lp_type}</span></div>`
+      + `<div class="meta"><b>Topics:</b> ${tops}</div>`
+      + `<div class="meta"><b>SLOs:</b></div>${slos}`
+      + `<div class="rat"><b>Rationale:</b> ${unit.rationale}</div>`;
+    u.appendChild(d);
+  });
+  $('#raw').textContent = JSON.stringify(plan, null, 2);
+  $('#planPanel').classList.remove('hidden');
+}
+
+$('#book').onchange = loadChapters;
+$('#loadBtn').onclick = loadInput;
+$('#planBtn').onclick = planIt;
+$('#rawToggle').onclick = () => {
+  const raw = $('#raw'); const hidden = raw.classList.toggle('hidden');
+  $('#rawToggle').textContent = hidden ? 'Show raw JSON' : 'Hide raw JSON';
+};
+loadBooks();
+</script>
 </body>
 </html>
