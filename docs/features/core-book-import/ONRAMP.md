@@ -36,15 +36,26 @@ single entry point. Read everything it lists before executing code.
 | Item | Status |
 |---|---|
 | Plan written + approved | ✅ |
-| F-1.1 `import_runs` migration | ⬜ |
-| F-1.2 vendor breakdown prompt + port lp_type classifier (D-4) | ⬜ |
-| F-1.3 `GET /admin/core-books` | ⬜ |
-| F-1.4 `book_import_service.py` (ported ETL) | ⬜ |
-| F-1.5 import endpoints + background job | ⬜ |
+| F-1.1 `import_runs` migration | ✅ `migrations/20260607000000_import_runs.sql` |
+| F-1.2 vendor breakdown prompt + port lp_type classifier (D-4) | ✅ `v2_api/prompts/slo_breakdown_english.txt` + `v2_api/lp_type_classifier.py` |
+| F-1.3 `GET /admin/core-books` | ✅ `router_book_import.py` (browse fde_staging, already_imported flag) |
+| F-1.4 `book_import_service.py` (ported ETL) | ✅ generalised cell, progress→import_runs, separate-conn failure marking |
+| F-1.5 import endpoints + background job | ✅ POST (202, 409 guard, 422 bad cell, 503 no-core) + GET {id} + GET list; router registered in main.py |
 | Phase 2 (frontend) | ⬜ |
 
-**Next thing to do:** open bead `feat-core-book-import-phase-1`, branch from `staging`,
-implement F-1.1 → F-1.5 in order.
+**Next thing to do:** push `feat/core-book-import`, open PR → `staging`. Phase 1 backend is
+done + green (188 passed/35 skipped; new tests `test_book_import_service.py` +
+`test_book_import_prompt.py`). **OPS GATE (D-7):** imports return 503 until the core-DB env
+vars (`CORE_DB_URL` or 5× `CORE_STAGING_DB_*`) + `ANTHROPIC_API_KEY` are set on the Dars
+Railway server — flag to the user; no secrets in git. Then start Phase 2 (frontend) — bead
+`feat-core-book-import-phase-2`, plan in `05-phase-2-frontend.md`.
+
+**Known limitations recorded during F-1.4:** (a) the sub-SLO code parser
+(`_SUB_SLO_CODE_RE = ^([A-Z]\d*-\d+)-[a-z]$`) is ported verbatim from the script and expects
+`A1-02-a`-style codes; the breakdown prompt's rule 6 emits dot-notation (`A-01.1`), so the
+parser may drop rows — the service logs a warning ("0 usable sub-SLOs") rather than failing.
+A follow-up should reconcile the prompt's output format with the parser. (b) breakdown prompt
+is English-only (D-4); non-Eng cells get a warning. (c) topics stay 1/chapter (D-3).
 
 ## Step 6 — Supporting context
 - Proven ETL: `scripts/import_ncp_english_g1.py`; lp_type: `scripts/lp_type_classifier.py`

@@ -52,8 +52,11 @@ add their own prompt file (logged limitation — non-English books may break bre
 
 **D-5: The import is admin-gated and runs inside the Dars app process.** *Rationale:* it's
 a dashboard action; the app already has core-DB config plumbing
-(`settings.effective_core_db_url`) and `require_admin`. *Apply:* both endpoints depend on
-`require_admin` (from `deps.py`). The import service opens its own short-lived asyncpg
+(`settings.effective_core_db_url`) and a session-based admin auth dep. *Apply:* both
+endpoints depend on `get_current_admin` (from `admin_auth.py`, `X-Admin-Session` header,
+returns `AdminContext`) — the **same dep the rest of the admin dashboard uses**
+(router_admin.py, router_admin_tenancy.py); NOT the `X-Admin-Token` `require_admin` in
+deps.py. Use `AdminContext` for `import_runs.started_by`. The import service opens its own short-lived asyncpg
 connections — a read-only one to core (`effective_core_db_url`, `SET search_path TO
 fde_staging, public`) and a read-write one to Dars — rather than reusing the request's
 pooled connection (the background task outlives the request). The Dars writes run in a
@@ -73,6 +76,19 @@ cleanly.** *Rationale:* core-DB env vars may be absent on a given environment. *
 /admin/book-imports` return `503` with a clear message ("taleemabad-core DB not configured
 on this server"). Setting the env vars on Railway is an ops step, flagged in the ONRAMP
 (no secrets in git). *Decided:* 2026-06-04.
+
+**D-9: Sub-SLO code parser is ported verbatim and may not match the prompt's output
+format — logged, not fixed, in Phase 1.** *Rationale:* the script's
+`_SUB_SLO_CODE_RE = ^([A-Z]\d*-\d+)-[a-z]$` expects `A1-02-a`-style sub-SLO codes, but the
+vendored breakdown prompt (rule 6) instructs the model to emit dot-notation
+(`MainSLOCode.1`, e.g. `A-01.1`). These don't match, so the parser can silently drop sub-SLO
+rows. The proven NCP run apparently produced compatible codes (the seed has 71 sub-SLOs), so
+the script "worked" for that book — but a general import may not. *Apply:* Phase 1 ports the
+parser as-is (faithful to the reference, D-3 spirit) and the service logs a warning ("0 usable
+sub-SLOs … code format may not match the parser") instead of failing the run. **Follow-up
+`core-book-import-subslo-code-format`:** reconcile the prompt's output format with the parser
+(either loosen the regex to accept dot-notation, or change the prompt's rule 6, or have the
+breakdown emit explicit parent+child columns). *Decided:* 2026-06-04 (discovered during F-1.4).
 
 **D-8: Concurrency — one running import at a time (per server).** *Rationale:* the import
 holds a Dars transaction and makes serial LLM calls; concurrent imports of the same book
