@@ -42,9 +42,63 @@ BREAKDOWN_MODEL = "claude-opus-4-6"
 BREAKDOWN_MAX_TOKENS = 32000
 TOPIC_MAPPER_MODEL = "claude-opus-4-6"
 
-# Matches "A1-02-a", "B-01-c", etc. — capture the parent prefix before the
-# final -<letter>. (Ported verbatim from the script; see KNOWN LIMITATION below.)
-_SUB_SLO_CODE_RE = re.compile(r"^([A-Z]\d*-\d+)-[a-z]$")
+# Strips a sub-SLO suffix to recover the parent SLO code. The breakdown prompt
+# (rule 6) emits dot-notation (`A-01.1`) or, when unsplittable, the bare parent
+# code (`A-01`); the original script also produced hyphen-letter codes
+# (`A1-02-a`). `_derive_parent_code` handles all three by matching against the
+# set of KNOWN parent codes (D-9 fix) — see _derive_parent_code below.
+_SUB_SLO_SUFFIX_RE = re.compile(
+    r"""^(?P<parent>.+?)        # parent prefix (non-greedy)
+        (?:                     # one of the known sub-SLO suffixes:
+            \.\d+               #   .1 .2 …            (prompt dot-notation)
+          | -[a-z]+             #   -a -b … -aa        (hyphen-letter)
+          | \(\d+\)             #   (1) (2) …          (occasional paren)
+        )$""",
+    re.VERBOSE,
+)
+
+
+def _derive_parent_code(code: str, known_parents: set[str]) -> str | None:
+    """Map a sub-SLO code to its parent SLO code, robust to format (D-9).
+
+    Strategy, most-trusted first:
+      1. exact match — an unsplittable SLO keeps the parent code (`A-01`).
+      2. strip a recognised suffix (`A-01.1`, `A1-02-a`, `A-01(1)`) → parent.
+      3. longest known parent that is a prefix of the code (handles odd
+         separators we didn't anticipate).
+    Returns the parent code if it is a known parent, else None.
+    """
+    code = code.strip()
+    if code in known_parents:
+        return code
+    m = _SUB_SLO_SUFFIX_RE.match(code)
+    if m and m.group("parent") in known_parents:
+        return m.group("parent")
+    # Fallback: longest known parent code that prefixes this sub-code.
+    candidates = [p for p in known_parents if code.startswith(p) and code != p]
+    if candidates:
+        return max(candidates, key=len)
+    return None
+
+
+def _sub_code_sort_key(code: str) -> tuple:
+    """Order sub-SLO codes by their trailing index, numeric-aware.
+
+    `A-01.2` < `A-01.10`; `-b` < `-aa`. Returns a (kind, value) tuple so a
+    numeric suffix sorts before/independent of an alpha one; unknown shapes
+    sort last but stably.
+    """
+    code = code.strip()
+    m = re.search(r"(?:\.(\d+)|\((\d+)\)|-([a-z]+))$", code)
+    if not m:
+        return (2, 0, code)
+    if m.group(1) is not None:
+        return (0, int(m.group(1)), "")
+    if m.group(2) is not None:
+        return (0, int(m.group(2)), "")
+    # alpha suffix: a, b, …, z, aa — base-26-ish, length-then-lex is fine
+    suffix = m.group(3)
+    return (1, len(suffix), suffix)
 
 STEPS = ("slos", "sub_slos", "book_chapters", "topics", "mappings")
 
@@ -482,6 +536,7 @@ async def _import_cell(
             client=client,
         )
         rows = _parse_breakdown_markdown(raw_md)
+        known_parents = set(slo_code_to_info.keys())
         parsed: list[dict[str, str]] = []
         skipped = 0
         for row in rows:
@@ -489,20 +544,17 @@ async def _import_cell(
             statement = (row.get("Sub SLOs") or "").strip()
             if not code or not statement:
                 continue
-            m = _SUB_SLO_CODE_RE.match(code)
-            if not m:
-                continue
-            parent_code = m.group(1)
-            if parent_code not in slo_code_to_info:
+            parent_code = _derive_parent_code(code, known_parents)
+            if parent_code is None:
                 skipped += 1
                 continue
             parsed.append({"code": code, "statement": statement, "parent_slo_code": parent_code})
         if skipped:
-            prog.warn(f"{skipped} sub-SLOs referenced an unknown parent SLO — skipped")
-        if not parsed:
+            prog.warn(f"{skipped} sub-SLO row(s) had no recognisable parent SLO code — skipped")
+        if rows and not parsed:
             prog.warn(
-                "breakdown produced 0 usable sub-SLOs (code format may not match the "
-                "parser, e.g. dot-notation vs -letter suffix) — proceeding with none"
+                "breakdown returned rows but none mapped to a known parent SLO — "
+                "check the breakdown output format against the SLO codes"
             )
         # Classify lp_type per sub-SLO.
         for rec in parsed:
@@ -513,13 +565,16 @@ async def _import_cell(
                 sub_slo_statement=rec["statement"],
                 client=client,
             )
-        # Upsert, position within parent.
+        # Upsert, position within parent. Preserve breakdown order, but break
+        # ties by the numeric/alpha suffix so `.2` precedes `.10` (and `-b`
+        # precedes `-aa`) regardless of code format (D-9).
         by_parent: dict[str, list[dict]] = {}
-        for rec in parsed:
+        for idx, rec in enumerate(parsed):
+            rec["_order"] = idx
             by_parent.setdefault(rec["parent_slo_code"], []).append(rec)
         for parent_code, subs in by_parent.items():
             parent_uuid, _ = slo_code_to_info[parent_code]
-            subs.sort(key=lambda r: r["code"])
+            subs.sort(key=lambda r: (_sub_code_sort_key(r["code"]), r["_order"]))
             for position, rec in enumerate(subs, start=1):
                 sub_uuid = seed_uuid(f"sub_slo:{ck}:{rec['code']}")
                 await dars_conn.execute(

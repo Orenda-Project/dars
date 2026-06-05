@@ -106,6 +106,36 @@ def test_classify_lp_type_retries_then_raises_on_garbage():
 
 
 # --------------------------------------------------------------------------- #
+# D-9 fix — robust parent-code derivation across all code formats
+# --------------------------------------------------------------------------- #
+
+
+def test_derive_parent_code_handles_all_formats():
+    known = {"A-01", "A1-02", "B-3"}
+    # dot-notation (the breakdown prompt's rule 6 format)
+    assert svc._derive_parent_code("A-01.1", known) == "A-01"
+    assert svc._derive_parent_code("A-01.10", known) == "A-01"
+    # hyphen-letter (the original script's format)
+    assert svc._derive_parent_code("A1-02-a", known) == "A1-02"
+    assert svc._derive_parent_code("A1-02-aa", known) == "A1-02"
+    # paren
+    assert svc._derive_parent_code("B-3(2)", known) == "B-3"
+    # unsplittable → bare parent code kept as-is
+    assert svc._derive_parent_code("A-01", known) == "A-01"
+    # prefix fallback for an odd separator
+    assert svc._derive_parent_code("A1-02_x", known) == "A1-02"
+    # genuinely unknown parent → None (skipped, warned)
+    assert svc._derive_parent_code("Z-99.1", known) is None
+
+
+def test_sub_code_sort_key_orders_numeric_then_alpha():
+    codes = ["A-01.10", "A-01.2", "A-01.1"]
+    assert sorted(codes, key=svc._sub_code_sort_key) == ["A-01.1", "A-01.2", "A-01.10"]
+    alpha = ["A1-02-b", "A1-02-a", "A1-02-aa"]
+    assert sorted(alpha, key=svc._sub_code_sort_key) == ["A1-02-a", "A1-02-b", "A1-02-aa"]
+
+
+# --------------------------------------------------------------------------- #
 # Pure helpers
 # --------------------------------------------------------------------------- #
 

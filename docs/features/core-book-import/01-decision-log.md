@@ -99,8 +99,25 @@ sub-SLOs … code format may not match the parser") instead of failing the run. 
 (either loosen the regex to accept dot-notation, or change the prompt's rule 6, or have the
 breakdown emit explicit parent+child columns). *Decided:* 2026-06-04 (discovered during F-1.4).
 
+> **RESOLVED 2026-06-04 (D-11).** Replaced the single rigid regex with
+> `_derive_parent_code(code, known_parents)`: it (1) keeps a bare code that exactly equals a
+> known parent (unsplittable SLO), (2) strips any recognised suffix — `.N` dot-notation,
+> `-a`/`-aa` hyphen-letter, `(N)` paren — then verifies the stripped parent is known, and
+> (3) falls back to the longest known parent that prefixes the code. Validation is against the
+> actual set of parent SLO codes, so it is format-agnostic. Positioning now uses
+> `_sub_code_sort_key` (numeric-aware: `.2` before `.10`). Unit-tested in
+> `test_book_import_service.py`. The "0 usable sub-SLOs" warning now only fires when rows
+> genuinely map to no known parent, not on a format mismatch.
+
 **D-8: Concurrency — one running import at a time (per server).** *Rationale:* the import
 holds a Dars transaction and makes serial LLM calls; concurrent imports of the same book
 would contend on the same deterministic UUIDs. *Apply:* `POST /admin/book-imports` rejects
 with `409` if an `import_runs` row is already `running`. Simple guard for v1; revisit if
 parallel imports of different cells are ever needed. *Decided:* 2026-06-04.
+
+**D-11: Sub-SLO parent-code derivation is format-agnostic and validates against the known
+parent set (resolves D-9).** *Rationale:* the ported regex matched only `A1-02-a`, but the
+breakdown prompt emits dot-notation (`A-01.1`) or bare parent codes; a fresh import would drop
+all/most sub-SLOs. *Apply:* `_derive_parent_code(code, known_parents)` (exact-parent →
+strip-recognised-suffix → longest-known-prefix), plus `_sub_code_sort_key` for numeric-aware
+ordering. Tested in `test_book_import_service.py`. *Decided:* 2026-06-04. *Resolves:* D-9.
