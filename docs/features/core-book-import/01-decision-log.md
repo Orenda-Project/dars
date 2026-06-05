@@ -77,6 +77,15 @@ cleanly.** *Rationale:* core-DB env vars may be absent on a given environment. *
 on this server"). Setting the env vars on Railway is an ops step, flagged in the ONRAMP
 (no secrets in git). *Decided:* 2026-06-04.
 
+**D-10: The import UI lives at `/dashboard/admin/books`, not `/dashboard/curriculum/import`.**
+*Rationale:* the dashboard sidebar (`components/molecules/dashboard/sidebar.tsx`) already has
+an Admin → **Books** nav entry pointing at `/dashboard/admin/books` — a placeholder route that
+didn't exist yet. Building the import page there fills the existing nav slot instead of
+creating an orphan link + a parallel location. Supersedes the `05-phase-2-frontend.md` route
+choice (`/dashboard/curriculum/import`). *Apply:* page at
+`webapp/app/dashboard/admin/books/page.tsx`. *Decided:* 2026-06-04 (found the nav entry during
+Phase 2).
+
 **D-9: Sub-SLO code parser is ported verbatim and may not match the prompt's output
 format — logged, not fixed, in Phase 1.** *Rationale:* the script's
 `_SUB_SLO_CODE_RE = ^([A-Z]\d*-\d+)-[a-z]$` expects `A1-02-a`-style sub-SLO codes, but the
