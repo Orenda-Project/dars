@@ -846,6 +846,74 @@ export const books = {
 };
 
 // ---------------------------------------------------------------------------
+// Core Book Import (`/api/v2/admin/*`) — admin-only, mirrors router_book_import.py
+// ---------------------------------------------------------------------------
+
+/** An importable book from taleemabad-core (fde_staging). */
+export interface CoreBook {
+  core_book_id: number;
+  title: string;
+  publisher: string | null;
+  edition: string | null;
+  published_year: number | null;
+  total_chapters: number | null;
+  grade: string | null;
+  subject: string | null;
+  status: string;
+  already_imported: boolean;
+}
+
+export type ImportRunStatus = "pending" | "running" | "succeeded" | "failed";
+
+/** A single import execution (the `import_runs` row). */
+export interface ImportRun {
+  id: UUID;
+  core_book_id: number;
+  curriculum_id: UUID;
+  grade_id: UUID;
+  subject_id: UUID;
+  dars_book_id: UUID | null;
+  status: ImportRunStatus;
+  current_step: string | null;
+  /** per-step state: { slos: {status, count}, sub_slos: {...}, ... } */
+  steps: Record<string, { status?: string; count?: number; [k: string]: unknown }>;
+  /** final row counts: { slos, sub_slos, chapters, topics, topic_sub_slos, book_chapter_slos } */
+  counts: Record<string, number>;
+  warnings: string[];
+  error: string | null;
+  started_by: string | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+/** Ordered list of the steps the importer reports, for rendering the checklist. */
+export const IMPORT_STEPS = [
+  "slos",
+  "sub_slos",
+  "book_chapters",
+  "topics",
+  "mappings",
+] as const;
+
+export const bookImport = {
+  /** Browse importable taleemabad-core books. 503 if core DB not configured. */
+  getCoreBooks: (search?: string) =>
+    request<ListResponse<CoreBook>>("/api/v2/admin/core-books", {
+      query: search ? { search } : undefined,
+      auth: "admin",
+    }),
+  /** Kick off an import → 202 { import_run_id }. 409 if one is already running. */
+  start: (body: { core_book_id: number; curriculum_id?: UUID }) =>
+    request<{ import_run_id: UUID }>("/api/v2/admin/book-imports", {
+      method: "POST", body, auth: "admin",
+    }),
+  getRun: (id: UUID) =>
+    request<ImportRun>(`/api/v2/admin/book-imports/${id}`, { auth: "admin" }),
+  getRuns: () =>
+    request<ListResponse<ImportRun>>("/api/v2/admin/book-imports", { auth: "admin" }),
+};
+
+// ---------------------------------------------------------------------------
 // Syllabus breakdowns (`/api/v2/syllabus-breakdowns/*`)
 // ---------------------------------------------------------------------------
 

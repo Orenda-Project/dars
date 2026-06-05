@@ -31,24 +31,27 @@ single entry point. Read everything it lists before executing code.
 
 ## Step 5 — Current state
 
-**As of 2026-06-04 — Phase 1 in flight.**
+**As of 2026-06-04 — Phase 1 shipped (#122); Phase 2 (frontend) in flight on `feat/core-book-import-fe`.**
 
 | Item | Status |
 |---|---|
 | Plan written + approved | ✅ |
-| F-1.1 `import_runs` migration | ✅ `migrations/20260607000000_import_runs.sql` |
-| F-1.2 vendor breakdown prompt + port lp_type classifier (D-4) | ✅ `v2_api/prompts/slo_breakdown_english.txt` + `v2_api/lp_type_classifier.py` |
-| F-1.3 `GET /admin/core-books` | ✅ `router_book_import.py` (browse fde_staging, already_imported flag) |
-| F-1.4 `book_import_service.py` (ported ETL) | ✅ generalised cell, progress→import_runs, separate-conn failure marking |
-| F-1.5 import endpoints + background job | ✅ POST (202, 409 guard, 422 bad cell, 503 no-core) + GET {id} + GET list; router registered in main.py |
-| Phase 2 (frontend) | ⬜ |
+| F-1.1 `import_runs` migration | ✅ shipped #122 |
+| F-1.2 vendor breakdown prompt + port lp_type classifier (D-4) | ✅ shipped #122 |
+| F-1.3 `GET /admin/core-books` | ✅ shipped #122 |
+| F-1.4 `book_import_service.py` (ported ETL) | ✅ shipped #122 |
+| F-1.5 import endpoints + background job | ✅ shipped #122 |
+| F-2.1 dars-api client (`bookImport`, `CoreBook`/`ImportRun` types) | ✅ `lib/dars-api.ts` |
+| F-2.2 book picker + start | ✅ `app/dashboard/admin/books/page.tsx` (route per D-10, nav already linked) |
+| F-2.3 progress poller + results card | ✅ same page (2s poll, per-step checklist, book-viewer link) |
+| F-2.4 recent imports list | ✅ same page (collapsible) |
 
-**Next thing to do:** push `feat/core-book-import`, open PR → `staging`. Phase 1 backend is
-done + green (188 passed/35 skipped; new tests `test_book_import_service.py` +
-`test_book_import_prompt.py`). **OPS GATE (D-7):** imports return 503 until the core-DB env
-vars (`CORE_DB_URL` or 5× `CORE_STAGING_DB_*`) + `ANTHROPIC_API_KEY` are set on the Dars
-Railway server — flag to the user; no secrets in git. Then start Phase 2 (frontend) — bead
-`feat-core-book-import-phase-2`, plan in `05-phase-2-frontend.md`.
+**Next thing to do:** push `feat/core-book-import-fe`, open PR → `staging`. tsc + eslint clean;
+`next build` compiles `/dashboard/admin/books`. **OPS GATE (D-7) still applies:** the UI renders
+but every import shows the 503 "core not configured" message until `CORE_DB_URL` (or 5×
+`CORE_STAGING_DB_*`) + `ANTHROPIC_API_KEY` are set on the Dars server. The user is adding the
+key later (testing locally for now). After this merges, the feature is functionally complete
+pending those env vars + the D-9 sub-SLO-code-format follow-up.
 
 **Known limitations recorded during F-1.4:** (a) the sub-SLO code parser
 (`_SUB_SLO_CODE_RE = ^([A-Z]\d*-\d+)-[a-z]$`) is ported verbatim from the script and expects

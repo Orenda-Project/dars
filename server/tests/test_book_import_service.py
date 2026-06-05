@@ -32,6 +32,7 @@ class _FakeMessage:
     def __init__(self, text):
         self.content = [_FakeBlock(text)]
         self.usage = _FakeUsage()
+        self.stop_reason = "end_turn"
 
 
 class _FakeMessages:
@@ -103,6 +104,62 @@ def test_classify_lp_type_retries_then_raises_on_garbage():
         classify_lp_type(
             parent_slo_statement="x", sub_slo_statement="y", client=client,
         )
+
+
+# --------------------------------------------------------------------------- #
+# LLM call logging — entry + exit (usage) so imports are debuggable from logs
+# --------------------------------------------------------------------------- #
+
+
+def test_chapter_map_logs_start_and_usage(caplog):
+    import logging
+    client = _FakeAnthropic("A-01.1\nbogus-code")
+    with caplog.at_level(logging.INFO, logger="dars.v2_api.book_import_service"):
+        out = svc._map_chapter_to_sub_slos(
+            chapter_title="Colours", chapter_prose="red and blue",
+            sub_slo_index_text="- A-01.1: x", valid_codes={"A-01.1"}, client=client,
+        )
+    assert out == ["A-01.1"]
+    text = caplog.text
+    assert "LLM chapter-map start" in text and "Colours" in text
+    assert "LLM chapter-map done" in text and "matched=1" in text
+    assert "dropped=1" in text  # bogus-code dropped + logged
+
+
+def test_usage_str_tolerates_missing_usage():
+    class _NoUsage:
+        pass
+    assert svc._usage_str(_NoUsage()) == "usage=n/a"
+
+
+# --------------------------------------------------------------------------- #
+# D-9 fix — robust parent-code derivation across all code formats
+# --------------------------------------------------------------------------- #
+
+
+def test_derive_parent_code_handles_all_formats():
+    known = {"A-01", "A1-02", "B-3"}
+    # dot-notation (the breakdown prompt's rule 6 format)
+    assert svc._derive_parent_code("A-01.1", known) == "A-01"
+    assert svc._derive_parent_code("A-01.10", known) == "A-01"
+    # hyphen-letter (the original script's format)
+    assert svc._derive_parent_code("A1-02-a", known) == "A1-02"
+    assert svc._derive_parent_code("A1-02-aa", known) == "A1-02"
+    # paren
+    assert svc._derive_parent_code("B-3(2)", known) == "B-3"
+    # unsplittable → bare parent code kept as-is
+    assert svc._derive_parent_code("A-01", known) == "A-01"
+    # prefix fallback for an odd separator
+    assert svc._derive_parent_code("A1-02_x", known) == "A1-02"
+    # genuinely unknown parent → None (skipped, warned)
+    assert svc._derive_parent_code("Z-99.1", known) is None
+
+
+def test_sub_code_sort_key_orders_numeric_then_alpha():
+    codes = ["A-01.10", "A-01.2", "A-01.1"]
+    assert sorted(codes, key=svc._sub_code_sort_key) == ["A-01.1", "A-01.2", "A-01.10"]
+    alpha = ["A1-02-b", "A1-02-a", "A1-02-aa"]
+    assert sorted(alpha, key=svc._sub_code_sort_key) == ["A1-02-a", "A1-02-b", "A1-02-aa"]
 
 
 # --------------------------------------------------------------------------- #

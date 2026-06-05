@@ -42,9 +42,63 @@ BREAKDOWN_MODEL = "claude-opus-4-6"
 BREAKDOWN_MAX_TOKENS = 32000
 TOPIC_MAPPER_MODEL = "claude-opus-4-6"
 
-# Matches "A1-02-a", "B-01-c", etc. — capture the parent prefix before the
-# final -<letter>. (Ported verbatim from the script; see KNOWN LIMITATION below.)
-_SUB_SLO_CODE_RE = re.compile(r"^([A-Z]\d*-\d+)-[a-z]$")
+# Strips a sub-SLO suffix to recover the parent SLO code. The breakdown prompt
+# (rule 6) emits dot-notation (`A-01.1`) or, when unsplittable, the bare parent
+# code (`A-01`); the original script also produced hyphen-letter codes
+# (`A1-02-a`). `_derive_parent_code` handles all three by matching against the
+# set of KNOWN parent codes (D-9 fix) — see _derive_parent_code below.
+_SUB_SLO_SUFFIX_RE = re.compile(
+    r"""^(?P<parent>.+?)        # parent prefix (non-greedy)
+        (?:                     # one of the known sub-SLO suffixes:
+            \.\d+               #   .1 .2 …            (prompt dot-notation)
+          | -[a-z]+             #   -a -b … -aa        (hyphen-letter)
+          | \(\d+\)             #   (1) (2) …          (occasional paren)
+        )$""",
+    re.VERBOSE,
+)
+
+
+def _derive_parent_code(code: str, known_parents: set[str]) -> str | None:
+    """Map a sub-SLO code to its parent SLO code, robust to format (D-9).
+
+    Strategy, most-trusted first:
+      1. exact match — an unsplittable SLO keeps the parent code (`A-01`).
+      2. strip a recognised suffix (`A-01.1`, `A1-02-a`, `A-01(1)`) → parent.
+      3. longest known parent that is a prefix of the code (handles odd
+         separators we didn't anticipate).
+    Returns the parent code if it is a known parent, else None.
+    """
+    code = code.strip()
+    if code in known_parents:
+        return code
+    m = _SUB_SLO_SUFFIX_RE.match(code)
+    if m and m.group("parent") in known_parents:
+        return m.group("parent")
+    # Fallback: longest known parent code that prefixes this sub-code.
+    candidates = [p for p in known_parents if code.startswith(p) and code != p]
+    if candidates:
+        return max(candidates, key=len)
+    return None
+
+
+def _sub_code_sort_key(code: str) -> tuple:
+    """Order sub-SLO codes by their trailing index, numeric-aware.
+
+    `A-01.2` < `A-01.10`; `-b` < `-aa`. Returns a (kind, value) tuple so a
+    numeric suffix sorts before/independent of an alpha one; unknown shapes
+    sort last but stably.
+    """
+    code = code.strip()
+    m = re.search(r"(?:\.(\d+)|\((\d+)\)|-([a-z]+))$", code)
+    if not m:
+        return (2, 0, code)
+    if m.group(1) is not None:
+        return (0, int(m.group(1)), "")
+    if m.group(2) is not None:
+        return (0, int(m.group(2)), "")
+    # alpha suffix: a, b, …, z, aa — base-26-ish, length-then-lex is fine
+    suffix = m.group(3)
+    return (1, len(suffix), suffix)
 
 STEPS = ("slos", "sub_slos", "book_chapters", "topics", "mappings")
 
@@ -124,7 +178,24 @@ def _flatten_chapter_prose(chapter_text_slice: list[dict]) -> str:
 
 # ---------------------------------------------------------------------------
 # LLM calls (sync; run via asyncio.to_thread). client injectable for tests.
+#
+# Every call logs uniformly so imports are debuggable from logs alone (rule 11):
+#   INFO  before  — purpose, model, input size
+#   INFO  after   — in/out tokens, cache reads, response chars
+#   ERROR on fail — with exc_info=True
 # ---------------------------------------------------------------------------
+
+
+def _usage_str(response) -> str:
+    """Compact token-usage summary for logs; tolerant of a missing usage block."""
+    u = getattr(response, "usage", None)
+    if u is None:
+        return "usage=n/a"
+    return (
+        f"in={getattr(u, 'input_tokens', '?')} "
+        f"out={getattr(u, 'output_tokens', '?')} "
+        f"cache_read={getattr(u, 'cache_read_input_tokens', 0)}"
+    )
 
 
 def _run_breakdown_llm(
@@ -143,17 +214,27 @@ def _run_breakdown_llm(
         f"Here are the main SLOs:\n\n{slos_text}"
     )
     log.info(
-        "breakdown LLM call model=%s slos=%d system_chars=%d",
-        BREAKDOWN_MODEL, len(slos_text.splitlines()), len(system_prompt),
+        "LLM breakdown start: model=%s subject=%s grade=%s slos=%d system_chars=%d user_chars=%d",
+        BREAKDOWN_MODEL, subject_label, grade_label,
+        len(slos_text.splitlines()), len(system_prompt), len(user_message),
     )
-    with client.messages.stream(
-        model=BREAKDOWN_MODEL,
-        max_tokens=BREAKDOWN_MAX_TOKENS,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    ) as stream:
-        response = stream.get_final_message()
-    return "".join(b.text for b in response.content if b.type == "text")
+    try:
+        with client.messages.stream(
+            model=BREAKDOWN_MODEL,
+            max_tokens=BREAKDOWN_MAX_TOKENS,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        ) as stream:
+            response = stream.get_final_message()
+    except Exception:
+        log.error("LLM breakdown FAILED: model=%s", BREAKDOWN_MODEL, exc_info=True)
+        raise
+    text = "".join(b.text for b in response.content if b.type == "text")
+    stop = getattr(response, "stop_reason", None)
+    if stop == "max_tokens":
+        log.warning("LLM breakdown hit max_tokens (%d) — output may be truncated", BREAKDOWN_MAX_TOKENS)
+    log.info("LLM breakdown done: %s stop=%s response_chars=%d", _usage_str(response), stop, len(text))
+    return text
 
 
 def _map_chapter_to_sub_slos(
@@ -183,20 +264,38 @@ def _map_chapter_to_sub_slos(
         f"Chapter prose:\n{truncated_prose}\n\n"
         f"Return the matching sub-SLO codes, one per line."
     )
-    response = client.messages.create(
-        model=TOPIC_MAPPER_MODEL,
-        max_tokens=2000,
-        system=[
-            {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}
-        ],
-        messages=[{"role": "user", "content": user_message}],
+    log.info(
+        "LLM chapter-map start: model=%s chapter=%r prose_chars=%d candidates=%d",
+        TOPIC_MAPPER_MODEL, chapter_title, len(truncated_prose), len(valid_codes),
     )
+    try:
+        response = client.messages.create(
+            model=TOPIC_MAPPER_MODEL,
+            max_tokens=2000,
+            system=[
+                {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}
+            ],
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except Exception:
+        log.error("LLM chapter-map FAILED: chapter=%r", chapter_title, exc_info=True)
+        raise
     raw_text = "".join(b.text for b in response.content if b.type == "text").strip()
     codes_out: list[str] = []
+    dropped: list[str] = []
     for line in raw_text.splitlines():
         candidate = line.strip().lstrip("-").strip()
-        if candidate and candidate in valid_codes:
+        if not candidate:
+            continue
+        if candidate in valid_codes:
             codes_out.append(candidate)
+        else:
+            dropped.append(candidate)
+    log.info(
+        "LLM chapter-map done: chapter=%r %s matched=%d dropped=%d%s",
+        chapter_title, _usage_str(response), len(codes_out), len(dropped),
+        f" (dropped: {dropped[:10]})" if dropped else "",
+    )
     return codes_out
 
 
@@ -482,6 +581,8 @@ async def _import_cell(
             client=client,
         )
         rows = _parse_breakdown_markdown(raw_md)
+        log.info("sub_slos: breakdown parsed %d markdown rows", len(rows))
+        known_parents = set(slo_code_to_info.keys())
         parsed: list[dict[str, str]] = []
         skipped = 0
         for row in rows:
@@ -489,37 +590,50 @@ async def _import_cell(
             statement = (row.get("Sub SLOs") or "").strip()
             if not code or not statement:
                 continue
-            m = _SUB_SLO_CODE_RE.match(code)
-            if not m:
-                continue
-            parent_code = m.group(1)
-            if parent_code not in slo_code_to_info:
+            parent_code = _derive_parent_code(code, known_parents)
+            if parent_code is None:
                 skipped += 1
                 continue
             parsed.append({"code": code, "statement": statement, "parent_slo_code": parent_code})
         if skipped:
-            prog.warn(f"{skipped} sub-SLOs referenced an unknown parent SLO — skipped")
-        if not parsed:
+            prog.warn(f"{skipped} sub-SLO row(s) had no recognisable parent SLO code — skipped")
+        if rows and not parsed:
             prog.warn(
-                "breakdown produced 0 usable sub-SLOs (code format may not match the "
-                "parser, e.g. dot-notation vs -letter suffix) — proceeding with none"
+                "breakdown returned rows but none mapped to a known parent SLO — "
+                "check the breakdown output format against the SLO codes"
             )
-        # Classify lp_type per sub-SLO.
-        for rec in parsed:
+        # Classify lp_type per sub-SLO (per-call logging is DEBUG in the
+        # classifier; log a summary + any failure here at INFO/ERROR).
+        log.info("sub_slos: classifying lp_type for %d sub-SLOs", len(parsed))
+        for i, rec in enumerate(parsed):
             _puuid, parent_stmt = slo_code_to_info[rec["parent_slo_code"]]
-            rec["lp_type"] = await asyncio.to_thread(
-                classify_lp_type,
-                parent_slo_statement=parent_stmt,
-                sub_slo_statement=rec["statement"],
-                client=client,
-            )
-        # Upsert, position within parent.
+            try:
+                rec["lp_type"] = await asyncio.to_thread(
+                    classify_lp_type,
+                    parent_slo_statement=parent_stmt,
+                    sub_slo_statement=rec["statement"],
+                    client=client,
+                )
+            except Exception:
+                log.error(
+                    "lp_type classification FAILED for sub-SLO %s (%d/%d)",
+                    rec["code"], i + 1, len(parsed), exc_info=True,
+                )
+                raise
+        if parsed:
+            from collections import Counter
+            dist = Counter(r["lp_type"] for r in parsed)
+            log.info("sub_slos: lp_type distribution %s", dict(dist))
+        # Upsert, position within parent. Preserve breakdown order, but break
+        # ties by the numeric/alpha suffix so `.2` precedes `.10` (and `-b`
+        # precedes `-aa`) regardless of code format (D-9).
         by_parent: dict[str, list[dict]] = {}
-        for rec in parsed:
+        for idx, rec in enumerate(parsed):
+            rec["_order"] = idx
             by_parent.setdefault(rec["parent_slo_code"], []).append(rec)
         for parent_code, subs in by_parent.items():
             parent_uuid, _ = slo_code_to_info[parent_code]
-            subs.sort(key=lambda r: r["code"])
+            subs.sort(key=lambda r: (_sub_code_sort_key(r["code"]), r["_order"]))
             for position, rec in enumerate(subs, start=1):
                 sub_uuid = seed_uuid(f"sub_slo:{ck}:{rec['code']}")
                 await dars_conn.execute(
