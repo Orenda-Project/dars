@@ -132,3 +132,23 @@ on failure. The breakdown step logs parsed-row count + lp_type distribution; per
 `classify_lp_type` stays `DEBUG` (70+ calls) but a failure is logged + re-raised at the loop.
 Logging asserted in `test_book_import_service.py`. *Decided:* 2026-06-04 (user asked for
 debuggable LLM logging).
+
+**D-13: The admin sets the source schema + an optional exact core book ID; the source
+schema is configurable (default `fde_staging`).** *Rationale:* the user wants to target a
+specific book by ID and a non-default schema, not only browse-by-title. *Apply:*
+`GET /admin/core-books` gains `book_id` (exact `book_library_book.id`; ignores
+status/is_active so a specific book is findable) and `schema` (default `fde_staging`);
+`POST /admin/book-imports` gains `schema_name`; `run_import`/`resolve_cell` thread the
+schema. Core table refs are now **unqualified** and resolved via `search_path` (set from the
+schema), so one setting controls all queries. The schema is **validated as a bare identifier**
+(`^[A-Za-z_][A-Za-z0-9_]*$`, 422 otherwise) and interpolated into `SET search_path` — it
+**cannot** be a bound parameter (identifiers aren't bindable), so validation is the injection
+guard (mirrored defensively in the service). *Decided:* 2026-06-04 (user: "add functionality
+of setting the ID and schema").
+
+**D-14: The core-books list is not fetched on page load — only after the admin enters
+ID/title + schema and clicks Look up.** *Rationale:* user — "only fetch once I have added
+those." Avoids an unconfigured/expensive auto-query and makes the source explicit. *Apply:*
+the import page (`/dashboard/admin/books`) renders the schema + book-ID + title form first;
+`me()` and recent-runs still load on mount, but `getCoreBooks` fires only on Look-up submit.
+A single exact-ID result auto-selects. *Decided:* 2026-06-04.

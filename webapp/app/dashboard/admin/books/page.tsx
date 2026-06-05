@@ -26,27 +26,46 @@ import {
 export default function AdminBooksPage() {
   const [me, setMe] = useState<AdminMeResponse | null>(null);
   const [books, setBooks] = useState<CoreBook[] | null>(null);
+  const [schema, setSchema] = useState("fde_staging");
+  const [bookIdInput, setBookIdInput] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CoreBook | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<ImportRun | null>(null);
   const [recent, setRecent] = useState<ImportRun[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
 
-  // Initial load: who am I + the core-book list + recent runs.
-  const loadBooks = useCallback(async (q?: string) => {
+  // Look up core books — only fires on explicit submit (no auto-fetch on load).
+  // Needs at least a book ID or a search term; schema scopes the source.
+  const lookUp = useCallback(async () => {
+    const id = bookIdInput.trim();
+    const parsedId = id ? Number(id) : undefined;
+    if (id && (parsedId === undefined || !Number.isInteger(parsedId) || parsedId <= 0)) {
+      setError("Book ID must be a positive integer.");
+      return;
+    }
     setError(null);
+    setSelected(null);
+    setLoading(true);
     try {
-      const { items } = await bookImport.getCoreBooks(q || undefined);
+      const { items } = await bookImport.getCoreBooks({
+        book_id: parsedId,
+        search: parsedId ? undefined : search.trim() || undefined,
+        schema: schema.trim() || undefined,
+      });
       setBooks(items);
+      if (items.length === 1) setSelected(items[0]);
     } catch (err) {
       setBooks([]);
       setError(formatErr(err));
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [bookIdInput, search, schema]);
 
+  // On mount: who am I + recent runs ONLY. The core-book list waits for Look up.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -54,7 +73,7 @@ export default function AdminBooksPage() {
         const m = await admin.me();
         if (!cancelled) setMe(m);
       } catch {
-        /* me() failure is non-fatal for the list */
+        /* me() failure is non-fatal */
       }
       try {
         const { items } = await bookImport.getRuns();
@@ -62,12 +81,11 @@ export default function AdminBooksPage() {
       } catch {
         /* recent runs are best-effort */
       }
-      await loadBooks();
     })();
     return () => {
       cancelled = true;
     };
-  }, [loadBooks]);
+  }, []);
 
   // Poll the active run while it's pending/running.
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,11 +118,11 @@ export default function AdminBooksPage() {
     if (!selected) return;
     setStarting(true);
     setError(null);
-    setNotice(null);
     try {
       const { import_run_id } = await bookImport.start({
         core_book_id: selected.core_book_id,
         curriculum_id: me?.curriculum_id,
+        schema_name: schema.trim() || undefined,
       });
       setRun(null);
       setRunId(import_run_id);
@@ -133,35 +151,63 @@ export default function AdminBooksPage() {
           {error}
         </p>
       ) : null}
-      {notice ? <p className="text-sm text-dars-muted mb-3">{notice}</p> : null}
 
       {/* Active / last run */}
       {run ? <RunPanel run={run} onDismiss={busy ? undefined : () => { setRun(null); setRunId(null); }} /> : null}
 
-      {/* Picker */}
+      {/* Source + lookup — nothing is fetched until the admin clicks Look up */}
       {!busy ? (
         <section className="mt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") loadBooks(search); }}
-              placeholder="Search core books by title…"
-              className="flex-1 px-3 py-1.5 rounded border border-dars-rule-light bg-white text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => loadBooks(search)}
-              className="px-3 py-1.5 rounded border border-dars-rule-light text-sm hover:bg-dars-parchment-deep"
-            >
-              Search
-            </button>
-          </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); lookUp(); }}
+            className="rounded border border-dars-rule-light bg-dars-parchment-mid p-3 mb-3 space-y-2"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-wide text-dars-muted-light">Source schema</span>
+                <input
+                  value={schema}
+                  onChange={(e) => setSchema(e.target.value)}
+                  placeholder="fde_staging"
+                  className="mt-0.5 w-full px-3 py-1.5 rounded border border-dars-rule-light bg-white text-sm font-mono"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-wide text-dars-muted-light">Core book ID</span>
+                <input
+                  value={bookIdInput}
+                  onChange={(e) => setBookIdInput(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="e.g. 1171"
+                  className="mt-0.5 w-full px-3 py-1.5 rounded border border-dars-rule-light bg-white text-sm font-mono"
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="…or search by title (ignored if an ID is given)"
+                disabled={!!bookIdInput.trim()}
+                className="flex-1 px-3 py-1.5 rounded border border-dars-rule-light bg-white text-sm disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={loading || (!bookIdInput.trim() && !search.trim())}
+                className="px-4 py-1.5 rounded bg-dars-ink text-white text-sm font-medium hover:opacity-90 disabled:opacity-40"
+              >
+                {loading ? "Looking up…" : "Look up"}
+              </button>
+            </div>
+            <p className="text-[11px] text-dars-muted-light">
+              Enter a book ID for an exact match, or a title to search. Nothing is fetched until you look up.
+            </p>
+          </form>
 
           {books === null ? (
-            <p className="text-sm text-dars-muted">Loading core books…</p>
+            <p className="text-sm text-dars-muted-light">Enter a book ID or title above and click Look up.</p>
           ) : books.length === 0 ? (
-            <p className="text-sm text-dars-muted">No importable books found.</p>
+            <p className="text-sm text-dars-muted">No matching books in <code className="font-mono">{schema}</code>.</p>
           ) : (
             <ul className="space-y-1.5">
               {books.map((b) => {

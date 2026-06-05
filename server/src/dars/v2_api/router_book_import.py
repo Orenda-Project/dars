@@ -8,6 +8,7 @@ a background job tracked by the `import_runs` table (D-1). Admin-gated via
 time (D-8).
 """
 import logging
+import re
 import uuid
 from datetime import datetime
 
@@ -23,6 +24,12 @@ from dars.v2_api.deps import _asyncpg_url, get_db_conn
 log = logging.getLogger("v2_api.book_import")
 
 router = APIRouter(prefix="/api/v2", tags=["v2-book-import"])
+
+DEFAULT_CORE_SCHEMA = "fde_staging"
+# A Postgres schema name: letters/digits/underscore, not starting with a digit.
+# Validated (not parameterised — identifiers can't be bound) to prevent injection
+# via the admin-supplied schema.
+_SCHEMA_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +57,7 @@ class CoreBookListResponse(BaseModel):
 class StartImportRequest(BaseModel):
     core_book_id: int
     curriculum_id: uuid.UUID | None = None
+    schema_name: str = DEFAULT_CORE_SCHEMA
 
 
 class StartImportResponse(BaseModel):
@@ -88,9 +96,20 @@ def _require_core_configured() -> str:
     return dsn
 
 
-async def _open_core_conn(dsn: str) -> asyncpg.Connection:
+def _validate_schema(schema: str | None) -> str:
+    s = (schema or DEFAULT_CORE_SCHEMA).strip()
+    if not _SCHEMA_RE.match(s):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"invalid schema name {schema!r}; must be a bare identifier",
+        )
+    return s
+
+
+async def _open_core_conn(dsn: str, schema: str = DEFAULT_CORE_SCHEMA) -> asyncpg.Connection:
     conn = await asyncpg.connect(dsn)
-    await conn.execute("SET search_path TO fde_staging, public")
+    # `schema` is validated by _validate_schema; safe to interpolate.
+    await conn.execute(f"SET search_path TO {schema}, public")
     return conn
 
 
@@ -102,11 +121,17 @@ async def _open_core_conn(dsn: str) -> asyncpg.Connection:
 @router.get("/admin/core-books", response_model=CoreBookListResponse)
 async def list_core_books(
     search: str | None = Query(default=None),
+    book_id: int | None = Query(default=None, description="Exact core book_library_book.id"),
+    schema: str = Query(default=DEFAULT_CORE_SCHEMA, description="Source DB schema in core"),
     admin: AdminContext = Depends(get_current_admin),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> CoreBookListResponse:
-    log.info("list_core_books start admin=%s search=%r", admin.email, search)
+    log.info(
+        "list_core_books start admin=%s book_id=%s schema=%r search=%r",
+        admin.email, book_id, schema, search,
+    )
     core_dsn = _require_core_configured()
+    schema = _validate_schema(schema)
 
     # Active Dars curriculum code drives the already-imported UUID check.
     cur_row = await conn.fetchrow(
@@ -114,22 +139,31 @@ async def list_core_books(
     )
     active_curr_code = cur_row["code"] if cur_row else None
 
-    core = await _open_core_conn(core_dsn)
+    core = await _open_core_conn(core_dsn, schema)
     try:
+        # Table names are unqualified — resolved via the validated search_path —
+        # so a non-default schema works without rewriting every reference.
         params: list = []
-        where = "b.status = 'OnProd' AND b.is_active AND b.deleted_at IS NULL"
-        if search:
-            params.append(f"%{search}%")
-            where += f" AND b.title ILIKE ${len(params)}"
+        where = "b.deleted_at IS NULL"
+        if book_id is not None:
+            # Exact-ID lookup: don't constrain status/is_active, so the admin can
+            # find a specific book even if it's not OnProd, then decide.
+            params.append(book_id)
+            where += f" AND b.id = ${len(params)}"
+        else:
+            where += " AND b.status = 'OnProd' AND b.is_active"
+            if search:
+                params.append(f"%{search}%")
+                where += f" AND b.title ILIKE ${len(params)}"
         rows = await core.fetch(
             f"""
             SELECT b.id, b.title, b.publisher, b.edition, b.published_year,
                    b.total_chapters, b.status,
                    g.short_code AS grade, s.short_code AS subject
-            FROM fde_staging.book_library_book b
-            LEFT JOIN fde_staging.slo_gradesubject gs ON b.grade_subject_id = gs.id
-            LEFT JOIN fde_staging.slo_grade g ON gs.grade_id = g.id
-            LEFT JOIN fde_staging.slo_subject s ON gs.subject_id = s.id
+            FROM book_library_book b
+            LEFT JOIN slo_gradesubject gs ON b.grade_subject_id = gs.id
+            LEFT JOIN slo_grade g ON gs.grade_id = g.id
+            LEFT JOIN slo_subject s ON gs.subject_id = s.id
             WHERE {where}
             ORDER BY b.title
             """,
@@ -165,11 +199,11 @@ async def list_core_books(
 
 async def _run_import_task(
     run_id: uuid.UUID, core_book_id: int, curriculum_id: uuid.UUID | None,
-    core_dsn: str, dars_dsn: str,
+    core_dsn: str, dars_dsn: str, schema: str,
 ) -> None:
     await svc.run_import(
         run_id=run_id, core_book_id=core_book_id, curriculum_id=curriculum_id,
-        core_dsn=core_dsn, dars_dsn=dars_dsn,
+        core_dsn=core_dsn, dars_dsn=dars_dsn, schema=schema,
     )
 
 
@@ -184,8 +218,12 @@ async def start_book_import(
     admin: AdminContext = Depends(get_current_admin),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> StartImportResponse:
-    log.info("start_book_import start admin=%s core_book_id=%s", admin.email, body.core_book_id)
+    log.info(
+        "start_book_import start admin=%s core_book_id=%s schema=%r",
+        admin.email, body.core_book_id, body.schema_name,
+    )
     core_dsn = _require_core_configured()
+    schema = _validate_schema(body.schema_name)
 
     # One running import at a time (D-8).
     running = await conn.fetchval("SELECT 1 FROM import_runs WHERE status = 'running' LIMIT 1")
@@ -196,7 +234,7 @@ async def start_book_import(
         )
 
     # Resolve the cell up front so a bad book/grade/subject fails as 422 (not in the bg task).
-    core = await _open_core_conn(core_dsn)
+    core = await _open_core_conn(core_dsn, schema)
     try:
         try:
             cell = await svc.resolve_cell(
@@ -220,7 +258,7 @@ async def start_book_import(
 
     dars_dsn = _asyncpg_url(settings.database_url)
     background.add_task(
-        _run_import_task, run_id, body.core_book_id, body.curriculum_id, core_dsn, dars_dsn,
+        _run_import_task, run_id, body.core_book_id, body.curriculum_id, core_dsn, dars_dsn, schema,
     )
     log.info("start_book_import scheduled run_id=%s", run_id)
     return StartImportResponse(import_run_id=run_id)
