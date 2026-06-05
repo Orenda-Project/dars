@@ -35,12 +35,29 @@ class _FakeMessage:
         self.stop_reason = "end_turn"
 
 
+class _FakeStream:
+    def __init__(self, reply):
+        self._reply = reply
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get_final_message(self):
+        return _FakeMessage(self._reply)
+
+
 class _FakeMessages:
     def __init__(self, reply):
         self._reply = reply
 
     def create(self, **kwargs):
         return _FakeMessage(self._reply)
+
+    def stream(self, **kwargs):
+        return _FakeStream(self._reply)
 
 
 class _FakeAnthropic:
@@ -111,19 +128,19 @@ def test_classify_lp_type_retries_then_raises_on_garbage():
 # --------------------------------------------------------------------------- #
 
 
-def test_chapter_map_logs_start_and_usage(caplog):
+async def test_chapter_map_logs_and_filters(caplog):
     import logging
     client = _FakeAnthropic("A-01.1\nbogus-code")
     with caplog.at_level(logging.INFO, logger="dars.v2_api.book_import_service"):
-        out = svc._map_chapter_to_sub_slos(
+        out = await svc._map_chapter_to_sub_slos(
             chapter_title="Colours", chapter_prose="red and blue",
             sub_slo_index_text="- A-01.1: x", valid_codes={"A-01.1"}, client=client,
         )
-    assert out == ["A-01.1"]
+    assert out == ["A-01.1"]  # bogus-code filtered out
     text = caplog.text
-    assert "LLM chapter-map start" in text and "Colours" in text
-    assert "LLM chapter-map done" in text and "matched=1" in text
-    assert "dropped=1" in text  # bogus-code dropped + logged
+    # _complete logs start/done with the label; the helper logs matched/dropped.
+    assert "chapter-map" in text and "Colours" in text
+    assert "matched=1" in text and "dropped=1" in text
 
 
 def test_usage_str_tolerates_missing_usage():
@@ -239,32 +256,58 @@ async def test_resolve_cell_rejects_unmapped_grade():
 # --------------------------------------------------------------------------- #
 
 
-async def test_topics_warns_on_empty_prose_and_creates_topic():
+class _ProgStub:
+    """Minimal _Progress stand-in for write/plan tests."""
+    def __init__(self):
+        self.warnings = []
+        self.steps = {}
+        self.counts = {}
+        self.dars_book_id = None
+    def warn(self, m):
+        self.warnings.append(m)
+    async def start_step(self, conn, step):
+        self.steps[step] = {"status": "running"}
+    async def finish_step(self, conn, step, count):
+        self.steps[step] = {"status": "done", "count": count}
+        self.counts[step] = count
+    async def _flush(self, conn, *, status):
+        pass
+
+
+async def test_write_import_plan_writes_book_subslos_topics():
+    # Phase B: given a fully-built plan, write it with no post-insert SELECTs
+    # (deterministic UUIDs are the ids). Verify each table is upserted.
     cell = {
         "curriculum_id": uuid.uuid4(), "curriculum_code": "NCP",
         "grade_id": uuid.uuid4(), "grade_code": "G1",
         "subject_id": uuid.uuid4(), "subject_code": "Eng",
     }
-    chapters = [{"id": uuid.uuid4(), "chapter_number": 1, "title": "Empty Ch", "chapter_text": []}]
-    topic_id = uuid.uuid4()
-    dars = _FakeConn(
-        fetchval_map={"SELECT id FROM topics": topic_id},
-        fetch_map={"FROM sub_slos ss JOIN slos": []},
-    )
+    slo_id, sub_id, book_id, ch_id, topic_id = (uuid.uuid4() for _ in range(5))
+    plan = {
+        "slos": [{"id": slo_id, "code": "A-01", "statement": "s", "position": 1}],
+        "sub_slos": [{"id": sub_id, "slo_id": slo_id, "code": "A-01.1",
+                      "statement": "ss", "position": 1, "lp_type": "reading"}],
+        "sub_code_to_uuid": {"A-01.1": sub_id},
+        "book": {"id": book_id, "title": "B", "publisher": None, "edition": None,
+                 "published_year": None, "total_chapters": 1, "pdf_url": None, "book_text": []},
+        "chapters": [{"id": ch_id, "book_id": book_id, "chapter_number": 1, "title": "Ch1",
+                      "start_page": 1, "end_page": 2, "status": "published", "chapter_text": []}],
+        "topics": [{"id": topic_id, "book_chapter_id": ch_id, "title": "Ch1",
+                    "topic_text": "x", "sub_slo_codes": ["A-01.1"]}],
+    }
+    dars = _FakeConn(fetchval_map={"SELECT slo_id FROM sub_slos": slo_id})
+    prog = _ProgStub()
+    await svc._write_import_plan(dars_conn=dars, cell=cell, plan=plan, prog=prog)
 
-    class _P:
-        def __init__(self):
-            self.warnings = []
-        def warn(self, m):
-            self.warnings.append(m)
-
-    prog = _P()
-    topics, mappings, bcs = await svc._import_topics_and_mappings(
-        dars_conn=dars, chapters=chapters, cell=cell,
-        sub_code_to_uuid={}, prog=prog, client=None,
-    )
-    assert topics == 1
-    assert mappings == 0 and bcs == 0
-    assert any("no prose" in w for w in prog.warnings)
-    # a topics upsert happened
-    assert any("INSERT INTO topics" in sql for sql, _ in dars.executes)
+    sqls = [sql for sql, _ in dars.executes]
+    assert any("INSERT INTO slos" in s for s in sqls)
+    assert any("INSERT INTO sub_slos" in s for s in sqls)
+    assert any("INSERT INTO books" in s for s in sqls)
+    assert any("INSERT INTO book_chapters" in s for s in sqls)
+    assert any("INSERT INTO topics" in s for s in sqls)
+    assert any("INSERT INTO topic_sub_slos" in s for s in sqls)
+    assert any("INSERT INTO book_chapter_slos" in s for s in sqls)
+    # No post-insert SELECT round-trips (the hang fix relies on this).
+    assert not any(s.strip().upper().startswith("SELECT ID FROM") for s in sqls)
+    assert prog.dars_book_id == book_id
+    assert prog.counts.get("sub_slos") == 1

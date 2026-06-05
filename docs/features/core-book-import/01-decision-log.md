@@ -152,3 +152,29 @@ those." Avoids an unconfigured/expensive auto-query and makes the source explici
 the import page (`/dashboard/admin/books`) renders the schema + book-ID + title form first;
 `me()` and recent-runs still load on mount, but `getCoreBooks` fires only on Look-up submit.
 A single exact-ID result auto-selects. *Decided:* 2026-06-04.
+
+**D-16: Never hold a Dars connection across the LLM phase; build the plan with no DB
+connection, then write it in one short transaction on a fresh connection.** *Rationale:* the
+import made 177+ serial Agent-SDK calls (~14 min); the original code opened the Dars
+connection up front and kept it (and its transaction) open across that phase, so the idle
+socket was dropped and the final commit blew up with `connection was closed in the middle of
+operation` — the import hung/failed having written nothing. *Apply:* `run_import` splits into
+Phase A `_build_import_plan` (core reads + all LLM work → in-memory plan of plain dicts, NO
+Dars connection held) and Phase B `_write_import_plan` (open a fresh Dars connection via the
+`_dars_conn` async-context-manager, write the whole plan in one short transaction, commit).
+`command_timeout=120` on connections so any single query fails loud. Deterministic UUIDs are
+the row ids → no post-insert `SELECT id` round-trips (removed ~354 of them). `mark_running`
+flips the row to `running` once the cell resolves so the dashboard isn't a frozen `pending`
+through Phase A. *Decided:* 2026-06-04 (diagnosed from a live run-2 crash + run-3 fix).
+
+**D-17: lp_type classification moves OUT of import — defer it to LP-generation time.**
+*Rationale:* classifying each sub-SLO's `recommended_lp_type` is 177 serial LLM calls (~14
+min) and is the import's entire bottleneck, yet lp_type is only consumed when an LP is
+generated. Compute it lazily at generation time (and cache it on the sub-SLO row then),
+not during import. *Apply:* drop the classify loop from `_build_import_plan`; leave
+`sub_slos.recommended_lp_type` NULL at import (column is already nullable — no schema change);
+LP generation classifies-on-demand + writes back. Cuts import from ~16 min to ~1-2 min.
+**Not applied to the in-flight run-3 (1172)** — taking effect next import. *Decided:*
+2026-06-05 (user: "lp_type to sub-slos is not that important a step, we can do that at
+runtime when generating an LP later"). *Supersedes the import-time classification in D-4/F-1.2
+for the import path only — the classifier code stays, it just runs lazily.*
