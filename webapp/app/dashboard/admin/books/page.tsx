@@ -138,9 +138,17 @@ export default function AdminBooksPage() {
 
   return (
     <div>
-      <h1 className="font-[var(--font-cormorant)] text-3xl font-bold text-dars-ink mb-1">
-        Import a book
-      </h1>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <h1 className="font-[var(--font-cormorant)] text-3xl font-bold text-dars-ink">
+          Import a book
+        </h1>
+        <Link
+          href="/dashboard/admin/books/all"
+          className="text-sm text-dars-terra hover:underline shrink-0"
+        >
+          View all books →
+        </Link>
+      </div>
       <p className="text-sm text-dars-muted mb-4">
         Bring a book in from taleemabad-core — its SLOs, sub-SLOs, chapters, and topics —
         into Dars{me ? <> under <code className="font-mono">{me.curriculum_code}</code></> : null}.
