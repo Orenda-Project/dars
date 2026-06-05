@@ -18,6 +18,7 @@ from dars.v2_api.router_admin import org_router as v1_admin_org_router
 from dars.v2_api.router_admin import router as v1_admin_router
 from dars.v2_api.router_admin_tenancy import router as v1_admin_tenancy_router
 from dars.v2_api.router_book import router as v2_book_router
+from dars.v2_api.router_book_import import router as v2_book_import_router
 from dars.v2_api.router_syllabus import router as v2_syllabus_router
 from dars.v2_api.router_class_actions import router as v2_class_actions_router
 from dars.v2_api.router_curriculum import router as v2_curriculum_router
@@ -56,6 +57,7 @@ app.add_middleware(
 app.include_router(v2_tenancy_router)
 app.include_router(v2_curriculum_router)
 app.include_router(v2_book_router)
+app.include_router(v2_book_import_router)
 app.include_router(v2_syllabus_router)
 app.include_router(v2_holidays_router)
 app.include_router(v2_class_actions_router)

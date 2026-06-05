@@ -36,19 +36,20 @@ this file lists.
 
 ## Step 5 — Current state
 
-**As of 2026-06-04 — Phase 1 in flight (single PR).**
+**✅ Closed — shipped via PR #121 (`3c5cd59`), deployed SUCCESS on staging 2026-06-04 12:58 UTC.**
 
 | Feature | Status |
 |---|---|
 | Plan written + approved | ✅ |
-| F-1.1 backend `GET /books/{id}/tree` | ⬜ |
-| F-1.2 frontend types + `getBookTree()` | ⬜ |
-| F-1.3 rendered view enrichment | ⬜ |
-| F-1.4 raw JSON collapsible | ⬜ |
+| F-1.1 backend `GET /books/{id}/tree` | ✅ router_book.py + schemas_book.py + smoke test `test_book_tree` |
+| F-1.2 frontend types + `getBookTree()` | ✅ dars-api.ts: Book enriched + SLOMini/TopicTree/BookChapterTree/BookTree |
+| F-1.3 rendered view enrichment | ✅ books/[book_id]/page.tsx: metadata card + per-chapter SLOs + collapsible OCR + topics + sub-SLOs, single fetch |
+| F-1.4 raw JSON collapsible | ✅ same page: `<details>` default-off + Copy |
 
-**Next thing to do:** open bead `feat-book-viewer-phase-1`, branch from `staging`,
-implement F-1.1 → F-1.4 in order, single PR. The seed G1 English book is the only real
-book to test against (id in `server/src/dars/seeds/book_dars_english_g1.py`).
+**Done.** All four features shipped in one PR (#121) and are live on staging. Bead
+`feat-book-viewer-phase-1` closed. The smoke test `test_book_tree` exercises the tree
+endpoint in CI (needs a seeded `DATABASE_URL`); the seed G1 English book is the only
+real book it tests against.
 
 ## Step 6 — Where to find supporting context
 - Book API today: `server/src/dars/v2_api/router_book.py` + `schemas_book.py`
