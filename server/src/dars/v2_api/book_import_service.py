@@ -21,8 +21,10 @@ the server.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import os
 import re
 import uuid
 from importlib import resources
@@ -30,7 +32,11 @@ from importlib import resources
 import anthropic
 import asyncpg
 
-from dars.v2_api.lp_type_classifier import classify_lp_type
+from dars.v2_api.lp_type_classifier import (
+    SYSTEM_PROMPT as LP_TYPE_SYSTEM_PROMPT,
+    VALID_LP_TYPES,
+    classify_lp_type,
+)
 
 log = logging.getLogger(__name__)
 
@@ -202,46 +208,127 @@ def _usage_str(response) -> str:
     )
 
 
-def _run_breakdown_llm(
+def _llm_backend() -> str:
+    """Which LLM backend to use: 'agent_sdk' (local dev, Claude Code OAuth, no
+    API key) or 'anthropic' (default — the Anthropic API client).
+
+    Set DARS_LLM_BACKEND=agent_sdk for local development. See
+    docs/features/core-book-import/01-decision-log.md D-15.
+    """
+    return os.environ.get("DARS_LLM_BACKEND", "anthropic").strip().lower()
+
+
+async def _complete(system: str, user: str, *, label: str, client=None) -> str:
+    """One text completion (system, user) -> text, backend-agnostic.
+
+    - agent_sdk: claude-agent-sdk over the dev's Claude Code session (no key).
+    - anthropic: the Anthropic API client (prod), run off the event loop.
+    Logs entry + exit + errors uniformly (rule 11). `client` is an injectable
+    Anthropic client for tests (ignored by the agent_sdk path).
+    """
+    backend = _llm_backend()
+    log.info(
+        "LLM %s start: backend=%s system_chars=%d user_chars=%d",
+        label, backend, len(system), len(user),
+    )
+    try:
+        if backend == "agent_sdk":
+            out = await _complete_agent_sdk(system, user)
+        else:
+            out = await asyncio.to_thread(_complete_anthropic, system, user, client)
+    except Exception:
+        log.error("LLM %s FAILED: backend=%s", label, backend, exc_info=True)
+        raise
+    log.info("LLM %s done: backend=%s response_chars=%d", label, backend, len(out))
+    if not out.strip():
+        raise RuntimeError(f"LLM {label} returned an empty response (backend={backend})")
+    return out
+
+
+async def _complete_agent_sdk(system: str, user: str) -> str:
+    """Dev backend: claude-agent-sdk over the Claude Code OAuth session (D-15).
+
+    Mirrors chapter-planner-app/planner_llm.py: assistant text lives in
+    message.content[].text blocks; options must be a ClaudeAgentOptions object.
+    """
+    try:
+        from claude_agent_sdk import ClaudeAgentOptions, query  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError(
+            "DARS_LLM_BACKEND=agent_sdk but claude-agent-sdk is not installed "
+            "(`uv sync --extra dev`)"
+        ) from exc
+    chunks: list[str] = []
+    async for message in query(prompt=user, options=ClaudeAgentOptions(system_prompt=system)):
+        for block in getattr(message, "content", None) or []:
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                chunks.append(text)
+    return "".join(chunks)
+
+
+def _complete_anthropic(system: str, user: str, client) -> str:
+    """Prod backend: Anthropic API. Streamed (large max_tokens) for headroom."""
+    if client is None:
+        client = anthropic.Anthropic()
+    with client.messages.stream(
+        model=BREAKDOWN_MODEL,
+        max_tokens=BREAKDOWN_MAX_TOKENS,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    ) as stream:
+        response = stream.get_final_message()
+    stop = getattr(response, "stop_reason", None)
+    if stop == "max_tokens":
+        log.warning("LLM hit max_tokens (%d) — output may be truncated", BREAKDOWN_MAX_TOKENS)
+    return "".join(b.text for b in response.content if b.type == "text")
+
+
+async def _classify_lp_type(
+    *, parent_slo_statement: str, sub_slo_statement: str, client=None
+) -> str:
+    """lp_type for one sub-SLO, backend-aware.
+
+    On the agent_sdk dev backend, route through `_complete` with the classifier's
+    system prompt and parse the single enum word; otherwise delegate to the
+    Anthropic-based `classify_lp_type` (cached system block + retry) off-thread.
+    """
+    if _llm_backend() == "agent_sdk":
+        user = (
+            f"Parent SLO: {parent_slo_statement.strip()}\n"
+            f"Sub-SLO: {sub_slo_statement.strip()}\n"
+            f"Return only the enum value."
+        )
+        raw = await _complete(LP_TYPE_SYSTEM_PROMPT, user, label="lp_type")
+        candidate = raw.strip().lower().split()[0].strip(".,'\"") if raw.strip() else ""
+        if candidate not in VALID_LP_TYPES:
+            raise ValueError(f"agent_sdk lp_type out of enum: {candidate!r}")
+        return candidate
+    return await asyncio.to_thread(
+        classify_lp_type,
+        parent_slo_statement=parent_slo_statement,
+        sub_slo_statement=sub_slo_statement,
+        client=client,
+    )
+
+
+async def _run_breakdown_llm(
     slos_text: str,
     *,
     subject_label: str,
     grade_label: str,
     client: anthropic.Anthropic | None = None,
 ) -> str:
-    if client is None:
-        client = anthropic.Anthropic()
     system_prompt = _load_breakdown_prompt()
     user_message = (
         f"Subject: {subject_label}\n"
         f"Grade: {grade_label}\n\n"
         f"Here are the main SLOs:\n\n{slos_text}"
     )
-    log.info(
-        "LLM breakdown start: model=%s subject=%s grade=%s slos=%d system_chars=%d user_chars=%d",
-        BREAKDOWN_MODEL, subject_label, grade_label,
-        len(slos_text.splitlines()), len(system_prompt), len(user_message),
-    )
-    try:
-        with client.messages.stream(
-            model=BREAKDOWN_MODEL,
-            max_tokens=BREAKDOWN_MAX_TOKENS,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        ) as stream:
-            response = stream.get_final_message()
-    except Exception:
-        log.error("LLM breakdown FAILED: model=%s", BREAKDOWN_MODEL, exc_info=True)
-        raise
-    text = "".join(b.text for b in response.content if b.type == "text")
-    stop = getattr(response, "stop_reason", None)
-    if stop == "max_tokens":
-        log.warning("LLM breakdown hit max_tokens (%d) — output may be truncated", BREAKDOWN_MAX_TOKENS)
-    log.info("LLM breakdown done: %s stop=%s response_chars=%d", _usage_str(response), stop, len(text))
-    return text
+    return await _complete(system_prompt, user_message, label="breakdown", client=client)
 
 
-def _map_chapter_to_sub_slos(
+async def _map_chapter_to_sub_slos(
     *,
     chapter_title: str,
     chapter_prose: str,
@@ -249,8 +336,6 @@ def _map_chapter_to_sub_slos(
     valid_codes: set[str],
     client: anthropic.Anthropic | None = None,
 ) -> list[str]:
-    if client is None:
-        client = anthropic.Anthropic()
     system_prompt = (
         "You map a chapter's prose to the sub-SLOs (sub learning outcomes) it teaches.\n\n"
         "You will receive:\n"
@@ -268,23 +353,9 @@ def _map_chapter_to_sub_slos(
         f"Chapter prose:\n{truncated_prose}\n\n"
         f"Return the matching sub-SLO codes, one per line."
     )
-    log.info(
-        "LLM chapter-map start: model=%s chapter=%r prose_chars=%d candidates=%d",
-        TOPIC_MAPPER_MODEL, chapter_title, len(truncated_prose), len(valid_codes),
-    )
-    try:
-        response = client.messages.create(
-            model=TOPIC_MAPPER_MODEL,
-            max_tokens=2000,
-            system=[
-                {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}
-            ],
-            messages=[{"role": "user", "content": user_message}],
-        )
-    except Exception:
-        log.error("LLM chapter-map FAILED: chapter=%r", chapter_title, exc_info=True)
-        raise
-    raw_text = "".join(b.text for b in response.content if b.type == "text").strip()
+    raw_text = (await _complete(
+        system_prompt, user_message, label=f"chapter-map({chapter_title})", client=client,
+    )).strip()
     codes_out: list[str] = []
     dropped: list[str] = []
     for line in raw_text.splitlines():
@@ -296,8 +367,8 @@ def _map_chapter_to_sub_slos(
         else:
             dropped.append(candidate)
     log.info(
-        "LLM chapter-map done: chapter=%r %s matched=%d dropped=%d%s",
-        chapter_title, _usage_str(response), len(codes_out), len(dropped),
+        "chapter-map %r: matched=%d dropped=%d%s",
+        chapter_title, len(codes_out), len(dropped),
         f" (dropped: {dropped[:10]})" if dropped else "",
     )
     return codes_out
@@ -318,6 +389,16 @@ class _Progress:
         self.warnings: list[str] = []
         self.current_step: str | None = None
         self.dars_book_id: uuid.UUID | None = None
+
+    async def mark_running(self, conn: asyncpg.Connection, cell: dict) -> None:
+        """Flip the row to 'running' once the cell is resolved, before the long
+        Phase A. So the dashboard shows 'running' during the LLM phase even
+        though no per-step DB writes happen until Phase B."""
+        self.current_step = "sub_slos"
+        await conn.execute(
+            "UPDATE import_runs SET status='running', current_step=$2, updated_at=now() WHERE id=$1",
+            self.run_id, self.current_step,
+        )
 
     async def start_step(self, conn: asyncpg.Connection, step: str) -> None:
         self.current_step = step
@@ -379,10 +460,20 @@ async def resolve_cell(
     )
     if book_row is None:
         raise ValueError(f"core book {core_book_id} not found")
+    # Importable statuses: a published book or one ready for review. Anything
+    # earlier (Draft etc.) is rejected — but a non-OnProd book is allowed so the
+    # admin can pull a book that isn't live yet (logged for visibility).
+    importable = {"OnProd", "ReadyForReview"}
+    if book_row["status"] not in importable:
+        raise ValueError(
+            f"core book {core_book_id} status={book_row['status']!r}; "
+            f"expected one of {sorted(importable)}"
+        )
     if book_row["status"] != "OnProd":
-        raise ValueError(f"core book {core_book_id} status={book_row['status']!r}; expected OnProd")
-    if not book_row["is_active"]:
-        raise ValueError(f"core book {core_book_id} is_active=False")
+        log.warning(
+            "core book %s status=%s (not OnProd) — importing anyway",
+            core_book_id, book_row["status"],
+        )
 
     grade_code = book_row["grade"]
     subject_code = book_row["subject"]
@@ -471,38 +562,43 @@ async def run_import(
     fde_conn: asyncpg.Connection | None = None
     dars_conn: asyncpg.Connection | None = None
     try:
-        fde_conn = await asyncpg.connect(core_dsn)
+        # Core connection lives through Phase A (reads happen across the LLM
+        # phase). command_timeout bounds any single query.
+        fde_conn = await asyncpg.connect(core_dsn, command_timeout=120)
         await fde_conn.execute(f"SET search_path TO {schema}, public")
-        dars_conn = await asyncpg.connect(dars_dsn)
 
-        cell = await resolve_cell(
-            dars_conn, fde_conn, core_book_id=core_book_id, curriculum_id=curriculum_id
-        )
+        # Resolve the cell with a SHORT-LIVED Dars connection — do NOT keep a
+        # Dars connection open across Phase A (D-16: a Dars conn idle through the
+        # ~14-min LLM phase gets dropped, then Phase B's transaction explodes
+        # with "connection was closed"). We reconnect fresh for Phase B.
+        async with _dars_conn(dars_dsn) as setup_conn:
+            cell = await resolve_cell(
+                setup_conn, fde_conn, core_book_id=core_book_id, curriculum_id=curriculum_id
+            )
+            await prog.mark_running(setup_conn, cell)
         if cell["subject_code"] != "Eng":
             prog.warn(
                 f"subject is {cell['subject_code']!r}; breakdown prompt is English-only — "
                 "results may be poor (D-4)."
             )
 
-        async with dars_conn.transaction():
-            await _import_cell(
-                fde_conn=fde_conn,
-                dars_conn=dars_conn,
-                core_book_id=core_book_id,
-                cell=cell,
-                prog=prog,
-                client=anthropic_client,
-            )
-
-        # Success — finalise outside the (now-committed) tx.
-        await dars_conn.execute(
-            """
-            UPDATE import_runs
-               SET status = 'succeeded', current_step = NULL, updated_at = now()
-             WHERE id = $1
-            """,
-            run_id,
+        # Phase A — all core reads + all LLM work, NO Dars connection held. This
+        # is where the minutes go (177+ LLM calls).
+        plan = await _build_import_plan(
+            fde_conn=fde_conn, core_book_id=core_book_id, cell=cell,
+            prog=prog, client=anthropic_client,
         )
+
+        # Phase B — open a FRESH Dars connection, write everything in one short
+        # transaction, commit, finalise.
+        async with _dars_conn(dars_dsn) as dars_conn:
+            async with dars_conn.transaction():
+                await _write_import_plan(dars_conn=dars_conn, cell=cell, plan=plan, prog=prog)
+            await dars_conn.execute(
+                "UPDATE import_runs SET status='succeeded', current_step=NULL, updated_at=now() "
+                "WHERE id=$1",
+                run_id,
+            )
         log.info("run_import done run_id=%s counts=%s", run_id, prog.counts)
     except Exception as exc:  # noqa: BLE001 — must capture to mark the run failed
         log.error("run_import failed run_id=%s: %s", run_id, exc, exc_info=True)
@@ -510,8 +606,18 @@ async def run_import(
     finally:
         if fde_conn is not None:
             await fde_conn.close()
-        if dars_conn is not None:
-            await dars_conn.close()
+        # dars_conn is managed by the `async with _dars_conn(...)` blocks above.
+
+
+@contextlib.asynccontextmanager
+async def _dars_conn(dars_dsn: str):
+    """Short-lived Dars connection (command_timeout bounds queries). Always
+    closed on exit — never held open across the long LLM phase (D-16)."""
+    conn = await asyncpg.connect(dars_dsn, command_timeout=120)
+    try:
+        yield conn
+    finally:
+        await conn.close()
 
 
 async def _mark_failed(dars_dsn: str, run_id: uuid.UUID, error: str) -> None:
@@ -531,25 +637,32 @@ async def _mark_failed(dars_dsn: str, run_id: uuid.UUID, error: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The five steps (run inside the Dars transaction)
+# Phase A: build the import plan (core reads + all LLM work, NO transaction).
+# Phase B: write the plan (one short Dars transaction). Split so the slow LLM
+# phase never holds a DB transaction open — that caused the connection to drop
+# and the task to hang (D-16). Deterministic UUIDs are the row ids, so no
+# post-insert SELECT round-trips are needed.
 # ---------------------------------------------------------------------------
 
 
-async def _import_cell(
+async def _build_import_plan(
     *,
     fde_conn: asyncpg.Connection,
-    dars_conn: asyncpg.Connection,
     core_book_id: int,
     cell: dict,
     prog: _Progress,
     client: anthropic.Anthropic | None,
-) -> None:
-    ck = _cell_key(cell)
-    cur_id, grade_id, subj_id = cell["curriculum_id"], cell["grade_id"], cell["subject_id"]
+) -> dict:
+    """All core reads + all LLM calls. Returns a plan of plain dicts to write.
 
-    # Ensure the curriculum row exists (it must, since we resolved its code).
-    # --- Step 1: SLOs -------------------------------------------------------
-    await prog.start_step(dars_conn, "slos")
+    No Dars writes here — Dars is only touched in _write_import_plan, inside a
+    short transaction. Progress is flushed on its own connection (prog has none
+    yet; we flush minimally via log only, the row is updated in phase B).
+    """
+    ck = _cell_key(cell)
+
+    # 1. SLOs from core.
+    log.info("plan: reading SLOs from core")
     slo_rows = await fde_conn.fetch(
         """
         SELECT n.ncp_slo_id, n.slo_statement
@@ -562,40 +675,38 @@ async def _import_cell(
         """,
         cell["grade_code"], cell["subject_code"],
     )
+    # slo plan rows + a code->(uuid, statement) map for downstream LLM context.
+    slos: list[dict] = []
     slo_code_to_info: dict[str, tuple[uuid.UUID, str]] = {}
     for position, row in enumerate(slo_rows, start=1):
         code, statement = row["ncp_slo_id"], row["slo_statement"]
-        slo_uuid = seed_uuid(f"slo:{ck}:{code}")
-        await dars_conn.execute(
-            """
-            INSERT INTO slos (id, curriculum_id, grade_id, subject_id, code, statement, position)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (curriculum_id, grade_id, subject_id, code) DO UPDATE
-              SET statement = EXCLUDED.statement, position = EXCLUDED.position, updated_at = now()
-            """,
-            slo_uuid, cur_id, grade_id, subj_id, code, statement, position,
-        )
-        actual_id = await dars_conn.fetchval(
-            "SELECT id FROM slos WHERE curriculum_id=$1 AND grade_id=$2 AND subject_id=$3 AND code=$4",
-            cur_id, grade_id, subj_id, code,
-        )
-        slo_code_to_info[code] = (actual_id, statement)
-    await prog.finish_step(dars_conn, "slos", len(slo_code_to_info))
+        sid = seed_uuid(f"slo:{ck}:{code}")
+        slos.append({"id": sid, "code": code, "statement": statement, "position": position})
+        slo_code_to_info[code] = (sid, statement)
 
-    # --- Step 2: sub-SLOs (LLM breakdown + lp_type) -------------------------
-    await prog.start_step(dars_conn, "sub_slos")
+    # 1b. book + chapters from core — read NOW, while the core connection is
+    # fresh. All core reads happen before any LLM call so fde_conn is never held
+    # idle across the long LLM phase (D-16: an idle core conn gets dropped and
+    # the next read TimeoutErrors). After this, the LLM work touches no DB.
+    log.info("plan: reading book + chapters from core")
+    book, chapters = await _read_book_and_chapters(
+        fde_conn=fde_conn, core_book_id=core_book_id, cell=cell, prog=prog,
+    )
+
+    # 2. sub-SLOs: LLM breakdown + parse (no DB; lp_type deferred per D-17).
+    sub_slos: list[dict] = []
     sub_code_to_uuid: dict[str, uuid.UUID] = {}
     if slo_code_to_info:
         slos_text = _format_slos_for_prompt(slo_code_to_info)
-        raw_md = await asyncio.to_thread(
-            _run_breakdown_llm, slos_text,
+        raw_md = await _run_breakdown_llm(
+            slos_text,
             subject_label=cell["subject_code"], grade_label=f"Grade {cell['grade_code']}",
             client=client,
         )
         rows = _parse_breakdown_markdown(raw_md)
-        log.info("sub_slos: breakdown parsed %d markdown rows", len(rows))
+        log.info("plan: breakdown parsed %d markdown rows", len(rows))
         known_parents = set(slo_code_to_info.keys())
-        parsed: list[dict[str, str]] = []
+        parsed: list[dict] = []
         skipped = 0
         for row in rows:
             code = (row.get("Sub SLO Code") or "").strip()
@@ -614,102 +725,157 @@ async def _import_cell(
                 "breakdown returned rows but none mapped to a known parent SLO — "
                 "check the breakdown output format against the SLO codes"
             )
-        # Classify lp_type per sub-SLO (per-call logging is DEBUG in the
-        # classifier; log a summary + any failure here at INFO/ERROR).
-        log.info("sub_slos: classifying lp_type for %d sub-SLOs", len(parsed))
-        for i, rec in enumerate(parsed):
-            _puuid, parent_stmt = slo_code_to_info[rec["parent_slo_code"]]
-            try:
-                rec["lp_type"] = await asyncio.to_thread(
-                    classify_lp_type,
-                    parent_slo_statement=parent_stmt,
-                    sub_slo_statement=rec["statement"],
-                    client=client,
-                )
-            except Exception:
-                log.error(
-                    "lp_type classification FAILED for sub-SLO %s (%d/%d)",
-                    rec["code"], i + 1, len(parsed), exc_info=True,
-                )
-                raise
-        if parsed:
-            from collections import Counter
-            dist = Counter(r["lp_type"] for r in parsed)
-            log.info("sub_slos: lp_type distribution %s", dict(dist))
-        # Upsert, position within parent. Preserve breakdown order, but break
-        # ties by the numeric/alpha suffix so `.2` precedes `.10` (and `-b`
-        # precedes `-aa`) regardless of code format (D-9).
+        # lp_type is NOT classified here (D-17) — left NULL on import and computed
+        # lazily at LP-generation time. This removes ~N serial LLM calls (the
+        # import's old bottleneck). Assign positions within parent + det. uuids.
         by_parent: dict[str, list[dict]] = {}
         for idx, rec in enumerate(parsed):
             rec["_order"] = idx
             by_parent.setdefault(rec["parent_slo_code"], []).append(rec)
-        for parent_code, subs in by_parent.items():
-            parent_uuid, _ = slo_code_to_info[parent_code]
-            subs.sort(key=lambda r: (_sub_code_sort_key(r["code"]), r["_order"]))
-            for position, rec in enumerate(subs, start=1):
-                sub_uuid = seed_uuid(f"sub_slo:{ck}:{rec['code']}")
-                await dars_conn.execute(
-                    """
-                    INSERT INTO sub_slos
-                        (id, slo_id, code, statement, position, source, recommended_lp_type)
-                    VALUES ($1, $2, $3, $4, $5, 'schema_breakdown', $6)
-                    ON CONFLICT (slo_id, code) DO UPDATE
-                      SET statement = EXCLUDED.statement, position = EXCLUDED.position,
-                          source = EXCLUDED.source, recommended_lp_type = EXCLUDED.recommended_lp_type,
-                          updated_at = now()
-                    """,
-                    sub_uuid, parent_uuid, rec["code"], rec["statement"], position, rec["lp_type"],
-                )
-                actual_id = await dars_conn.fetchval(
-                    "SELECT id FROM sub_slos WHERE slo_id=$1 AND code=$2", parent_uuid, rec["code"],
-                )
-                sub_code_to_uuid[rec["code"]] = actual_id
-    await prog.finish_step(dars_conn, "sub_slos", len(sub_code_to_uuid))
+        for parent_code, group in by_parent.items():
+            parent_uuid = slo_code_to_info[parent_code][0]
+            group.sort(key=lambda r: (_sub_code_sort_key(r["code"]), r["_order"]))
+            for position, rec in enumerate(group, start=1):
+                ssid = seed_uuid(f"sub_slo:{ck}:{rec['code']}")
+                sub_code_to_uuid[rec["code"]] = ssid
+                sub_slos.append({
+                    "id": ssid, "slo_id": parent_uuid, "code": rec["code"],
+                    "statement": rec["statement"], "position": position,
+                    "lp_type": None,  # deferred (D-17)
+                })
 
-    # --- Step 3: book + chapters -------------------------------------------
-    await prog.start_step(dars_conn, "book_chapters")
-    book_uuid, chapters = await _import_book_and_chapters(
-        fde_conn=fde_conn, dars_conn=dars_conn, core_book_id=core_book_id,
-        cell=cell, prog=prog,
+    # 3. topics (1/chapter) + chapter→sub-SLO mapping (LLM per chapter; no DB).
+    sub_slo_index_text = _build_sub_slo_index(
+        [{"code": s["code"], "statement": s["statement"]} for s in sub_slos]
     )
-    prog.dars_book_id = book_uuid
-    await prog.finish_step(dars_conn, "book_chapters", len(chapters))
+    valid_codes = set(sub_code_to_uuid.keys())
+    topics: list[dict] = []
+    for chapter in chapters:
+        prose = _flatten_chapter_prose(chapter.get("chapter_text") or [])
+        topic = {
+            "id": seed_uuid(f"topic:{ck}:ch{chapter['chapter_number']}:1"),
+            "book_chapter_id": chapter["id"],
+            "title": chapter["title"],
+            "topic_text": prose[:50000],
+            "sub_slo_codes": [],
+        }
+        if prose.strip() and valid_codes:
+            topic["sub_slo_codes"] = await _map_chapter_to_sub_slos(
+                chapter_title=chapter["title"], chapter_prose=prose,
+                sub_slo_index_text=sub_slo_index_text, valid_codes=valid_codes,
+                client=client,
+            )
+        elif not prose.strip():
+            prog.warn(f"chapter {chapter['chapter_number']} has no prose; skipped mapping")
+        topics.append(topic)
 
-    # --- Step 4 + 5: topics + mappings -------------------------------------
-    await prog.start_step(dars_conn, "topics")
-    topic_count, mapping_count, bcs_count = await _import_topics_and_mappings(
-        dars_conn=dars_conn, chapters=chapters, cell=cell,
-        sub_code_to_uuid=sub_code_to_uuid, prog=prog, client=client,
-    )
-    await prog.finish_step(dars_conn, "topics", topic_count)
-    prog.steps["mappings"] = {
-        "status": "done", "topic_sub_slos": mapping_count, "book_chapter_slos": bcs_count,
+    return {
+        "slos": slos,
+        "sub_slos": sub_slos,
+        "sub_code_to_uuid": sub_code_to_uuid,
+        "book": book,
+        "chapters": chapters,
+        "topics": topics,
     }
-    prog.counts["topic_sub_slos"] = mapping_count
-    prog.counts["book_chapter_slos"] = bcs_count
-    await prog._flush(dars_conn, status="running")
 
 
-async def _import_book_and_chapters(
-    *,
-    fde_conn: asyncpg.Connection,
-    dars_conn: asyncpg.Connection,
-    core_book_id: int,
-    cell: dict,
-    prog: _Progress,
-) -> tuple[uuid.UUID, list[dict]]:
+async def _read_book_and_chapters(
+    *, fde_conn: asyncpg.Connection, core_book_id: int, cell: dict, prog: _Progress,
+) -> tuple[dict, list[dict]]:
+    """Core reads only — build book + chapter plan dicts (no Dars writes)."""
     ck = _cell_key(cell)
     book_row = await fde_conn.fetchrow(
         """
         SELECT b.id, b.title, b.publisher, b.edition, b.published_year,
                b.total_chapters, b.pdf_url, b.book_text
-        FROM book_library_book b
-        WHERE b.id = $1
+        FROM book_library_book b WHERE b.id = $1
         """,
         core_book_id,
     )
     book_text_parsed = _parse_jsonb(book_row["book_text"]) or []
-    book_uuid = seed_uuid(f"book:{ck}:{core_book_id}")
+    book = {
+        "id": seed_uuid(f"book:{ck}:{core_book_id}"),
+        "title": book_row["title"], "publisher": book_row["publisher"],
+        "edition": book_row["edition"], "published_year": book_row["published_year"],
+        "total_chapters": book_row["total_chapters"], "pdf_url": book_row["pdf_url"],
+        "book_text": book_text_parsed,
+    }
+    chapter_rows = await fde_conn.fetch(
+        """
+        SELECT bc.chapter_number, bc.title, bc.start_page, bc.end_page, bc.status, bc.is_active
+        FROM book_library_bookchapter bc
+        WHERE bc.book_id = $1 AND bc.deleted_at IS NULL
+        ORDER BY bc.chapter_number
+        """,
+        core_book_id,
+    )
+    chapters: list[dict] = []
+    for ch in chapter_rows:
+        start_page, end_page = ch["start_page"], ch["end_page"]
+        if start_page is None or end_page is None:
+            prog.warn(
+                f"chapter {ch['chapter_number']} ({ch['title']!r}) has no page range; prose slice empty"
+            )
+            slice_ = []
+        else:
+            slice_ = [
+                p for p in book_text_parsed
+                if isinstance(p, dict) and isinstance(p.get("pdf_page_no"), int)
+                and start_page <= p["pdf_page_no"] <= end_page
+            ]
+        chapters.append({
+            "id": seed_uuid(f"book_chapter:{ck}:{core_book_id}:{ch['chapter_number']}"),
+            "book_id": book["id"], "chapter_number": ch["chapter_number"], "title": ch["title"],
+            "start_page": start_page, "end_page": end_page,
+            "status": "published" if (ch["status"] == "OnProd" and ch["is_active"]) else "draft",
+            "chapter_text": slice_,
+        })
+    return book, chapters
+
+
+async def _write_import_plan(
+    *, dars_conn: asyncpg.Connection, cell: dict, plan: dict, prog: _Progress,
+) -> None:
+    """Phase B — write the whole plan in one short transaction (the caller's).
+
+    Deterministic UUIDs are the row ids, so no post-insert SELECTs. Fast burst
+    of upserts; the transaction is open for seconds, not the whole import.
+    """
+    cur_id, grade_id, subj_id = cell["curriculum_id"], cell["grade_id"], cell["subject_id"]
+
+    # SLOs
+    await prog.start_step(dars_conn, "slos")
+    for s in plan["slos"]:
+        await dars_conn.execute(
+            """
+            INSERT INTO slos (id, curriculum_id, grade_id, subject_id, code, statement, position)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (curriculum_id, grade_id, subject_id, code) DO UPDATE
+              SET statement = EXCLUDED.statement, position = EXCLUDED.position, updated_at = now()
+            """,
+            s["id"], cur_id, grade_id, subj_id, s["code"], s["statement"], s["position"],
+        )
+    await prog.finish_step(dars_conn, "slos", len(plan["slos"]))
+
+    # sub-SLOs
+    await prog.start_step(dars_conn, "sub_slos")
+    for ss in plan["sub_slos"]:
+        await dars_conn.execute(
+            """
+            INSERT INTO sub_slos (id, slo_id, code, statement, position, source, recommended_lp_type)
+            VALUES ($1, $2, $3, $4, $5, 'schema_breakdown', $6)
+            ON CONFLICT (slo_id, code) DO UPDATE
+              SET statement = EXCLUDED.statement, position = EXCLUDED.position,
+                  source = EXCLUDED.source, recommended_lp_type = EXCLUDED.recommended_lp_type,
+                  updated_at = now()
+            """,
+            ss["id"], ss["slo_id"], ss["code"], ss["statement"], ss["position"], ss["lp_type"],
+        )
+    await prog.finish_step(dars_conn, "sub_slos", len(plan["sub_slos"]))
+
+    # book + chapters
+    await prog.start_step(dars_conn, "book_chapters")
+    b = plan["book"]
     await dars_conn.execute(
         """
         INSERT INTO books
@@ -722,39 +888,11 @@ async def _import_book_and_chapters(
               total_chapters = EXCLUDED.total_chapters, pdf_url = EXCLUDED.pdf_url,
               book_text = EXCLUDED.book_text, updated_at = now()
         """,
-        book_uuid, cell["curriculum_id"], cell["grade_id"], cell["subject_id"],
-        book_row["title"], book_row["publisher"], book_row["edition"],
-        book_row["published_year"], book_row["total_chapters"], book_row["pdf_url"],
-        json.dumps(book_text_parsed),
+        b["id"], cur_id, grade_id, subj_id, b["title"], b["publisher"], b["edition"],
+        b["published_year"], b["total_chapters"], b["pdf_url"], json.dumps(b["book_text"]),
     )
-
-    chapter_rows = await fde_conn.fetch(
-        """
-        SELECT bc.chapter_number, bc.title, bc.start_page, bc.end_page,
-               bc.status, bc.is_active
-        FROM book_library_bookchapter bc
-        WHERE bc.book_id = $1 AND bc.deleted_at IS NULL
-        ORDER BY bc.chapter_number
-        """,
-        core_book_id,
-    )
-    chapters_out: list[dict] = []
-    for ch in chapter_rows:
-        start_page, end_page = ch["start_page"], ch["end_page"]
-        if start_page is None or end_page is None:
-            prog.warn(
-                f"chapter {ch['chapter_number']} ({ch['title']!r}) has no page range; "
-                "prose slice empty"
-            )
-            chapter_text_slice: list[dict] = []
-        else:
-            chapter_text_slice = [
-                p for p in book_text_parsed
-                if isinstance(p, dict) and isinstance(p.get("pdf_page_no"), int)
-                and start_page <= p["pdf_page_no"] <= end_page
-            ]
-        status = "published" if (ch["status"] == "OnProd" and ch["is_active"]) else "draft"
-        chapter_uuid = seed_uuid(f"book_chapter:{ck}:{core_book_id}:{ch['chapter_number']}")
+    prog.dars_book_id = b["id"]
+    for ch in plan["chapters"]:
         await dars_conn.execute(
             """
             INSERT INTO book_chapters
@@ -765,52 +903,20 @@ async def _import_book_and_chapters(
                   end_page = EXCLUDED.end_page, chapter_text = EXCLUDED.chapter_text,
                   status = EXCLUDED.status, updated_at = now()
             """,
-            chapter_uuid, book_uuid, ch["chapter_number"], ch["title"],
-            start_page, end_page, json.dumps(chapter_text_slice), status,
+            ch["id"], ch["book_id"], ch["chapter_number"], ch["title"],
+            ch["start_page"], ch["end_page"], json.dumps(ch["chapter_text"]), ch["status"],
         )
-        actual_id = await dars_conn.fetchval(
-            "SELECT id FROM book_chapters WHERE book_id=$1 AND chapter_number=$2",
-            book_uuid, ch["chapter_number"],
-        )
-        chapters_out.append({
-            "id": actual_id, "chapter_number": ch["chapter_number"],
-            "title": ch["title"], "chapter_text": chapter_text_slice,
-        })
-    return book_uuid, chapters_out
+    await prog.finish_step(dars_conn, "book_chapters", len(plan["chapters"]))
 
-
-async def _import_topics_and_mappings(
-    *,
-    dars_conn: asyncpg.Connection,
-    chapters: list[dict],
-    cell: dict,
-    sub_code_to_uuid: dict[str, uuid.UUID],
-    prog: _Progress,
-    client: anthropic.Anthropic | None,
-) -> tuple[int, int, int]:
-    ck = _cell_key(cell)
-    # Sub-SLO index for the mapper's cached system prompt.
-    sub_slo_rows = await dars_conn.fetch(
-        """
-        SELECT ss.code, ss.statement
-        FROM sub_slos ss JOIN slos s ON s.id = ss.slo_id
-        WHERE s.curriculum_id = $1 AND ss.code = ANY($2::text[])
-        ORDER BY ss.code
-        """,
-        cell["curriculum_id"], list(sub_code_to_uuid.keys()),
-    )
-    sub_slo_index_text = _build_sub_slo_index(
-        [{"code": r["code"], "statement": r["statement"]} for r in sub_slo_rows]
-    )
-    valid_codes = set(sub_code_to_uuid.keys())
-
+    # topics + mappings
+    await prog.start_step(dars_conn, "topics")
+    sub_code_to_uuid = plan["sub_code_to_uuid"]
+    # sub_slo_id -> parent slo_id, from the plan (no DB lookup).
+    sub_uuid_to_slo = {ss["id"]: ss["slo_id"] for ss in plan["sub_slos"]}
     topic_count = 0
-    total_topic_sub_slos = 0
+    mapping_count = 0
     bcs_seen: set[tuple[uuid.UUID, uuid.UUID]] = set()
-
-    for chapter in chapters:
-        prose = _flatten_chapter_prose(chapter.get("chapter_text") or [])
-        topic_uuid = seed_uuid(f"topic:{ck}:ch{chapter['chapter_number']}:1")
+    for topic in plan["topics"]:
         await dars_conn.execute(
             """
             INSERT INTO topics (id, book_chapter_id, topic_number, title, topic_text, status)
@@ -819,42 +925,31 @@ async def _import_topics_and_mappings(
               SET title = EXCLUDED.title, topic_text = EXCLUDED.topic_text,
                   status = EXCLUDED.status, updated_at = now()
             """,
-            topic_uuid, chapter["id"], chapter["title"], prose[:50000],
-        )
-        actual_topic_id = await dars_conn.fetchval(
-            "SELECT id FROM topics WHERE book_chapter_id=$1 AND topic_number=1", chapter["id"],
+            topic["id"], topic["book_chapter_id"], topic["title"], topic["topic_text"],
         )
         topic_count += 1
-
-        if not prose.strip() or not valid_codes:
-            if not prose.strip():
-                prog.warn(f"chapter {chapter['chapter_number']} has no prose; skipped mapping")
-            continue
-
-        codes = await asyncio.to_thread(
-            _map_chapter_to_sub_slos,
-            chapter_title=chapter["title"], chapter_prose=prose,
-            sub_slo_index_text=sub_slo_index_text, valid_codes=valid_codes,
-            client=client,
-        )
-        for code in codes:
-            sub_slo_uuid = sub_code_to_uuid[code]
+        for code in topic["sub_slo_codes"]:
+            ss_uuid = sub_code_to_uuid[code]
             await dars_conn.execute(
                 "INSERT INTO topic_sub_slos (topic_id, sub_slo_id) VALUES ($1, $2) "
                 "ON CONFLICT (topic_id, sub_slo_id) DO NOTHING",
-                actual_topic_id, sub_slo_uuid,
+                topic["id"], ss_uuid,
             )
-            total_topic_sub_slos += 1
-            parent_slo_id = await dars_conn.fetchval(
-                "SELECT slo_id FROM sub_slos WHERE id = $1", sub_slo_uuid,
-            )
-            key = (chapter["id"], parent_slo_id)
-            if key not in bcs_seen:
+            mapping_count += 1
+            parent_slo_id = sub_uuid_to_slo.get(ss_uuid)
+            key = (topic["book_chapter_id"], parent_slo_id)
+            if parent_slo_id is not None and key not in bcs_seen:
                 await dars_conn.execute(
                     "INSERT INTO book_chapter_slos (book_chapter_id, slo_id) VALUES ($1, $2) "
                     "ON CONFLICT (book_chapter_id, slo_id) DO NOTHING",
-                    chapter["id"], parent_slo_id,
+                    topic["book_chapter_id"], parent_slo_id,
                 )
                 bcs_seen.add(key)
+    await prog.finish_step(dars_conn, "topics", topic_count)
+    prog.steps["mappings"] = {
+        "status": "done", "topic_sub_slos": mapping_count, "book_chapter_slos": len(bcs_seen),
+    }
+    prog.counts["topic_sub_slos"] = mapping_count
+    prog.counts["book_chapter_slos"] = len(bcs_seen)
+    await prog._flush(dars_conn, status="running")
 
-    return topic_count, total_topic_sub_slos, len(bcs_seen)
