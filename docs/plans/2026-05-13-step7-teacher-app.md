@@ -43,6 +43,7 @@ Structure:
 - Internal top nav: **Today** | **My Classes** | **Quick LP** | **Quick Exam**
 
 Auth: same `dars_pef_session` from localStorage. If no session → redirect to `/dashboard/login`.
+<!-- Superseded 2026-06-04: the teacher app authenticates via the org API key (`dars_org_api_key`, `getApiKey` in lib/dars-api.ts); the dashboard uses `dars_admin_session`. `dars_pef_session` no longer exists. -->
 
 Component: `components/molecules/teacher-app/top-nav.tsx`
 

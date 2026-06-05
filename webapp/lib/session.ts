@@ -1,22 +1,18 @@
-export interface DarsSession {
-  api_key: string;
-  client_id?: string;
-  name?: string;
-  email?: string;
-  is_admin?: boolean;
-}
-
-export function getSession(): DarsSession | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem("dars_pef_session");
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
-}
-
-export function getApiKey(): string {
-  return getSession()?.api_key ?? "";
-}
+/**
+ * Dashboard session helpers.
+ *
+ * The dashboard authenticates with an opaque admin-session token stored under
+ * `dars_admin_session` (see lib/dars-api.ts `setAdminSession`). Everyone who
+ * logs into /dashboard is an admin, so "is admin" == "has an admin session".
+ *
+ * Historical note: an earlier PEF-era model stored a `dars_pef_session` JSON
+ * blob with an `is_admin` flag and an `api_key`. That key is dead — the real
+ * login writes `dars_admin_session`, and the teacher app reads its org key via
+ * `getApiKey` in lib/dars-api.ts (`dars_org_api_key`). This module no longer
+ * touches `dars_pef_session`.
+ */
+import { getAdminSession } from "@/lib/dars-api";
 
 export function isAdmin(): boolean {
-  return getSession()?.is_admin === true;
+  return getAdminSession() !== "";
 }
