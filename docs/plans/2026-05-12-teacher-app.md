@@ -122,6 +122,7 @@ Visually distinct — use a different icon (mobile/phone icon) and label it as "
 - All existing school API endpoints — untouched
 - Lesson plan generation flow — untouched
 - Auth / session — teacher app reads from the same `dars_pef_session` localStorage key
+<!-- Superseded 2026-06-04: teacher app now reads the org API key `dars_org_api_key`; `dars_pef_session` was removed. -->
 
 ---
 

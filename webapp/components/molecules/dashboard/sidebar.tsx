@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/atoms/logo";
+import { clearAdminSession } from "@/lib/dars-api";
 import { isAdmin } from "@/lib/session";
 
 const IconLessonPlan = (
@@ -112,7 +113,7 @@ export function Sidebar() {
   useEffect(() => { setAdmin(isAdmin()); }, []);
 
   function handleSignOut() {
-    localStorage.removeItem("dars_pef_session");
+    clearAdminSession();
     window.location.href = "/dashboard/login";
   }
 
