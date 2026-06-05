@@ -121,3 +121,14 @@ breakdown prompt emits dot-notation (`A-01.1`) or bare parent codes; a fresh imp
 all/most sub-SLOs. *Apply:* `_derive_parent_code(code, known_parents)` (exact-parent →
 strip-recognised-suffix → longest-known-prefix), plus `_sub_code_sort_key` for numeric-aware
 ordering. Tested in `test_book_import_service.py`. *Decided:* 2026-06-04. *Resolves:* D-9.
+
+**D-12: Every LLM call logs entry + exit (with token usage) + errors, per rule 11.**
+*Rationale:* imports are long-running and LLM-driven; when one misbehaves the logs must show
+exactly what was asked and what came back, without a debugger. *Apply:* shared `_usage_str`
+helper; `_run_breakdown_llm` and `_map_chapter_to_sub_slos` log `INFO` start (model, purpose,
+input sizes), `INFO` done (in/out/cache tokens, response chars, matched/dropped codes,
+`stop_reason`; a `max_tokens` stop logs a truncation `WARNING`), and `ERROR … exc_info=True`
+on failure. The breakdown step logs parsed-row count + lp_type distribution; per-sub-SLO
+`classify_lp_type` stays `DEBUG` (70+ calls) but a failure is logged + re-raised at the loop.
+Logging asserted in `test_book_import_service.py`. *Decided:* 2026-06-04 (user asked for
+debuggable LLM logging).

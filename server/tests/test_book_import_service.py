@@ -32,6 +32,7 @@ class _FakeMessage:
     def __init__(self, text):
         self.content = [_FakeBlock(text)]
         self.usage = _FakeUsage()
+        self.stop_reason = "end_turn"
 
 
 class _FakeMessages:
@@ -103,6 +104,32 @@ def test_classify_lp_type_retries_then_raises_on_garbage():
         classify_lp_type(
             parent_slo_statement="x", sub_slo_statement="y", client=client,
         )
+
+
+# --------------------------------------------------------------------------- #
+# LLM call logging — entry + exit (usage) so imports are debuggable from logs
+# --------------------------------------------------------------------------- #
+
+
+def test_chapter_map_logs_start_and_usage(caplog):
+    import logging
+    client = _FakeAnthropic("A-01.1\nbogus-code")
+    with caplog.at_level(logging.INFO, logger="dars.v2_api.book_import_service"):
+        out = svc._map_chapter_to_sub_slos(
+            chapter_title="Colours", chapter_prose="red and blue",
+            sub_slo_index_text="- A-01.1: x", valid_codes={"A-01.1"}, client=client,
+        )
+    assert out == ["A-01.1"]
+    text = caplog.text
+    assert "LLM chapter-map start" in text and "Colours" in text
+    assert "LLM chapter-map done" in text and "matched=1" in text
+    assert "dropped=1" in text  # bogus-code dropped + logged
+
+
+def test_usage_str_tolerates_missing_usage():
+    class _NoUsage:
+        pass
+    assert svc._usage_str(_NoUsage()) == "usage=n/a"
 
 
 # --------------------------------------------------------------------------- #

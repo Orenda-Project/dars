@@ -178,7 +178,24 @@ def _flatten_chapter_prose(chapter_text_slice: list[dict]) -> str:
 
 # ---------------------------------------------------------------------------
 # LLM calls (sync; run via asyncio.to_thread). client injectable for tests.
+#
+# Every call logs uniformly so imports are debuggable from logs alone (rule 11):
+#   INFO  before  — purpose, model, input size
+#   INFO  after   — in/out tokens, cache reads, response chars
+#   ERROR on fail — with exc_info=True
 # ---------------------------------------------------------------------------
+
+
+def _usage_str(response) -> str:
+    """Compact token-usage summary for logs; tolerant of a missing usage block."""
+    u = getattr(response, "usage", None)
+    if u is None:
+        return "usage=n/a"
+    return (
+        f"in={getattr(u, 'input_tokens', '?')} "
+        f"out={getattr(u, 'output_tokens', '?')} "
+        f"cache_read={getattr(u, 'cache_read_input_tokens', 0)}"
+    )
 
 
 def _run_breakdown_llm(
@@ -197,17 +214,27 @@ def _run_breakdown_llm(
         f"Here are the main SLOs:\n\n{slos_text}"
     )
     log.info(
-        "breakdown LLM call model=%s slos=%d system_chars=%d",
-        BREAKDOWN_MODEL, len(slos_text.splitlines()), len(system_prompt),
+        "LLM breakdown start: model=%s subject=%s grade=%s slos=%d system_chars=%d user_chars=%d",
+        BREAKDOWN_MODEL, subject_label, grade_label,
+        len(slos_text.splitlines()), len(system_prompt), len(user_message),
     )
-    with client.messages.stream(
-        model=BREAKDOWN_MODEL,
-        max_tokens=BREAKDOWN_MAX_TOKENS,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    ) as stream:
-        response = stream.get_final_message()
-    return "".join(b.text for b in response.content if b.type == "text")
+    try:
+        with client.messages.stream(
+            model=BREAKDOWN_MODEL,
+            max_tokens=BREAKDOWN_MAX_TOKENS,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        ) as stream:
+            response = stream.get_final_message()
+    except Exception:
+        log.error("LLM breakdown FAILED: model=%s", BREAKDOWN_MODEL, exc_info=True)
+        raise
+    text = "".join(b.text for b in response.content if b.type == "text")
+    stop = getattr(response, "stop_reason", None)
+    if stop == "max_tokens":
+        log.warning("LLM breakdown hit max_tokens (%d) — output may be truncated", BREAKDOWN_MAX_TOKENS)
+    log.info("LLM breakdown done: %s stop=%s response_chars=%d", _usage_str(response), stop, len(text))
+    return text
 
 
 def _map_chapter_to_sub_slos(
@@ -237,20 +264,38 @@ def _map_chapter_to_sub_slos(
         f"Chapter prose:\n{truncated_prose}\n\n"
         f"Return the matching sub-SLO codes, one per line."
     )
-    response = client.messages.create(
-        model=TOPIC_MAPPER_MODEL,
-        max_tokens=2000,
-        system=[
-            {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}
-        ],
-        messages=[{"role": "user", "content": user_message}],
+    log.info(
+        "LLM chapter-map start: model=%s chapter=%r prose_chars=%d candidates=%d",
+        TOPIC_MAPPER_MODEL, chapter_title, len(truncated_prose), len(valid_codes),
     )
+    try:
+        response = client.messages.create(
+            model=TOPIC_MAPPER_MODEL,
+            max_tokens=2000,
+            system=[
+                {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}
+            ],
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except Exception:
+        log.error("LLM chapter-map FAILED: chapter=%r", chapter_title, exc_info=True)
+        raise
     raw_text = "".join(b.text for b in response.content if b.type == "text").strip()
     codes_out: list[str] = []
+    dropped: list[str] = []
     for line in raw_text.splitlines():
         candidate = line.strip().lstrip("-").strip()
-        if candidate and candidate in valid_codes:
+        if not candidate:
+            continue
+        if candidate in valid_codes:
             codes_out.append(candidate)
+        else:
+            dropped.append(candidate)
+    log.info(
+        "LLM chapter-map done: chapter=%r %s matched=%d dropped=%d%s",
+        chapter_title, _usage_str(response), len(codes_out), len(dropped),
+        f" (dropped: {dropped[:10]})" if dropped else "",
+    )
     return codes_out
 
 
@@ -536,6 +581,7 @@ async def _import_cell(
             client=client,
         )
         rows = _parse_breakdown_markdown(raw_md)
+        log.info("sub_slos: breakdown parsed %d markdown rows", len(rows))
         known_parents = set(slo_code_to_info.keys())
         parsed: list[dict[str, str]] = []
         skipped = 0
@@ -556,15 +602,28 @@ async def _import_cell(
                 "breakdown returned rows but none mapped to a known parent SLO — "
                 "check the breakdown output format against the SLO codes"
             )
-        # Classify lp_type per sub-SLO.
-        for rec in parsed:
+        # Classify lp_type per sub-SLO (per-call logging is DEBUG in the
+        # classifier; log a summary + any failure here at INFO/ERROR).
+        log.info("sub_slos: classifying lp_type for %d sub-SLOs", len(parsed))
+        for i, rec in enumerate(parsed):
             _puuid, parent_stmt = slo_code_to_info[rec["parent_slo_code"]]
-            rec["lp_type"] = await asyncio.to_thread(
-                classify_lp_type,
-                parent_slo_statement=parent_stmt,
-                sub_slo_statement=rec["statement"],
-                client=client,
-            )
+            try:
+                rec["lp_type"] = await asyncio.to_thread(
+                    classify_lp_type,
+                    parent_slo_statement=parent_stmt,
+                    sub_slo_statement=rec["statement"],
+                    client=client,
+                )
+            except Exception:
+                log.error(
+                    "lp_type classification FAILED for sub-SLO %s (%d/%d)",
+                    rec["code"], i + 1, len(parsed), exc_info=True,
+                )
+                raise
+        if parsed:
+            from collections import Counter
+            dist = Counter(r["lp_type"] for r in parsed)
+            log.info("sub_slos: lp_type distribution %s", dict(dist))
         # Upsert, position within parent. Preserve breakdown order, but break
         # ties by the numeric/alpha suffix so `.2` precedes `.10` (and `-b`
         # precedes `-aa`) regardless of code format (D-9).
