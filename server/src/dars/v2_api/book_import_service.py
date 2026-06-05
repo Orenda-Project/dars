@@ -102,6 +102,10 @@ def _sub_code_sort_key(code: str) -> tuple:
 
 STEPS = ("slos", "sub_slos", "book_chapters", "topics", "mappings")
 
+# Schema identifier guard (mirror of the router's; defends the search_path
+# interpolation in the background task).
+_SCHEMA_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 def seed_uuid(key: str) -> uuid.UUID:
     """Deterministic UUID v5 from SEED_NAMESPACE + key."""
@@ -365,10 +369,10 @@ async def resolve_cell(
         """
         SELECT b.id, b.status, b.is_active,
                g.short_code AS grade, s.short_code AS subject
-        FROM fde_staging.book_library_book b
-        LEFT JOIN fde_staging.slo_gradesubject gs ON b.grade_subject_id = gs.id
-        LEFT JOIN fde_staging.slo_grade g ON gs.grade_id = g.id
-        LEFT JOIN fde_staging.slo_subject s ON gs.subject_id = s.id
+        FROM book_library_book b
+        LEFT JOIN slo_gradesubject gs ON b.grade_subject_id = gs.id
+        LEFT JOIN slo_grade g ON gs.grade_id = g.id
+        LEFT JOIN slo_subject s ON gs.subject_id = s.id
         WHERE b.id = $1
         """,
         core_book_id,
@@ -447,20 +451,28 @@ async def run_import(
     curriculum_id: uuid.UUID | None,
     core_dsn: str,
     dars_dsn: str,
+    schema: str = "fde_staging",
     anthropic_client: anthropic.Anthropic | None = None,
 ) -> None:
     """Run the full import as a background job. Updates the import_runs row.
 
     Opens its own core (read-only) + Dars (rw) connections (D-5). Dars writes in
     one transaction; on error, roll back then mark failed via a fresh connection.
+    `schema` is the source schema in core (validated by the caller); core table
+    refs are unqualified and resolved via search_path.
     """
-    log.info("run_import start run_id=%s core_book_id=%s", run_id, core_book_id)
+    log.info("run_import start run_id=%s core_book_id=%s schema=%r", run_id, core_book_id, schema)
+    if not _SCHEMA_RE.match(schema):
+        # Defensive — the router validates, but the bg task must not run with a
+        # bad identifier (search_path interpolation).
+        await _mark_failed(dars_dsn, run_id, f"invalid schema name {schema!r}")
+        return
     prog = _Progress(run_id)
     fde_conn: asyncpg.Connection | None = None
     dars_conn: asyncpg.Connection | None = None
     try:
         fde_conn = await asyncpg.connect(core_dsn)
-        await fde_conn.execute("SET search_path TO fde_staging, public")
+        await fde_conn.execute(f"SET search_path TO {schema}, public")
         dars_conn = await asyncpg.connect(dars_dsn)
 
         cell = await resolve_cell(
@@ -541,10 +553,10 @@ async def _import_cell(
     slo_rows = await fde_conn.fetch(
         """
         SELECT n.ncp_slo_id, n.slo_statement
-        FROM fde_staging.slo_ncpslo n
-        JOIN fde_staging.slo_gradesubject gs ON n.grade_subject_id = gs.id
-        JOIN fde_staging.slo_grade g ON gs.grade_id = g.id
-        JOIN fde_staging.slo_subject s ON gs.subject_id = s.id
+        FROM slo_ncpslo n
+        JOIN slo_gradesubject gs ON n.grade_subject_id = gs.id
+        JOIN slo_grade g ON gs.grade_id = g.id
+        JOIN slo_subject s ON gs.subject_id = s.id
         WHERE g.short_code = $1 AND s.short_code = $2 AND n.is_active = TRUE
         ORDER BY n.ncp_slo_id
         """,
@@ -691,7 +703,7 @@ async def _import_book_and_chapters(
         """
         SELECT b.id, b.title, b.publisher, b.edition, b.published_year,
                b.total_chapters, b.pdf_url, b.book_text
-        FROM fde_staging.book_library_book b
+        FROM book_library_book b
         WHERE b.id = $1
         """,
         core_book_id,
@@ -720,7 +732,7 @@ async def _import_book_and_chapters(
         """
         SELECT bc.chapter_number, bc.title, bc.start_page, bc.end_page,
                bc.status, bc.is_active
-        FROM fde_staging.book_library_bookchapter bc
+        FROM book_library_bookchapter bc
         WHERE bc.book_id = $1 AND bc.deleted_at IS NULL
         ORDER BY bc.chapter_number
         """,

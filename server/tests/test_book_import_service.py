@@ -215,7 +215,7 @@ async def test_resolve_cell_rejects_unknown_book():
 
 async def test_resolve_cell_rejects_non_onprod():
     fde = _FakeConn(fetchrow_map={
-        "FROM fde_staging.book_library_book b":
+        "FROM book_library_book b":
             {"id": 1, "status": "Draft", "is_active": True, "grade": "G1", "subject": "Eng"},
     })
     dars = _FakeConn()
@@ -225,7 +225,7 @@ async def test_resolve_cell_rejects_non_onprod():
 
 async def test_resolve_cell_rejects_unmapped_grade():
     fde = _FakeConn(fetchrow_map={
-        "FROM fde_staging.book_library_book b":
+        "FROM book_library_book b":
             {"id": 1, "status": "OnProd", "is_active": True, "grade": "G1", "subject": "Eng"},
     })
     # Dars has no grade row for code 1.

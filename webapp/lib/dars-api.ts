@@ -896,14 +896,22 @@ export const IMPORT_STEPS = [
 ] as const;
 
 export const bookImport = {
-  /** Browse importable taleemabad-core books. 503 if core DB not configured. */
-  getCoreBooks: (search?: string) =>
+  /**
+   * Look up importable taleemabad-core books. Pass `book_id` for an exact match
+   * or `search` for a title filter; `schema` selects the source DB schema
+   * (default fde_staging). 503 if core DB not configured.
+   */
+  getCoreBooks: (params: { search?: string; book_id?: number; schema?: string } = {}) =>
     request<ListResponse<CoreBook>>("/api/v2/admin/core-books", {
-      query: search ? { search } : undefined,
+      query: {
+        search: params.search,
+        book_id: params.book_id,
+        schema: params.schema,
+      },
       auth: "admin",
     }),
   /** Kick off an import → 202 { import_run_id }. 409 if one is already running. */
-  start: (body: { core_book_id: number; curriculum_id?: UUID }) =>
+  start: (body: { core_book_id: number; curriculum_id?: UUID; schema_name?: string }) =>
     request<{ import_run_id: UUID }>("/api/v2/admin/book-imports", {
       method: "POST", body, auth: "admin",
     }),
