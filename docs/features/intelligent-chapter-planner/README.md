@@ -1,5 +1,7 @@
 # Intelligent Chapter Planner
 
+> _Superseded by [chapter-planner-in-dars](../chapter-planner-in-dars/README.md) (2026-06), which ported the standalone CPE planner back into the Dars backend and wired it into break-it-down. This folder is kept as historical record._
+
 > **STATUS (2026-06-03, D-17): removed from the Dars backend.** The intelligent LLM planner shipped (#108) but is not yet production-ready (see `PLANNER_REPORT.md`). The backend `/plan` break-down has been reverted to a simple deterministic **placeholder** (one lesson per topic + one final formative assessment). The intelligent planner is being rebuilt/iterated as an **independent, locally-testable service** and will be re-integrated once ready. This folder + `PLANNER_REPORT.md` are the design record for that rebuild. See decision **D-17**.
 
 Today the "break it down" flow (`POST /csts/{cst_id}/chapters/{book_chapter_id}/plan`) turns a chapter into a slot sequence with a **purely deterministic algorithm**: it splits days proportionally by topic count, distributes lessons uniformly across topics in book order, interleaves a formative assessment every N lessons, and picks an `lp_type` per topic from a keyword table. It is mechanical — it does not reason about topic difficulty, coherent LP boundaries, or what each assessment should actually cover.

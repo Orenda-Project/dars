@@ -36,4 +36,49 @@ Depends on: Phase 1 (planner core + models live in `breakdown/`).
 **Acceptance:** `chapter-planner-app/` gone; `make planner` no longer exists; no live code or doc references the deleted directory (historical feature folders excepted, now annotated).
 
 ## Notes from execution
-_(appended during the phase — e.g. the multi-topic-unit → single slot.topic_id decision, any follow-ups)_
+
+- **Persistence shape (F2.2).** Per Plan Unit in `sequence` order: one
+  `class_lesson_slot` (`slot_type='lesson'`, `lp_type=unit.lp_type`,
+  `topic_id=UUID(unit.topic_ids[0])` as the lead/primary topic, `book_chapter_id`,
+  `status='planned'`, `org_id`/`cst_id` tenancy, `position` appended after the
+  CST's current max across both slot tables) with `RETURNING id`, then one
+  `class_lesson_slot_topics` row per `topic_id` in `unit.topic_ids` with
+  `position` 1..N in list order. **No `class_assessment_slots` rows (D-1).**
+  `GeneratePlanResult.source = "cpe"`; `assessment_slot_count` stays 0.
+- **Lead-topic / multi-topic handling.** A unit's planner `topic_ids` are JSON
+  strings (`build_plan_request` uses `t.id::text`, so ids are stringified UUIDs).
+  On persist we `UUID(...)` them back. `slot.topic_id` == `UUID(unit.topic_ids[0])`;
+  the join table carries the full ordered grouping (1..N). Verified by
+  `test_generate_persists_lessons_only_with_topic_grouping` (K=2 unit).
+- **Live `class_lesson_slots` columns reconciled** against migrations
+  (`20260517` cutover + `20260604` drop of `breakdown_slot_id` + `20260605` add of
+  `book_chapter_id`): the placeholder INSERT column list
+  `(org_id, cst_id, position, slot_type, lp_type, topic_id, book_chapter_id, status)`
+  was already correct, so it was reused (now with `RETURNING id`). No schema/migration.
+- **F2.3 helpers removed** (all dead after F2.2; only referenced by this module +
+  its old test): `compute_chapter_day_budget`, `allocate_chapter_days`,
+  `plan_chapter_slots`, `ChapterDayAllocation`, `PlannedSlot`. The `pick_lp_type`
+  import was dropped (planner now assigns lp_type). **Kept** (still used for
+  slot_count gating / by `class_chapter_service` + `router_class_actions`):
+  `chapter_slot_count`, `resolve_cst_syllabus_context`, `compute_teaching_days`,
+  `CstSyllabusContext`, `_cst_weekday_set`.
+- **Grade as int.** `PlanRequest.grade` needs an int 1..5; `resolve_cst_syllabus_context`
+  only yields `grade_id`. `generate_chapter_plan` looks up `grades.code` (the int)
+  for that id and passes it through. Curriculum is passed as `"ICT"` (the planner
+  default — `PlanRequest.curriculum` is pass-through only, not load-bearing here).
+- **No-fallback surfacing (F2.2, D-5).** `router_class_actions.break_down_chapter`
+  now maps `PlannerLLMError` → 502 (mirrors `/api/v2/plan`) and keeps the existing
+  `ValueError` → 422 (which also covers `PlanParseError`/`PlanValidationError`,
+  both `ValueError` subclasses). `generate_chapter_plan` wraps its body in a
+  try/except that logs at ERROR with `exc_info=True` and re-raises (rule 11).
+- **Tests are DB-gated.** The persistence assertions need asyncpg-specific SQL
+  (`RETURNING`, real FKs), so `test_chapter_plan_service.py` builds a throwaway
+  org→…→chapter graph and is skipped without `DATABASE_URL` (same pattern as
+  `test_chapter_breakdown_service.py`). Covers: lessons-only + zero assessment
+  slots, a K=2 multi-topic unit, both refusal paths, planner-failure-persists-
+  nothing, and the invalid-plan path. The old pure-helper tests were deleted with
+  their helpers. Full suite: 229 passed / 41 skipped locally.
+- **`make planner` divergence.** The phase doc expected a `planner` target in the
+  root `dars/Makefile`; the Phase-1 branch base this stacks on has no such target
+  (the Makefile only has `dev/test/db-new/bruno-sync/webapp/up/seed`). Nothing to
+  remove — recorded here so the absence isn't read as a miss.

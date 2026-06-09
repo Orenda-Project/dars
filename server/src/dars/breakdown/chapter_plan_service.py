@@ -1,17 +1,11 @@
 """
-Chapter Plan — pure slot-sequence planners.
+Chapter Plan — break-it-down service.
 
-Salvaged from the now-deleted `auto_build_service.py` (D-12). These pure
-functions distribute a chapter's day budget into a sequence of lesson /
-formative-assessment / summative-assessment / revision slots and assign
-lp_type per topic. No DB, no I/O.
-
-Used by the teacher-app "break it down" flow (Phase 3): the slot count is
-computed from the teacher's real timetable (D-9) and these planners turn that
-count into a concrete slot sequence for one chapter.
-
-The number of returned slots equals the `chapter_days` the allocation was built
-for (1 slot = 1 teaching day, D-74).
+Computes a chapter's slot_count from the teacher's real timetable (D-9), builds
+a PlanRequest from the live DB (F2.1), drives the intelligent chapter planner
+(`make_chapter_plan`, Phase 1) and persists one `class_lesson_slot` per Plan
+Unit plus its `class_lesson_slot_topics` grouping (D-9). No assessment slots are
+created (D-1); no fallback on planner failure (D-5).
 """
 import logging
 from dataclasses import dataclass, field
@@ -20,243 +14,13 @@ from uuid import UUID
 
 import asyncpg
 
-from dars.breakdown.holidays import get_effective_holidays, resolve_cst_context
-from dars.breakdown.lp_type_heuristics import pick_lp_type
+from dars.breakdown.holidays import get_effective_holidays
+from dars.breakdown.planner import make_chapter_plan
+from dars.breakdown.planner_llm import AgentSdkPlannerLLM, PlannerLLM
+from dars.breakdown.planner_models import PlanRequest
 from dars.breakdown.projector import compute_teaching_days
 
 log = logging.getLogger("breakdown.chapter_plan")
-
-
-def compute_chapter_day_budget(
-    topic_counts_in_order: list[int],
-    total_teaching_days: int,
-) -> list[int]:
-    """
-    Split `total_teaching_days` across chapters proportional to topic count.
-    Returns one budget per chapter. Every chapter gets at least 1 day.
-    Sum is guaranteed to equal total_teaching_days.
-    """
-    total_topics = sum(topic_counts_in_order)
-    if total_topics <= 0:
-        return [1 for _ in topic_counts_in_order]
-    raw = [
-        (count / total_topics) * total_teaching_days for count in topic_counts_in_order
-    ]
-    rounded = [max(1, round(x)) for x in raw]
-    drift = total_teaching_days - sum(rounded)
-    if drift != 0 and rounded:
-        idx = rounded.index(max(rounded))
-        rounded[idx] = max(1, rounded[idx] + drift)
-    return rounded
-
-
-@dataclass(frozen=True)
-class ChapterDayAllocation:
-    """How a chapter's day budget is split into slot kinds."""
-
-    lesson_days: int           # number of lesson slots
-    fa_count: int              # number of FA slots
-    sa_count: int              # number of SA slots
-    revision_count: int        # 0 or 1
-    days_per_topic: list[int]  # length == topic_count; sum == lesson_days
-
-
-def allocate_chapter_days(
-    chapter_days: int,
-    topic_count: int,
-    fa_cadence: int,
-    sa_per_chapter: int,
-) -> ChapterDayAllocation:
-    """
-    Decide how the chapter's day budget splits into lesson/FA/SA/revision
-    slots, and how lesson days distribute across topics.
-
-    Invariant: lesson_days + fa_count + sa_count + revision_count == chapter_days.
-
-    Priority when the chapter is small:
-        1. SA(s) and revision are reserved first (1 day each).
-        2. Remaining days are split into lesson_days + fa_count, with
-           fa_count = floor(lesson_days / fa_cadence).
-        3. If even that's impossible (chapter_days too small), drop
-           revision then SAs until everything fits.
-
-    Lesson days distribute uniformly across topics: each topic gets
-    floor(lesson_days / topic_count) days; the first `remainder` topics
-    get one extra. If topic_count == 0, days_per_topic is empty and
-    lesson_days is 0.
-    """
-    if chapter_days < 1:
-        raise ValueError(f"chapter_days must be >= 1, got {chapter_days}")
-    if fa_cadence < 1:
-        raise ValueError(f"fa_cadence must be >= 1, got {fa_cadence}")
-    if sa_per_chapter < 0:
-        raise ValueError(f"sa_per_chapter must be >= 0, got {sa_per_chapter}")
-    if topic_count < 0:
-        raise ValueError(f"topic_count must be >= 0, got {topic_count}")
-
-    sa_count = sa_per_chapter
-    revision_count = 1
-    remaining = chapter_days - sa_count - revision_count
-
-    if remaining < 0:
-        revision_count = 0
-        remaining = chapter_days - sa_count
-        while remaining < 0 and sa_count > 0:
-            sa_count -= 1
-            remaining += 1
-        # remaining is now >= 0.
-
-    if topic_count == 0:
-        # No topics → no lessons, no FAs. Dump leftover into extra SAs to
-        # preserve the count == chapter_days invariant.
-        return ChapterDayAllocation(
-            lesson_days=0,
-            fa_count=0,
-            sa_count=sa_count + remaining,
-            revision_count=revision_count,
-            days_per_topic=[],
-        )
-
-    # Solve lesson_days + fa_count == remaining with fa_count == lesson_days // fa_cadence.
-    # Closed form: lesson_days = remaining - remaining // (fa_cadence + 1) ... but iterating
-    # is easier to read and converges in <= 2 steps.
-    lesson_days = remaining
-    fa_count = 0
-    for _ in range(64):
-        new_lessons = remaining - fa_count
-        new_fa = new_lessons // fa_cadence
-        if new_fa == fa_count and new_lessons == lesson_days:
-            break
-        lesson_days = new_lessons
-        fa_count = new_fa
-
-    # Sanity: enforce the invariant.
-    if lesson_days + fa_count != remaining:
-        # Off by one due to recurrence corner — eat the diff into fa_count.
-        fa_count = remaining - lesson_days
-
-    base = lesson_days // topic_count
-    rem = lesson_days % topic_count
-    days_per_topic = [base + (1 if i < rem else 0) for i in range(topic_count)]
-
-    return ChapterDayAllocation(
-        lesson_days=lesson_days,
-        fa_count=fa_count,
-        sa_count=sa_count,
-        revision_count=revision_count,
-        days_per_topic=days_per_topic,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Slot sequence planner (pure)
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class PlannedSlot:
-    slot_type: str           # 'lesson' | 'formative_assessment' | 'summative_assessment' | 'revision'
-    topic_id: UUID | None    # for lessons
-    lp_type: str | None      # for lessons; 'revision' for revision; None for FA/SA
-    covered_topic_ids: tuple[UUID, ...]  # for FA/SA: the topics this assessment covers
-
-
-def plan_chapter_slots(
-    topic_ids: list[UUID],
-    topic_lp_types: list[str],
-    allocation: ChapterDayAllocation,
-    fa_cadence: int,
-) -> list[PlannedSlot]:
-    """
-    Materialise the day-by-day sequence for one chapter.
-
-    Order: lessons (with FAs interleaved every `fa_cadence` lessons) →
-    SA(s) → revision. Returns exactly chapter_days slots.
-
-    For each topic, emit `allocation.days_per_topic[i]` consecutive
-    lesson slots with the same lp_type. After every `fa_cadence` lesson
-    days, slot an FA whose `covered_topic_ids` lists the topics touched
-    since the previous FA.
-    """
-    slots: list[PlannedSlot] = []
-    if len(topic_ids) != len(topic_lp_types):
-        raise ValueError("topic_ids and topic_lp_types length mismatch")
-    if len(topic_ids) != len(allocation.days_per_topic):
-        raise ValueError("topic count mismatch with allocation.days_per_topic")
-
-    # Walk lessons one day at a time, interleaving FAs.
-    fas_left = allocation.fa_count
-    lessons_since_last_fa = 0
-    recent_topic_ids: list[UUID] = []
-
-    for i, t_id in enumerate(topic_ids):
-        n = allocation.days_per_topic[i]
-        if n <= 0:
-            continue
-        lp_type = topic_lp_types[i]
-        for _ in range(n):
-            slots.append(
-                PlannedSlot(
-                    slot_type="lesson",
-                    topic_id=t_id,
-                    lp_type=lp_type,
-                    covered_topic_ids=(),
-                )
-            )
-            lessons_since_last_fa += 1
-            if t_id not in recent_topic_ids:
-                recent_topic_ids.append(t_id)
-            if lessons_since_last_fa >= fa_cadence and fas_left > 0:
-                slots.append(
-                    PlannedSlot(
-                        slot_type="formative_assessment",
-                        topic_id=None,
-                        lp_type=None,
-                        covered_topic_ids=tuple(recent_topic_ids),
-                    )
-                )
-                fas_left -= 1
-                lessons_since_last_fa = 0
-                recent_topic_ids = []
-
-    # If there are still FAs to emit (lesson_days % fa_cadence > 0 path,
-    # or no FAs were placed due to a small chapter), tack remaining FAs
-    # onto the end of the lesson sequence to preserve count parity.
-    while fas_left > 0:
-        slots.append(
-            PlannedSlot(
-                slot_type="formative_assessment",
-                topic_id=None,
-                lp_type=None,
-                covered_topic_ids=tuple(recent_topic_ids) if recent_topic_ids else tuple(topic_ids),
-            )
-        )
-        fas_left -= 1
-        recent_topic_ids = []
-
-    # SA(s) at chapter end — cover all chapter topics.
-    for _ in range(allocation.sa_count):
-        slots.append(
-            PlannedSlot(
-                slot_type="summative_assessment",
-                topic_id=None,
-                lp_type=None,
-                covered_topic_ids=tuple(topic_ids),
-            )
-        )
-
-    # Revision.
-    for _ in range(allocation.revision_count):
-        slots.append(
-            PlannedSlot(
-                slot_type="revision",
-                topic_id=None,
-                lp_type="revision",
-                covered_topic_ids=(),
-            )
-        )
-
-    return slots
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +113,88 @@ async def chapter_slot_count(
     return len(compute_teaching_days(start_date, end_date, weekday_set, holidays))
 
 
+# ---------------------------------------------------------------------------
+# F2.1 — build a PlanRequest from the live connection (D-8)
+# ---------------------------------------------------------------------------
+
+
+async def build_plan_request(
+    conn: asyncpg.Connection,
+    *,
+    book_chapter_id: UUID,
+    subject: str,
+    grade: int,
+    period_count: int,
+    curriculum: str = "ICT",
+) -> PlanRequest:
+    """
+    Assemble a `PlanRequest` for one chapter from the live DB, reusing the query
+    shape of the standalone CPE app's `db.get_chapter_as_plan_input`:
+
+    - topics ordered by `topic_number`;
+    - per-topic learning targets are the topic's sub-SLOs
+      (`topic_sub_slos → sub_slos`) ordered by `position, code`;
+    - the sub_slo UUID (as text) is the SLO `id` (unique across the chapter even
+      when the same code appears on two topics; `PlanRequest` enforces unique
+      SLO ids within a topic — we de-dup per topic);
+    - the statement carries the human-readable `"[code] statement"` prefix.
+
+    Uses the caller's live connection — does NOT open a second pool (D-8).
+    Raises ValueError if the chapter isn't found.
+    """
+    chapter = await conn.fetchrow(
+        "SELECT title FROM book_chapters WHERE id = $1", book_chapter_id
+    )
+    if chapter is None:
+        raise ValueError(f"chapter {book_chapter_id} not found")
+
+    topic_rows = await conn.fetch(
+        """
+        SELECT t.id::text AS topic_id, t.topic_text
+          FROM topics t
+         WHERE t.book_chapter_id = $1
+         ORDER BY t.topic_number
+        """,
+        book_chapter_id,
+    )
+
+    topics: list[dict] = []
+    for tr in topic_rows:
+        slo_rows = await conn.fetch(
+            """
+            SELECT ss.id::text AS sub_slo_id, ss.code, ss.statement
+              FROM topic_sub_slos tss
+              JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+             WHERE tss.topic_id = $1::uuid
+             ORDER BY ss.position, ss.code
+            """,
+            tr["topic_id"],
+        )
+        seen: set[str] = set()
+        slos: list[dict] = []
+        for sr in slo_rows:
+            sid = sr["sub_slo_id"]
+            if sid in seen:  # de-dup within a topic
+                continue
+            seen.add(sid)
+            code = sr["code"] or ""
+            statement = sr["statement"] or ""
+            slos.append(
+                {"id": sid, "statement": f"[{code}] {statement}" if code else statement}
+            )
+        topics.append(
+            {"id": tr["topic_id"], "topic_text": tr["topic_text"] or "", "slos": slos}
+        )
+
+    return PlanRequest(
+        subject=subject,
+        grade=grade,
+        curriculum=curriculum,
+        period_count=period_count,
+        chapter={"title": chapter["title"], "topics": topics},
+    )
+
+
 @dataclass
 class GeneratePlanResult:
     cst_id: UUID
@@ -357,11 +203,9 @@ class GeneratePlanResult:
     lesson_slot_count: int = 0
     assessment_slot_count: int = 0
     warnings: list[str] = field(default_factory=list)
-    # Provenance of the plan. Currently always 'placeholder' (the simple
-    # one-lesson-per-topic + final-FA generator). The intelligent LLM planner
-    # was removed from the backend (being iterated on separately); this field
-    # is kept so callers that read `.source` keep working.
-    source: str = "placeholder"
+    # Provenance of the plan. 'cpe' = the intelligent Chapter Planner Engine
+    # (the ported CPE planner now wired into break-it-down, D-1).
+    source: str = "cpe"
 
 
 async def generate_chapter_plan(
@@ -370,146 +214,148 @@ async def generate_chapter_plan(
     cst_id: UUID,
     book_chapter_id: UUID,
     org_id: UUID,
-    fa_cadence: int = 5,
-    sa_per_chapter: int = 1,
+    llm: PlannerLLM | None = None,
 ) -> GeneratePlanResult:
     """
-    F3.3: "break it down" — generate a chapter's slots into the class slot
-    tables for this CST, sized by the teacher's real timetable (D-9).
+    F2.2 / "break it down" — generate a chapter's lesson slots into the class
+    slot tables for this CST, sized by the teacher's real timetable (D-9) and
+    sequenced by the intelligent Chapter Planner (D-1).
 
-    - slot_count = teaching periods in the chapter's class-path date range
-      (the CST's `class_chapters` row, D-5/F1.6 — not the advisory global).
-      It still gates generation (a chapter with no teaching days is refused),
-      but the placeholder does NOT try to fill exactly slot_count periods.
-    - PLACEHOLDER generator: one lesson slot per book topic (in topic order),
-      followed by one formative assessment covering all the chapter's topics.
-      lp_type per lesson comes from `pick_lp_type`. This is a deliberately
-      simple stand-in; the intelligent LLM planner was removed from the
-      backend and is being iterated on separately.
-    - rows are appended after the CST's current max position, stamped with
-      book_chapter_id and page ranges left null (teacher fills).
+    - slot_count = teaching periods in the chapter's class-path date range (the
+      CST's `class_chapters` row, D-5/F1.6 — not the advisory global). It gates
+      generation AND is the planner's `period_count`: the planner returns exactly
+      `slot_count` Plan Units, so lesson_slot_count == slot_count.
+    - For each Plan Unit, in `sequence` order, one `class_lesson_slot`
+      (`slot_type='lesson'`, `lp_type=unit.lp_type`, lead `topic_id=unit.topic_ids[0]`,
+      `book_chapter_id`, `status='planned'`) plus one `class_lesson_slot_topics`
+      row per member topic (position 1..N, list order). The join table is the
+      source of truth for the full topic grouping; `topic_id` is the lead topic
+      for back-compat (D-9).
+    - NO assessment slots are created (D-1).
+    - No fallback (D-5): a planner failure (PlannerLLMError / PlanParseError /
+      PlanValidationError) propagates to the caller.
     - Refuses (ValueError) if the chapter isn't in the class path, already has
       class slots for this CST, or has no date range yet (slot_count == 0).
+    - `llm` is injectable for testing; defaults to `AgentSdkPlannerLLM()`.
     Caller does org/access checks.
     """
     log.info(
-        "generate_chapter_plan: entry cst=%s chapter=%s", cst_id, book_chapter_id
+        "generate_chapter_plan: entry cst=%s chapter=%s org=%s",
+        cst_id, book_chapter_id, org_id,
     )
-    ctx = await resolve_cst_syllabus_context(conn, cst_id)
+    try:
+        ctx = await resolve_cst_syllabus_context(conn, cst_id)
 
-    # F1.6 (D-5): the chapter's dates come from the class's own teaching path
-    # (`class_chapters`), set by the teacher (D-7) — not from the advisory
-    # global `syllabus_chapters`. The chapter must be in the class path first.
-    chapter = await conn.fetchrow(
-        """
-        SELECT start_date, end_date
-        FROM class_chapters
-        WHERE cst_id = $1 AND book_chapter_id = $2
-        """,
-        cst_id, book_chapter_id,
-    )
-    if chapter is None:
-        raise ValueError("chapter not in this class's plan; add it to your plan first")
-
-    slot_count = await chapter_slot_count(
-        conn, cst_id, chapter["start_date"], chapter["end_date"]
-    )
-    if slot_count < 1:
-        raise ValueError(
-            "chapter has no teaching days in its date range "
-            "(set the chapter's dates on the syllabus first)"
-        )
-
-    existing = await conn.fetchval(
-        """
-        SELECT
-          (SELECT count(*) FROM class_lesson_slots
-             WHERE cst_id = $1 AND book_chapter_id = $2)
-        + (SELECT count(*) FROM class_assessment_slots
-             WHERE cst_id = $1 AND book_chapter_id = $2)
-        """,
-        cst_id, book_chapter_id,
-    )
-    if existing:
-        raise ValueError("chapter already broken down; clear it first to regenerate")
-
-    result = GeneratePlanResult(
-        cst_id=cst_id, book_chapter_id=book_chapter_id, slot_count=slot_count
-    )
-
-    # PLACEHOLDER breakdown: one lesson per topic + one final formative
-    # assessment over all topics. Simple, deterministic, no LLM. (The
-    # intelligent planner was removed from the backend; sa_per_chapter and
-    # fa_cadence are ignored here but kept on the signature for compat.)
-    result.source = "placeholder"
-
-    topic_rows = await conn.fetch(
-        "SELECT id, title, topic_text FROM topics "
-        "WHERE book_chapter_id = $1 ORDER BY topic_number",
-        book_chapter_id,
-    )
-    topic_ids = [t["id"] for t in topic_rows]
-
-    async with conn.transaction():
-        # Lessons + assessments share ONE global position sequence per CST
-        # (the projector merges both tables by position; 1 slot = 1 day).
-        pos = await conn.fetchval(
+        # F1.6 (D-5): the chapter's dates come from the class's own teaching path
+        # (`class_chapters`), set by the teacher (D-7) — not from the advisory
+        # global `syllabus_chapters`. The chapter must be in the class path first.
+        chapter = await conn.fetchrow(
             """
-            SELECT greatest(
-              (SELECT coalesce(max(position), 0) FROM class_lesson_slots WHERE cst_id = $1),
-              (SELECT coalesce(max(position), 0) FROM class_assessment_slots WHERE cst_id = $1)
-            )
+            SELECT start_date, end_date
+            FROM class_chapters
+            WHERE cst_id = $1 AND book_chapter_id = $2
             """,
-            cst_id,
+            cst_id, book_chapter_id,
+        )
+        if chapter is None:
+            raise ValueError(
+                "chapter not in this class's plan; add it to your plan first"
+            )
+
+        slot_count = await chapter_slot_count(
+            conn, cst_id, chapter["start_date"], chapter["end_date"]
+        )
+        if slot_count < 1:
+            raise ValueError(
+                "chapter has no teaching days in its date range "
+                "(set the chapter's dates on the syllabus first)"
+            )
+
+        existing = await conn.fetchval(
+            """
+            SELECT
+              (SELECT count(*) FROM class_lesson_slots
+                 WHERE cst_id = $1 AND book_chapter_id = $2)
+            + (SELECT count(*) FROM class_assessment_slots
+                 WHERE cst_id = $1 AND book_chapter_id = $2)
+            """,
+            cst_id, book_chapter_id,
+        )
+        if existing:
+            raise ValueError(
+                "chapter already broken down; clear it first to regenerate"
+            )
+
+        result = GeneratePlanResult(
+            cst_id=cst_id, book_chapter_id=book_chapter_id, slot_count=slot_count
         )
 
-        # One lesson slot per topic, in order.
-        for topic in topic_rows:
-            lp_type = pick_lp_type(
-                subject_code=ctx.subject_code,
-                topic_title=topic["title"],
-                topic_text=topic["topic_text"],
-                recommended_lp_type=None,
-                sub_slo_recommended_lp_type=None,
-            )
-            pos += 1
-            await conn.execute(
-                """
-                INSERT INTO class_lesson_slots
-                  (org_id, cst_id, position, slot_type, lp_type, topic_id,
-                   book_chapter_id, status)
-                VALUES ($1, $2, $3, 'lesson', $4, $5, $6, 'planned')
-                """,
-                org_id, cst_id, pos, lp_type, topic["id"], book_chapter_id,
-            )
-            result.lesson_slot_count += 1
+        # Grade number (PlanRequest wants an int 1..5); grades.code is that int.
+        grade = await conn.fetchval(
+            "SELECT code FROM grades WHERE id = $1", ctx.grade_id
+        )
+        if grade is None:
+            raise ValueError(f"grade {ctx.grade_id} not found")
 
-        # One formative assessment at the end, covering all chapter topics.
-        if topic_ids:
-            pos += 1
-            slot_id = await conn.fetchval(
+        # Build the planner input from the live connection (F2.1) and run the
+        # intelligent planner (no fallback, D-5).
+        request = await build_plan_request(
+            conn,
+            book_chapter_id=book_chapter_id,
+            subject=ctx.subject_code,
+            grade=int(grade),
+            curriculum="ICT",
+            period_count=slot_count,
+        )
+        plan = await make_chapter_plan(request, llm or AgentSdkPlannerLLM())
+
+        async with conn.transaction():
+            # Lessons + assessments share ONE global position sequence per CST
+            # (the projector merges both tables by position; 1 slot = 1 day).
+            pos = await conn.fetchval(
                 """
-                INSERT INTO class_assessment_slots
-                  (org_id, cst_id, position, assessment_type, book_chapter_id, status)
-                VALUES ($1, $2, $3, 'formative', $4, 'scheduled')
-                RETURNING id
-                """,
-                org_id, cst_id, pos, book_chapter_id,
-            )
-            for i, t_id in enumerate(topic_ids, start=1):
-                await conn.execute(
-                    """
-                    INSERT INTO class_assessment_slot_topics
-                      (class_assessment_slot_id, topic_id, position)
-                    VALUES ($1, $2, $3)
-                    """,
-                    slot_id, t_id, i,
+                SELECT greatest(
+                  (SELECT coalesce(max(position), 0) FROM class_lesson_slots WHERE cst_id = $1),
+                  (SELECT coalesce(max(position), 0) FROM class_assessment_slots WHERE cst_id = $1)
                 )
-            result.assessment_slot_count += 1
+                """,
+                cst_id,
+            )
 
-    log.info(
-        "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d assessments=%d source=%s",
-        cst_id, book_chapter_id, result.lesson_slot_count,
-        result.assessment_slot_count, result.source,
-    )
-    return result
+            # One lesson slot per Plan Unit, in sequence order. The join table
+            # records the full topic grouping; topic_id is the lead topic.
+            for unit in sorted(plan.units, key=lambda u: u.sequence):
+                lead_topic_id = UUID(unit.topic_ids[0])
+                pos += 1
+                slot_id = await conn.fetchval(
+                    """
+                    INSERT INTO class_lesson_slots
+                      (org_id, cst_id, position, slot_type, lp_type, topic_id,
+                       book_chapter_id, status)
+                    VALUES ($1, $2, $3, 'lesson', $4, $5, $6, 'planned')
+                    RETURNING id
+                    """,
+                    org_id, cst_id, pos, unit.lp_type, lead_topic_id, book_chapter_id,
+                )
+                for member_pos, t_id in enumerate(unit.topic_ids, start=1):
+                    await conn.execute(
+                        """
+                        INSERT INTO class_lesson_slot_topics
+                          (class_lesson_slot_id, topic_id, position)
+                        VALUES ($1, $2, $3)
+                        """,
+                        slot_id, UUID(t_id), member_pos,
+                    )
+                result.lesson_slot_count += 1
+
+        log.info(
+            "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d source=%s",
+            cst_id, book_chapter_id, result.lesson_slot_count, result.source,
+        )
+        return result
+    except Exception:
+        log.error(
+            "generate_chapter_plan: error cst=%s chapter=%s", cst_id, book_chapter_id,
+            exc_info=True,
+        )
+        raise

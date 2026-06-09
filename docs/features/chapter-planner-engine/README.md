@@ -1,5 +1,7 @@
 # Chapter Planning Engine (CPE) — v2 standalone service
 
+> _Superseded by [chapter-planner-in-dars](../chapter-planner-in-dars/README.md) (2026-06). The planner core was ported into the Dars backend and the standalone `chapter-planner-app/` was deleted; this folder is kept as historical record._
+
 The Chapter Planning Engine is a **standalone, LLM-powered FastAPI service** — built in the
 same mould as `UG_LessonPlan` and `UG_EG`. It takes a **Chapter** (its topics, each mapped to
 SLOs) plus a **period count**, and returns a **Chapter Plan**: an ordered sequence of teaching
