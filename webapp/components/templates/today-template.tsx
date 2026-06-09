@@ -29,7 +29,20 @@ export function TodayTemplate(props: TodayTemplateProps) {
   const { today, loading, error, onViewLP, onMarkTaught, onViewExam, busySlotId } = props;
 
   if (loading && !today) {
-    return <div className="text-sm text-dars-muted">Loading today…</div>;
+    // The first load can take ~30s: the backend lazily breaks down the current
+    // chapter so Today has lessons to show. Explain the wait instead of a bare
+    // spinner so it doesn't read as a hang.
+    return (
+      <div className="rounded-lg border border-dars-rule-light bg-dars-parchment-mid p-6 text-center">
+        <p className="text-sm font-semibold text-dars-ink">
+          Preparing your lessons…
+        </p>
+        <p className="text-xs text-dars-muted mt-1">
+          We&apos;re planning this chapter for you. This can take up to a
+          minute the first time — it&apos;s instant after that.
+        </p>
+      </div>
+    );
   }
   if (error) {
     return <ErrorBanner message={error} />;
@@ -113,6 +126,7 @@ function CSTBlock({
   onViewExam: TodayTemplateProps["onViewExam"];
   busy: string | null;
 }) {
+  const chapter = entry.current_chapter;
   return (
     <div className="rounded-lg border border-dars-rule-light bg-dars-parchment-mid overflow-hidden">
       <header className="px-4 py-2 border-b border-dars-rule-light bg-dars-parchment flex items-baseline gap-3">
@@ -124,7 +138,7 @@ function CSTBlock({
             Day {entry.day_number}
           </span>
         ) : (
-          <span className="text-xs text-dars-muted italic">Non-teaching day</span>
+          <span className="text-xs text-dars-muted italic">No class today</span>
         )}
         {entry.is_conflict ? (
           <span className="text-xs text-dars-terra font-medium">
@@ -134,36 +148,118 @@ function CSTBlock({
       </header>
 
       <div className="p-4">
-        {entry.previous_taught ? (
-          <p className="text-xs text-dars-muted mb-3">
-            Last taught: Day {entry.previous_taught.position}
-            {entry.previous_taught.taught_on
-              ? ` (${entry.previous_taught.taught_on})`
-              : ""}
-          </p>
-        ) : null}
-
-        {entry.assessment_slot ? (
-          <AssessmentCard
-            slot={entry.assessment_slot}
-            entry={entry}
-            onView={onViewExam}
-          />
-        ) : entry.lesson_slot ? (
-          <LessonCard
-            slot={entry.lesson_slot}
-            entry={entry}
-            onViewLP={onViewLP}
-            onMarkTaught={onMarkTaught}
-            busy={busy === entry.lesson_slot.slot_id}
-          />
+        {/* "You're on Chapter 3: Phonics" — plain language for a low-tech
+            teacher. Shown whenever the class has a path, even off a class day. */}
+        {chapter ? (
+          <div className="mb-4">
+            <p className="text-[10px] uppercase tracking-wide text-dars-muted font-semibold">
+              You&apos;re on
+            </p>
+            <h3 className="font-[var(--font-cormorant)] text-xl font-bold text-dars-ink">
+              {chapter.chapter_number != null
+                ? `Chapter ${chapter.chapter_number}`
+                : "Chapter"}
+              {chapter.title ? `: ${chapter.title}` : ""}
+            </h3>
+          </div>
         ) : (
-          <EmptyState
-            title="No teaching today"
-            body="Today is either a holiday or there’s no slot scheduled."
-          />
+          <p className="mb-4 text-sm font-medium text-dars-ink">
+            You&apos;ve finished the course. 🎉
+          </p>
         )}
+
+        {/* Today's lesson — the main card with View / Mark as taught. */}
+        <div className="mb-1">
+          <p className="text-[10px] uppercase tracking-wide text-dars-terra font-semibold mb-1">
+            Today&apos;s lesson
+          </p>
+          {entry.assessment_slot ? (
+            <AssessmentCard
+              slot={entry.assessment_slot}
+              entry={entry}
+              onView={onViewExam}
+            />
+          ) : entry.lesson_slot ? (
+            <LessonCard
+              slot={entry.lesson_slot}
+              entry={entry}
+              onViewLP={onViewLP}
+              onMarkTaught={onMarkTaught}
+              busy={busy === entry.lesson_slot.slot_id}
+            />
+          ) : (
+            <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-4">
+              <p className="text-sm font-medium text-dars-ink">
+                No class scheduled today
+              </p>
+              <p className="text-xs text-dars-muted mt-1">
+                Today is a holiday or a non-teaching day — here&apos;s where you
+                are and what&apos;s coming up.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Last lesson / Next lesson — bracket today so the teacher always
+            sees where they are in the chapter. */}
+        <PrevNextStrip entry={entry} />
       </div>
+    </div>
+  );
+}
+
+/** Plain-language prev/next pair shown under today's lesson. "Last lesson" is
+ * the most recent taught slot; "Next lesson" is the upcoming slot + its date. */
+function PrevNextStrip({ entry }: { entry: TodayEntry }) {
+  const prev = entry.previous_taught;
+  const next = entry.next_up;
+  return (
+    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <PrevNextCell
+        label="Last lesson"
+        value={
+          prev
+            ? `Day ${prev.position}`
+            : "Nothing taught yet"
+        }
+        sub={prev?.taught_on ? `Taught ${prev.taught_on}` : undefined}
+      />
+      <PrevNextCell
+        label="Next lesson"
+        value={next ? `Day ${next.position}` : "End of the course"}
+        sub={
+          next
+            ? [
+                next.lp_type ?? undefined,
+                next.projected_date ? `on ${next.projected_date}` : undefined,
+              ]
+                .filter(Boolean)
+                .join(" · ") || undefined
+            : undefined
+        }
+      />
+    </div>
+  );
+}
+
+function PrevNextCell({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="rounded-md border border-dars-rule-light bg-dars-parchment p-3">
+      <p className="text-[10px] uppercase tracking-wide text-dars-muted font-semibold">
+        {label}
+      </p>
+      <p className="text-sm font-semibold text-dars-ink mt-0.5">{value}</p>
+      {sub ? (
+        <p className="text-xs text-dars-muted truncate mt-0.5">{sub}</p>
+      ) : null}
     </div>
   );
 }

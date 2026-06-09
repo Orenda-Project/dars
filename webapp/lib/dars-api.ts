@@ -507,6 +507,24 @@ export interface PreviousTaughtSummary {
   taught_on: ISODate | null;
 }
 
+/** The next lesson slot after today's position (by global position). */
+export interface NextUpSummary {
+  slot_id: UUID;
+  position: number;
+  topic_id: UUID | null;
+  lp_type: string | null;
+  projected_date: ISODate | null;
+}
+
+/** The chapter the class is currently on (first non-done chapter in the
+ * org-breakdown / class path order). Set whenever a path exists. */
+export interface CurrentChapterSummary {
+  book_chapter_id: UUID;
+  chapter_number: number | null;
+  title: string | null;
+  status: string; // 'yet_to_start' | 'in_progress' | 'done'
+}
+
 export interface TodayEntry {
   cst_id: UUID;
   subject_id: UUID;
@@ -514,9 +532,11 @@ export interface TodayEntry {
   grade_id: UUID;
   grade_code: number;
   day_number: number | null;
+  current_chapter: CurrentChapterSummary | null;
   lesson_slot: LessonSlotEntry | null;
   assessment_slot: AssessmentSlotEntry | null;
   previous_taught: PreviousTaughtSummary | null;
+  next_up: NextUpSummary | null;
   is_conflict: boolean;
   is_overflow: boolean;
 }
