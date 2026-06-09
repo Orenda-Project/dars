@@ -11,8 +11,12 @@ marks the run failed (the failure write uses a fresh connection so it survives
 the rollback — D-5).
 
 Five steps: slos -> sub_slos -> book_chapters -> topics -> mappings.
-Topics are 1-per-chapter with topic_text = flattened chapter prose (D-3).
-The Schema breakdown prompt is vendored in this package (D-4).
+Topics are produced by the Schema topic-breakdown prompt: each chapter is split
+into MULTIPLE focused topics (one per explicit topic heading), each with its own
+short topic_text sliced from the chapter prose by line range. If the breakdown
+yields no topics, a single fallback topic (whole-chapter prose) is written and a
+warning is recorded. The Schema breakdown + topic-breakdown prompts are both
+vendored in this package (D-4).
 
 This module makes LLM + DB calls; it is exercised by unit tests with mocks
 (no live calls in CI). Real runs need core-DB env vars + ANTHROPIC_API_KEY on
@@ -131,9 +135,125 @@ def _load_breakdown_prompt() -> str:
     )
 
 
+def _load_topic_breakdown_prompt() -> str:
+    """Read the vendored Schema topic-breakdown prompt from package data (D-4).
+
+    Identical to Schema's `topic_breakdown_prompt.txt`. Loaded verbatim and used
+    as the system prompt — splits a chapter into topic sections by line number.
+    Vendored in this package (`dars.v2_api.prompts`) so the import service does
+    not depend on the `dars.breakdown` package (which has no resource __init__).
+    """
+    return (
+        resources.files("dars.v2_api.prompts")
+        .joinpath("topic_breakdown_prompt.txt")
+        .read_text(encoding="utf-8")
+    )
+
+
+# Cap on a single topic's stored text (matches the column / write loop).
+_TOPIC_TEXT_CAP = 50000
+
+
 # ---------------------------------------------------------------------------
 # Pure helpers (ported)
 # ---------------------------------------------------------------------------
+
+
+def _add_line_numbers(text: str) -> str:
+    """Prefix each line with ``Line: N - `` (1-indexed). Ported from Schema."""
+    lines = text.split("\n")
+    return "\n".join(f"Line: {i + 1} - {line}" for i, line in enumerate(lines))
+
+
+def _clean_topic_title(title: str) -> str:
+    """Strip a leading ``Topic 1:`` style prefix — keep text after first colon."""
+    if not title or ":" not in title:
+        return (title or "").strip()
+    return title.split(":", 1)[1].strip()
+
+
+def _extract_topic_text(chapter_text: str, start_line: int, end_line: int) -> str:
+    """Slice 1-indexed lines [start_line, end_line) from chapter_text."""
+    lines = chapter_text.split("\n")
+    start_idx = max(0, start_line - 1)
+    end_idx = min(len(lines), end_line)
+    return "\n".join(lines[start_idx:end_idx]).strip()
+
+
+def _split_chapter_into_topics(parsed_json: dict, chapter_prose: str) -> list[dict]:
+    """Slice a chapter's prose into topics from the breakdown JSON line numbers.
+
+    Given parsed ``{topic_sections: [{section_title, starting_line_number}],
+    exercise: {starting_line_number}}``, each topic runs from its start line to
+    the NEXT topic's start (or, for the last topic, to the exercise start or the
+    chapter end). Returns dicts with title / topic_text / start_line / end_line.
+    Ported from Schema's `format_topic_for_extraction` (no page-number math).
+    """
+    if not isinstance(parsed_json, dict) or "topic_sections" not in parsed_json:
+        return []
+
+    topic_sections = parsed_json.get("topic_sections") or []
+    final_exercise = parsed_json.get("exercise") or {}
+    total_lines = len(chapter_prose.split("\n"))
+
+    def _as_int(value, default):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+
+    exercise_start = None
+    if final_exercise and final_exercise.get("starting_line_number") is not None:
+        exercise_start = _as_int(final_exercise.get("starting_line_number"), None)
+
+    topics: list[dict] = []
+    for idx, section in enumerate(topic_sections):
+        title = _clean_topic_title(section.get("section_title", "") or "Topic")
+        start_line = _as_int(section.get("starting_line_number", 1), 1)
+        if idx + 1 < len(topic_sections):
+            end_line = _as_int(
+                topic_sections[idx + 1].get("starting_line_number", total_lines),
+                total_lines,
+            )
+        else:
+            end_line = exercise_start if exercise_start else total_lines
+        topic_text = _extract_topic_text(chapter_prose, start_line, end_line)
+        topics.append({
+            "title": title or "Topic",
+            "topic_text": topic_text,
+            "start_line": start_line,
+            "end_line": end_line,
+        })
+    return topics
+
+
+def _extract_json_from_response(response: str) -> dict:
+    """Robust JSON extraction from an LLM response (ported from Schema).
+
+    Tries, in order: a ```json``` code block, a non-greedy brace match, then a
+    greedy brace match. Returns {} if nothing parses.
+    """
+    if not response or not isinstance(response, str):
+        return {}
+    code_block = re.search(r"```(?:json)?\s*\n([\s\S]*?)\n```", response)
+    if code_block:
+        try:
+            return json.loads(code_block.group(1).strip())
+        except json.JSONDecodeError:
+            log.debug("topic-breakdown JSON: code-block parse failed")
+    non_greedy = re.search(r"\{(?:[^{}]|(?:\{[^{}]*\}))*?\}", response)
+    if non_greedy:
+        try:
+            return json.loads(non_greedy.group())
+        except json.JSONDecodeError:
+            log.debug("topic-breakdown JSON: non-greedy parse failed")
+    greedy = re.search(r"\{[\s\S]*\}", response)
+    if greedy:
+        try:
+            return json.loads(greedy.group())
+        except json.JSONDecodeError:
+            log.debug("topic-breakdown JSON: greedy parse failed")
+    return {}
 
 
 def _parse_jsonb(value):
@@ -372,6 +492,49 @@ async def _map_chapter_to_sub_slos(
         f" (dropped: {dropped[:10]})" if dropped else "",
     )
     return codes_out
+
+
+async def _breakdown_chapter_into_topics(
+    chapter_title: str,
+    chapter_prose: str,
+    *,
+    start_page: int | None = None,
+    client: anthropic.Anthropic | None = None,
+) -> list[dict]:
+    """Split one chapter's prose into MULTIPLE focused topics via the LLM.
+
+    Line-numbers the prose, calls the vendored Schema topic-breakdown prompt
+    (system=prompt, user=title + numbered text), parses the JSON, and slices the
+    chapter into topics by line range. Each returned dict has title / topic_text
+    / start_line / end_line. If parsing yields zero topics, returns NO topics so
+    the caller can apply its single-topic fallback. Logs uniformly (rule 11).
+    """
+    log.info(
+        "topic-breakdown start: chapter=%r prose_chars=%d start_page=%s",
+        chapter_title, len(chapter_prose), start_page,
+    )
+    try:
+        numbered = _add_line_numbers(chapter_prose)
+        page_hint = f"Start Page: {start_page}\n" if start_page else ""
+        user_message = (
+            f"Chapter Title: {chapter_title}\n{page_hint}\n"
+            f"Chapter Text:\n{numbered}"
+        )
+        raw = await _complete(
+            _load_topic_breakdown_prompt(), user_message,
+            label=f"topic-breakdown({chapter_title})", client=client,
+        )
+        parsed = _extract_json_from_response(raw)
+        topics = _split_chapter_into_topics(parsed, chapter_prose)
+    except Exception:
+        log.error(
+            "topic-breakdown FAILED: chapter=%r", chapter_title, exc_info=True,
+        )
+        raise
+    log.info(
+        "topic-breakdown done: chapter=%r topics=%d", chapter_title, len(topics),
+    )
+    return topics
 
 
 # ---------------------------------------------------------------------------
@@ -744,7 +907,8 @@ async def _build_import_plan(
                     "lp_type": None,  # deferred (D-17)
                 })
 
-    # 3. topics (1/chapter) + chapter→sub-SLO mapping (LLM per chapter; no DB).
+    # 3. topics (N/chapter via the topic-breakdown prompt) + per-topic sub-SLO
+    # mapping (LLM per chapter to split, then LLM per topic to map; no DB).
     sub_slo_index_text = _build_sub_slo_index(
         [{"code": s["code"], "statement": s["statement"]} for s in sub_slos]
     )
@@ -752,22 +916,42 @@ async def _build_import_plan(
     topics: list[dict] = []
     for chapter in chapters:
         prose = _flatten_chapter_prose(chapter.get("chapter_text") or [])
-        topic = {
-            "id": seed_uuid(f"topic:{ck}:ch{chapter['chapter_number']}:1"),
-            "book_chapter_id": chapter["id"],
-            "title": chapter["title"],
-            "topic_text": prose[:50000],
-            "sub_slo_codes": [],
-        }
-        if prose.strip() and valid_codes:
-            topic["sub_slo_codes"] = await _map_chapter_to_sub_slos(
-                chapter_title=chapter["title"], chapter_prose=prose,
-                sub_slo_index_text=sub_slo_index_text, valid_codes=valid_codes,
-                client=client,
+        ch_num = chapter["chapter_number"]
+        if not prose.strip():
+            prog.warn(f"chapter {ch_num} has no prose; skipped topic breakdown + mapping")
+            continue
+
+        # Split the chapter into focused topics. Fall back to a single
+        # whole-chapter topic if the breakdown yields none.
+        chapter_topics = await _breakdown_chapter_into_topics(
+            chapter["title"], prose,
+            start_page=chapter.get("start_page"), client=client,
+        )
+        if not chapter_topics:
+            prog.warn(
+                f"chapter {ch_num} ({chapter['title']!r}) produced no topics from the "
+                "breakdown — falling back to a single whole-chapter topic"
             )
-        elif not prose.strip():
-            prog.warn(f"chapter {chapter['chapter_number']} has no prose; skipped mapping")
-        topics.append(topic)
+            chapter_topics = [{"title": chapter["title"], "topic_text": prose}]
+
+        for topic_number, ct in enumerate(chapter_topics, start=1):
+            topic_title = (ct.get("title") or chapter["title"]).strip() or chapter["title"]
+            topic_text = ct.get("topic_text") or ""
+            topic = {
+                "id": seed_uuid(f"topic:{ck}:ch{ch_num}:{topic_number}"),
+                "book_chapter_id": chapter["id"],
+                "topic_number": topic_number,
+                "title": topic_title,
+                "topic_text": topic_text[:_TOPIC_TEXT_CAP],
+                "sub_slo_codes": [],
+            }
+            if topic_text.strip() and valid_codes:
+                topic["sub_slo_codes"] = await _map_chapter_to_sub_slos(
+                    chapter_title=topic_title, chapter_prose=topic_text,
+                    sub_slo_index_text=sub_slo_index_text, valid_codes=valid_codes,
+                    client=client,
+                )
+            topics.append(topic)
 
     return {
         "slos": slos,
@@ -920,12 +1104,13 @@ async def _write_import_plan(
         await dars_conn.execute(
             """
             INSERT INTO topics (id, book_chapter_id, topic_number, title, topic_text, status)
-            VALUES ($1, $2, 1, $3, $4, 'published')
+            VALUES ($1, $2, $3, $4, $5, 'published')
             ON CONFLICT (book_chapter_id, topic_number) DO UPDATE
               SET title = EXCLUDED.title, topic_text = EXCLUDED.topic_text,
                   status = EXCLUDED.status, updated_at = now()
             """,
-            topic["id"], topic["book_chapter_id"], topic["title"], topic["topic_text"],
+            topic["id"], topic["book_chapter_id"], topic["topic_number"],
+            topic["title"], topic["topic_text"],
         )
         topic_count += 1
         for code in topic["sub_slo_codes"]:

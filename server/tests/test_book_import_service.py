@@ -3,6 +3,7 @@
 No live DB or LLM. Uses a fake asyncpg connection that scripts fetch* answers
 and records executes, and a fake Anthropic client.
 """
+import json
 import uuid
 
 import pytest
@@ -292,8 +293,8 @@ async def test_write_import_plan_writes_book_subslos_topics():
                  "published_year": None, "total_chapters": 1, "pdf_url": None, "book_text": []},
         "chapters": [{"id": ch_id, "book_id": book_id, "chapter_number": 1, "title": "Ch1",
                       "start_page": 1, "end_page": 2, "status": "published", "chapter_text": []}],
-        "topics": [{"id": topic_id, "book_chapter_id": ch_id, "title": "Ch1",
-                    "topic_text": "x", "sub_slo_codes": ["A-01.1"]}],
+        "topics": [{"id": topic_id, "book_chapter_id": ch_id, "topic_number": 1,
+                    "title": "Ch1", "topic_text": "x", "sub_slo_codes": ["A-01.1"]}],
     }
     dars = _FakeConn(fetchval_map={"SELECT slo_id FROM sub_slos": slo_id})
     prog = _ProgStub()
@@ -311,3 +312,159 @@ async def test_write_import_plan_writes_book_subslos_topics():
     assert not any(s.strip().upper().startswith("SELECT ID FROM") for s in sqls)
     assert prog.dars_book_id == book_id
     assert prog.counts.get("sub_slos") == 1
+
+
+async def test_write_import_plan_writes_multiple_topics_per_chapter():
+    # Two topics for the same chapter must be inserted with distinct
+    # topic_number values (1, 2) and counted as 2 topics.
+    cell = {
+        "curriculum_id": uuid.uuid4(), "curriculum_code": "NCP",
+        "grade_id": uuid.uuid4(), "grade_code": "G1",
+        "subject_id": uuid.uuid4(), "subject_code": "Eng",
+    }
+    book_id, ch_id, t1, t2 = (uuid.uuid4() for _ in range(4))
+    plan = {
+        "slos": [], "sub_slos": [], "sub_code_to_uuid": {},
+        "book": {"id": book_id, "title": "B", "publisher": None, "edition": None,
+                 "published_year": None, "total_chapters": 1, "pdf_url": None, "book_text": []},
+        "chapters": [{"id": ch_id, "book_id": book_id, "chapter_number": 1, "title": "Ch1",
+                      "start_page": 1, "end_page": 2, "status": "published", "chapter_text": []}],
+        "topics": [
+            {"id": t1, "book_chapter_id": ch_id, "topic_number": 1, "title": "T1",
+             "topic_text": "a", "sub_slo_codes": []},
+            {"id": t2, "book_chapter_id": ch_id, "topic_number": 2, "title": "T2",
+             "topic_text": "b", "sub_slo_codes": []},
+        ],
+    }
+    dars = _FakeConn()
+    prog = _ProgStub()
+    await svc._write_import_plan(dars_conn=dars, cell=cell, plan=plan, prog=prog)
+
+    topic_inserts = [args for sql, args in dars.executes if "INSERT INTO topics" in sql]
+    assert len(topic_inserts) == 2
+    # topic_number is the 3rd positional arg (id, book_chapter_id, topic_number, ...)
+    assert [args[2] for args in topic_inserts] == [1, 2]
+    assert prog.counts.get("topics") == 2
+
+
+# --------------------------------------------------------------------------- #
+# Topic breakdown — pure slicing helpers (ported from Schema)
+# --------------------------------------------------------------------------- #
+
+
+def test_clean_topic_title_strips_prefix():
+    assert svc._clean_topic_title("Topic 1: Basic Numbers") == "Basic Numbers"
+    assert svc._clean_topic_title("Unit 2: Place Value") == "Place Value"
+    assert svc._clean_topic_title("Topic 3") == "Topic 3"  # no colon → unchanged
+    assert svc._clean_topic_title("") == ""
+
+
+def test_add_line_numbers():
+    assert svc._add_line_numbers("a\nb") == "Line: 1 - a\nLine: 2 - b"
+
+
+def test_extract_topic_text_slices_inclusive_start_exclusive_end():
+    prose = "L1\nL2\nL3\nL4\nL5"
+    # start_line=2, end_line=4 → slice [1:4] → L2,L3,L4
+    assert svc._extract_topic_text(prose, 2, 4) == "L2\nL3\nL4"
+    # full range → slice [0:5]
+    assert svc._extract_topic_text(prose, 1, 5) == "L1\nL2\nL3\nL4\nL5"
+
+
+def test_split_chapter_into_topics_three_sections_and_exercise():
+    # 3 topic headings + exercise → 3 topics with correct line ranges.
+    # prose lines:
+    # 1 Topic 1: Alpha
+    # 2 alpha body
+    # 3 Topic 2: Beta
+    # 4 beta body
+    # 5 Topic 3: Gamma
+    # 6 gamma body
+    # 7 Review Exercise
+    # 8 questions
+    prose = "\n".join([
+        "Topic 1: Alpha", "alpha body",
+        "Topic 2: Beta", "beta body",
+        "Topic 3: Gamma", "gamma body",
+        "Review Exercise", "questions",
+    ])
+    parsed = {
+        "topic_sections": [
+            {"section_title": "Topic 1: Alpha", "starting_line_number": 1},
+            {"section_title": "Topic 2: Beta", "starting_line_number": 3},
+            {"section_title": "Topic 3: Gamma", "starting_line_number": 5},
+        ],
+        "exercise": {"starting_line_number": 7},
+    }
+    topics = svc._split_chapter_into_topics(parsed, prose)
+    assert len(topics) == 3
+    assert [t["title"] for t in topics] == ["Alpha", "Beta", "Gamma"]
+    assert [(t["start_line"], t["end_line"]) for t in topics] == [(1, 3), (3, 5), (5, 7)]
+    # slice [0:3] includes the next heading line (ported Schema behavior)
+    assert topics[0]["topic_text"] == "Topic 1: Alpha\nalpha body\nTopic 2: Beta"
+    # last topic ends at exercise start line (7) → slice [4:7] includes line 7
+    assert topics[2]["topic_text"] == "Topic 3: Gamma\ngamma body\nReview Exercise"
+
+
+def test_split_chapter_into_topics_last_topic_ends_at_chapter_end_without_exercise():
+    prose = "\n".join(["Topic 1: A", "body1", "Topic 2: B", "body2"])
+    parsed = {
+        "topic_sections": [
+            {"section_title": "Topic 1: A", "starting_line_number": 1},
+            {"section_title": "Topic 2: B", "starting_line_number": 3},
+        ],
+        "exercise": {},
+    }
+    topics = svc._split_chapter_into_topics(parsed, prose)
+    assert len(topics) == 2
+    assert topics[1]["end_line"] == 4  # total lines
+    assert topics[1]["topic_text"] == "Topic 2: B\nbody2"
+
+
+def test_split_chapter_into_topics_empty_when_no_sections():
+    assert svc._split_chapter_into_topics({}, "x") == []
+    assert svc._split_chapter_into_topics({"topic_sections": []}, "x") == []
+
+
+# --------------------------------------------------------------------------- #
+# Topic breakdown — robust JSON extraction
+# --------------------------------------------------------------------------- #
+
+
+def test_extract_json_from_response_variants():
+    obj = {"topic_sections": [{"section_title": "A", "starting_line_number": 1}]}
+    body = json.dumps(obj)
+    # code block
+    assert svc._extract_json_from_response(f"```json\n{body}\n```") == obj
+    # bare braces with surrounding prose
+    assert svc._extract_json_from_response(f"Here you go: {body} done") == obj
+    # nothing parseable
+    assert svc._extract_json_from_response("no json here") == {}
+    assert svc._extract_json_from_response("") == {}
+
+
+# --------------------------------------------------------------------------- #
+# Topic breakdown — LLM call + zero-topic fallback (mocked _complete)
+# --------------------------------------------------------------------------- #
+
+
+async def test_breakdown_chapter_into_topics_parses_sections():
+    obj = {
+        "topic_sections": [
+            {"section_title": "Topic 1: Alpha", "starting_line_number": 1},
+            {"section_title": "Topic 2: Beta", "starting_line_number": 3},
+        ],
+        "exercise": {"starting_line_number": 5},
+    }
+    client = _FakeAnthropic(f"```json\n{json.dumps(obj)}\n```")
+    prose = "\n".join(["Topic 1: Alpha", "a", "Topic 2: Beta", "b", "Exercise", "q"])
+    topics = await svc._breakdown_chapter_into_topics("Ch1", prose, client=client)
+    assert [t["title"] for t in topics] == ["Alpha", "Beta"]
+
+
+async def test_breakdown_chapter_into_topics_returns_empty_when_unparseable():
+    # When the LLM returns no JSON, the breakdown returns [] so the caller can
+    # apply its single-topic fallback.
+    client = _FakeAnthropic("sorry, no structured output")
+    topics = await svc._breakdown_chapter_into_topics("Ch1", "some prose", client=client)
+    assert topics == []
