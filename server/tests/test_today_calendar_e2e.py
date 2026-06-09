@@ -99,10 +99,17 @@ class TestTodayCalendarE2E:
         # No previous taught records.
         assert entry["previous_taught"] is None
 
-    async def test_today_empty_when_today_is_non_teaching(
+    async def test_today_non_teaching_day_still_anchors_the_class(
         self, client: AsyncClient
     ) -> None:
-        # 2026-04-05 is a Sunday — outside Mon-Fri timetable.
+        """
+        today-prev-current-next: a CST with a planned path always yields an
+        entry, even on a non-teaching day. The demo CST is broken down, so on a
+        Sunday (no slot lands) we still get current_chapter + next_up with no
+        lesson_slot — "no class today, here's where you are / what's next" —
+        rather than the old empty list.
+        """
+        # 2026-04-05 is a Sunday — outside the demo Mon-Fri timetable.
         sunday = date(2026, 4, 5)
         assert sunday.weekday() == 6
         r = await client.get(
@@ -110,7 +117,21 @@ class TestTodayCalendarE2E:
             headers=org_headers(),
         )
         assert r.status_code == 200
-        assert r.json()["items"] == []
+        items = r.json()["items"]
+        # The demo teacher's one CST has a planned path → exactly one entry,
+        # anchored to the chapter even though Sunday is non-teaching.
+        assert len(items) == 1
+        entry = items[0]
+        assert entry["subject_code"] == "Eng"
+        # No slot lands on a non-teaching day.
+        assert entry["day_number"] is None
+        assert entry["lesson_slot"] is None
+        assert entry["assessment_slot"] is None
+        # But the chapter the class is on + what's coming up are still set.
+        assert entry["current_chapter"] is not None
+        assert entry["next_up"] is not None
+        # next_up is a future slot — early in the demo course, after AY start.
+        assert entry["next_up"]["position"] >= 1
 
     async def test_calendar_week_matches_today_entry(
         self, client: AsyncClient

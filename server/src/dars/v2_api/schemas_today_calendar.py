@@ -31,6 +31,29 @@ class PreviousTaughtSummary(BaseModel):
     taught_on: date | None
 
 
+class NextUpSummary(BaseModel):
+    """The next lesson slot after today's position (by global position).
+
+    Symmetric to PreviousTaughtSummary, plus the lp_type and the projected
+    teaching date so the teacher app can say what's coming and when.
+    """
+    slot_id: UUID
+    position: int
+    topic_id: UUID | None
+    lp_type: str | None
+    projected_date: date | None
+
+
+class CurrentChapterSummary(BaseModel):
+    """The chapter the class is currently on (first non-done chapter in the
+    org-breakdown / class path order). Set whenever a path exists, even if
+    today is not a teaching day."""
+    book_chapter_id: UUID
+    chapter_number: int | None
+    title: str | None
+    status: str  # 'yet_to_start' | 'in_progress' | 'done'
+
+
 class TodayEntry(BaseModel):
     cst_id: UUID
     subject_id: UUID
@@ -38,9 +61,11 @@ class TodayEntry(BaseModel):
     grade_id: UUID
     grade_code: int
     day_number: int | None  # the slot's global position; None if today is non-teaching
+    current_chapter: CurrentChapterSummary | None = None
     lesson_slot: LessonSlotEntry | None = None
     assessment_slot: AssessmentSlotEntry | None = None
     previous_taught: PreviousTaughtSummary | None = None
+    next_up: NextUpSummary | None = None
     is_conflict: bool = False
     is_overflow: bool = False
 
