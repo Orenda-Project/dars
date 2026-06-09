@@ -145,18 +145,11 @@ export default function ClassDetailPage() {
   const [timeline, setTimeline] = useState<CstTimelineItem[] | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<TimelineKindFilter>("all");
-  // Syllabus tab: the class teaching path + planning state.
+  // Syllabus tab: the read-only class teaching path (org-decided, auto-seeded
+  // server-side). The teacher cannot mutate it here — only generate plans.
   const [syllabus, setSyllabus] = useState<SyllabusForCstResponse | null>(null);
   const [syllabusError, setSyllabusError] = useState<string | null>(null);
   const [busyChapterId, setBusyChapterId] = useState<string | null>(null);
-  // Set while a path mutation (pick/dates/reorder/remove) is in flight.
-  const [pathBusy, setPathBusy] = useState(false);
-  // The whole book's chapters, so the teacher can pick ANY chapter into the
-  // path (not just the recommended one). Fetched alongside the syllabus tab;
-  // null = not loaded / no book on the CST.
-  const [syllabusBookChapters, setSyllabusBookChapters] = useState<
-    BookChapter[] | null
-  >(null);
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [selectedBookChapterId, setSelectedBookChapterId] = useState<string | null>(null);
@@ -226,8 +219,7 @@ export default function ClassDetailPage() {
     }
   }, [cstId]);
 
-  // Syllabus tab data — the class path plus the whole book's chapters (so the
-  // teacher can pick any chapter, not just the recommended one).
+  // Syllabus tab data — the read-only class path (org-decided, auto-seeded).
   const loadSyllabus = useCallback(async () => {
     setSyllabusError(null);
     try {
@@ -237,21 +229,6 @@ export default function ClassDetailPage() {
       setSyllabusError(formatErr(err));
     }
   }, [cstId]);
-
-  // Whole-book chapter list for the "pick any chapter" picker. Lazy + once.
-  const loadSyllabusBookChapters = useCallback(async () => {
-    if (!header?.bookId) {
-      setSyllabusBookChapters(null);
-      return;
-    }
-    try {
-      const { items } = await booksApi.getBookChapters(header.bookId);
-      setSyllabusBookChapters(items);
-    } catch {
-      // Non-fatal: the recommended-pick path still works without the full list.
-      setSyllabusBookChapters(null);
-    }
-  }, [header?.bookId]);
 
   const handleBreakDown = useCallback(
     async (book_chapter_id: string) => {
@@ -273,50 +250,6 @@ export default function ClassDetailPage() {
       }
     },
     [cstId, loadSyllabus, loadTimeline, timeline, todayLoaded, loadToday],
-  );
-
-  // --- Path mutations (Action 1). Each endpoint returns the full updated
-  //     SyllabusForCstResponse, so set state from the result (no extra GET).
-  //     422s (e.g. reorder/remove of a started chapter) surface via the tab's
-  //     existing error display. ---
-  const runPathMutation = useCallback(
-    async (mutate: () => Promise<SyllabusForCstResponse>) => {
-      setSyllabusError(null);
-      setPathBusy(true);
-      try {
-        const res = await mutate();
-        setSyllabus(res);
-      } catch (err) {
-        setSyllabusError(formatErr(err));
-      } finally {
-        setPathBusy(false);
-      }
-    },
-    [],
-  );
-
-  const handlePick = useCallback(
-    (book_chapter_id: string) =>
-      runPathMutation(() => slotsApi.pickChapter(cstId, book_chapter_id)),
-    [cstId, runPathMutation],
-  );
-
-  const handleSetDates = useCallback(
-    (book_chapter_id: string, body: { start_date?: string; end_date?: string }) =>
-      runPathMutation(() => slotsApi.setChapterDates(cstId, book_chapter_id, body)),
-    [cstId, runPathMutation],
-  );
-
-  const handleReorder = useCallback(
-    (book_chapter_ids: string[]) =>
-      runPathMutation(() => slotsApi.reorderChapters(cstId, book_chapter_ids)),
-    [cstId, runPathMutation],
-  );
-
-  const handleRemove = useCallback(
-    (book_chapter_id: string) =>
-      runPathMutation(() => slotsApi.removeChapter(cstId, book_chapter_id)),
-    [cstId, runPathMutation],
   );
 
   // Holidays tab data
@@ -494,9 +427,6 @@ export default function ClassDetailPage() {
     }
     if (activeTab === "syllabus") {
       if (syllabus === null) loadSyllabus();
-      // Book chapters back the "pick any chapter" picker; load once the
-      // header (and thus book_id) is known.
-      if (syllabusBookChapters === null && header) loadSyllabusBookChapters();
     }
     if (activeTab === "timetable" && holidaysData === null) loadHolidays();
     if (activeTab === "book" && bookChapters === null && header) loadBook();
@@ -506,7 +436,6 @@ export default function ClassDetailPage() {
     lessons,
     timeline,
     syllabus,
-    syllabusBookChapters,
     holidaysData,
     bookChapters,
     sloGroups,
@@ -516,7 +445,6 @@ export default function ClassDetailPage() {
     loadLessons,
     loadTimeline,
     loadSyllabus,
-    loadSyllabusBookChapters,
     loadHolidays,
     loadBook,
     loadSLOs,
@@ -829,14 +757,8 @@ export default function ClassDetailPage() {
           ) : (
             <ClassSyllabusTab
               data={syllabus}
-              bookChapters={syllabusBookChapters}
-              onPick={handlePick}
-              onSetDates={handleSetDates}
-              onReorder={handleReorder}
-              onRemove={handleRemove}
               onBreakDown={handleBreakDown}
               busyChapterId={busyChapterId}
-              pathBusy={pathBusy}
             />
           )
         ) : null}
