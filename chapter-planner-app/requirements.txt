@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-pydantic
-python-dotenv
-asyncpg
-httpx
-claude-agent-sdk

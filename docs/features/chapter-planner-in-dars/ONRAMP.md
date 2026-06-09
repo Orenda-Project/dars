@@ -47,10 +47,10 @@ Code is lowest authority. Surface conflicts; don't silently pick a side.
 ## Step 5 — Current state
 | Phase | Status | PR | Bead |
 |---|---|---|---|
-| 1 — Port planner core + agent-sdk backend + `/plan` endpoint | ✅ done | _PR pending_ | feat-chapter-planner-in-dars-phase-1-port |
-| 2 — Wire into `generate_chapter_plan`; delete `chapter-planner-app/` | ⬜ not started | — | feat-chapter-planner-in-dars-phase-2-wire |
+| 1 — Port planner core + agent-sdk backend + `/plan` endpoint | ✅ done | #128 | feat-chapter-planner-in-dars-phase-1-port |
+| 2 — Wire into `generate_chapter_plan`; delete `chapter-planner-app/` | ✅ done | _PR pending — stacks on #128_ | feat-chapter-planner-in-dars-phase-2-wire |
 
-**Next thing to do:** execute Phase 2 (`04-phase-2-wire-and-delete.md`) — wire the planner into `generate_chapter_plan`, persist per D-1/D-9, then delete `chapter-planner-app/` (D-3).
+**Next thing to do:** feature complete. Land Phase 2 after #128 merges, then close the feature beads.
 
 **Phase 1 landed:** planner core in `server/src/dars/breakdown/planner_models.py`, `planner_prompts.py`, `planner_llm.py`, `planner.py`; authenticated `POST /api/v2/plan` in `server/src/dars/v2_api/router_planner.py` (X-API-Key / X-Admin-Session via `get_current_org`); tests in `server/tests/test_planner.py` (29 tests, stub LLM, full suite green). No DB write (D-6), no schema/migration.
 

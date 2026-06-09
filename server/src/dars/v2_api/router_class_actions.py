@@ -15,6 +15,7 @@ from dars.breakdown.chapter_plan_service import (
     generate_chapter_plan,
     resolve_cst_syllabus_context,
 )
+from dars.breakdown.planner_llm import PlannerLLMError
 from dars.breakdown.class_chapter_service import (
     list_class_path,
     pick_chapter,
@@ -738,7 +739,14 @@ async def break_down_chapter(
         result = await generate_chapter_plan(
             conn, cst_id=cst_id, book_chapter_id=book_chapter_id, org_id=org.id,
         )
+    except PlannerLLMError as e:
+        # D-5: planner transport failure — surface as 502, no fallback.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"planner LLM error: {e}",
+        )
     except ValueError as e:
+        # Covers refusals + PlanParseError / PlanValidationError (D-5).
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
         )
