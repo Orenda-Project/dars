@@ -1,19 +1,18 @@
 """
 Class chapter path — the class's own teaching path (D-2).
 
-Picking a chapter records a `class_chapters` row (which chapter, in what order,
-with teacher-set dates); breaking it down is a separate flow (D-5, see
-`chapter_plan_service.generate_chapter_plan`). The global Syllabus Breakdown is
-advisory and only supplies a *recommendation* for the next chapter (D-3).
+The teacher path (`class_chapters`) is now a read-only mirror of the org's
+published Syllabus Breakdown (`syllabus_chapters`): `seed_class_chapters_from_
+breakdown` copies every chapter (book_chapter_id, position, dates) on first
+read of the syllabus GET (teacher-readonly-syllabus Phase 1, D-2). The teacher
+no longer picks/reorders/dates/removes chapters — those mutation paths were
+removed. Breaking a chapter down is a separate flow (see
+`chapter_plan_service.generate_chapter_plan`).
 
 Chapter status is derived from the CST's generated class slots, never stored
-(D-4). Reorder/remove lock started chapters in place (D-6): the past is
-immutable, the future is freely reorderable.
-
-This module is the path service named in 03-phase-1-class-chapters.md (F1.2–F1.5).
+(D-4).
 """
 import logging
-from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -60,53 +59,6 @@ def derive_chapter_status(slot_statuses: list[str]) -> str:
     if terminal == len(slot_statuses):
         return STATUS_DONE
     return STATUS_IN_PROGRESS
-
-
-def validate_reorder(
-    current_order: list[UUID],
-    current_statuses: dict[UUID, str],
-    submitted_order: list[UUID],
-) -> None:
-    """
-    Validate a reorder against the D-6 lock rule. Raises ValueError if invalid.
-
-    Rules:
-      1. The submitted set must exactly equal the current path's set
-         (every id present, no extras, no duplicates).
-      2. Started chapters (status != yet_to_start) are locked to the front,
-         in their current relative order. A submitted order is rejected if it
-         moves any non-yet_to_start chapter out of its current leading
-         position — i.e. the leading prefix of started chapters must appear
-         first in `submitted_order`, in the same relative order they hold now.
-
-    `current_order` is the path ordered by position (ascending).
-    `current_statuses` maps each book_chapter_id to its derived status.
-    """
-    current_set = set(current_order)
-    submitted_set = set(submitted_order)
-    if len(submitted_order) != len(submitted_set):
-        raise ValueError("reorder contains duplicate chapters")
-    if submitted_set != current_set:
-        raise ValueError(
-            "reorder must include exactly the chapters currently in the path"
-        )
-
-    # The locked prefix = the contiguous run of started chapters at the front
-    # of the *current* order. Per D-6 a partially-taught chapter is in_progress
-    # and stays put; started chapters keep their current relative order at the
-    # front. We require that same prefix to lead the submitted order unchanged.
-    locked_prefix: list[UUID] = []
-    for bc_id in current_order:
-        if current_statuses.get(bc_id, STATUS_YET_TO_START) != STATUS_YET_TO_START:
-            locked_prefix.append(bc_id)
-        else:
-            break
-
-    if submitted_order[: len(locked_prefix)] != locked_prefix:
-        raise ValueError(
-            "started chapters are locked and must stay at the front "
-            "in their current order"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -194,234 +146,89 @@ async def list_class_path(conn: asyncpg.Connection, cst_id: UUID) -> list[dict]:
     return path
 
 
-async def pick_chapter(
-    conn: asyncpg.Connection,
-    cst_id: UUID,
-    org_id: UUID,
-    book_chapter_id: UUID,
-) -> dict:
-    """
-    Record a chapter choice (Action 1, D-2): insert a `class_chapters` row at
-    the end of the path (max(position)+1, or 1 if empty). Undated (D-7).
-
-    Raises ValueError (→ 422) if the chapter is already in the path, or if the
-    book_chapter_id doesn't belong to the CST's book.
-    """
-    log.info(
-        "pick_chapter: entry cst=%s chapter=%s org=%s",
-        cst_id, book_chapter_id, org_id,
-    )
-
-    # Validate the chapter belongs to the CST's book. Resolve the CST's book_id
-    # via the shared resolver; fall back to syllabus context if the CST has no
-    # book_id set directly.
-    ctx = await resolve_cst_syllabus_context(conn, cst_id)
-    chapter_book_id = await conn.fetchval(
-        "SELECT book_id FROM book_chapters WHERE id = $1", book_chapter_id
-    )
-    if chapter_book_id is None:
-        raise ValueError("chapter not found")
-    if ctx.book_id is not None and chapter_book_id != ctx.book_id:
-        raise ValueError("chapter does not belong to this class's book")
-
-    # Already in path? (also enforced by the unique constraint, but we want a
-    # clean 422 not a DB integrity error).
-    exists = await conn.fetchval(
-        "SELECT 1 FROM class_chapters WHERE cst_id = $1 AND book_chapter_id = $2",
-        cst_id, book_chapter_id,
-    )
-    if exists:
-        raise ValueError("chapter already in the class path")
-
-    async with conn.transaction():
-        next_pos = await conn.fetchval(
-            "SELECT coalesce(max(position), 0) + 1 FROM class_chapters WHERE cst_id = $1",
-            cst_id,
-        )
-        row = await conn.fetchrow(
-            """
-            INSERT INTO class_chapters (org_id, cst_id, book_chapter_id, position)
-            VALUES ($1, $2, $3, $4)
-            RETURNING book_chapter_id, position, start_date, end_date
-            """,
-            org_id, cst_id, book_chapter_id, next_pos,
-        )
-    log.info(
-        "pick_chapter: exit cst=%s chapter=%s position=%d",
-        cst_id, book_chapter_id, row["position"],
-    )
-    return dict(row)
-
-
-async def set_chapter_dates(
-    conn: asyncpg.Connection,
-    cst_id: UUID,
-    book_chapter_id: UUID,
-    start_date: date | None,
-    end_date: date | None,
-) -> dict:
-    """
-    Set a path chapter's date range (D-7). Raises ValueError (→ 422) if the
-    chapter isn't in the path.
-
-    Only the dates that are provided (non-None) are updated; a None leaves the
-    existing value untouched (COALESCE). This is the fix for the bug where
-    saving just the end date wiped the start date (and vice versa) — the UI
-    sends one field at a time. Clearing a date via this endpoint is therefore
-    unsupported (acceptable for the prototype).
-    """
-    log.info(
-        "set_chapter_dates: entry cst=%s chapter=%s start=%s end=%s",
-        cst_id, book_chapter_id, start_date, end_date,
-    )
-    row = await conn.fetchrow(
-        """
-        UPDATE class_chapters
-           SET start_date = COALESCE($3, start_date),
-               end_date   = COALESCE($4, end_date),
-               updated_at = now()
-         WHERE cst_id = $1 AND book_chapter_id = $2
-        RETURNING book_chapter_id, position, start_date, end_date
-        """,
-        cst_id, book_chapter_id, start_date, end_date,
-    )
-    if row is None:
-        raise ValueError("chapter not in the class path")
-    log.info(
-        "set_chapter_dates: exit cst=%s chapter=%s", cst_id, book_chapter_id,
-    )
-    return dict(row)
-
-
-async def remove_chapter(
-    conn: asyncpg.Connection,
-    cst_id: UUID,
-    book_chapter_id: UUID,
-) -> None:
-    """
-    Remove a chapter from the path (D-2). Does NOT touch generated class slots.
-
-    Raises ValueError (→ 422) if the chapter isn't in the path, or if it has
-    started (status != yet_to_start) — the past is locked (D-6).
-    """
-    log.info(
-        "remove_chapter: entry cst=%s chapter=%s", cst_id, book_chapter_id,
-    )
-    exists = await conn.fetchval(
-        "SELECT 1 FROM class_chapters WHERE cst_id = $1 AND book_chapter_id = $2",
-        cst_id, book_chapter_id,
-    )
-    if not exists:
-        raise ValueError("chapter not in the class path")
-
-    status_map = await _chapter_terminal_map(conn, cst_id)
-    status = derive_chapter_status(status_map.get(book_chapter_id, []))
-    if status != STATUS_YET_TO_START:
-        raise ValueError(
-            "cannot remove a chapter that has already started "
-            f"(status: {status})"
-        )
-
-    await conn.execute(
-        "DELETE FROM class_chapters WHERE cst_id = $1 AND book_chapter_id = $2",
-        cst_id, book_chapter_id,
-    )
-    log.info("remove_chapter: exit cst=%s chapter=%s removed", cst_id, book_chapter_id)
-
-
-async def reorder_path(
-    conn: asyncpg.Connection,
-    cst_id: UUID,
-    ordered_book_chapter_ids: list[UUID],
-) -> list[dict]:
-    """
-    Rewrite the path positions to 1..N in one transaction (D-6).
-
-    The submitted set must exactly equal the current path's set, and started
-    (non-yet_to_start) chapters must stay at the front in their current
-    relative order (the past is locked). Raises ValueError (→ 422) otherwise.
-
-    Returns the reordered path (same shape as `list_class_path`).
-    """
-    log.info(
-        "reorder_path: entry cst=%s submitted=%d",
-        cst_id, len(ordered_book_chapter_ids),
-    )
-    rows = await conn.fetch(
-        "SELECT book_chapter_id, position FROM class_chapters WHERE cst_id = $1 ORDER BY position",
-        cst_id,
-    )
-    current_order = [r["book_chapter_id"] for r in rows]
-    status_map = await _chapter_terminal_map(conn, cst_id)
-    current_statuses = {
-        bc_id: derive_chapter_status(status_map.get(bc_id, []))
-        for bc_id in current_order
-    }
-
-    # Pure validation (raises ValueError on any violation).
-    validate_reorder(current_order, current_statuses, ordered_book_chapter_ids)
-
-    # Rewrite positions 1..N. The (cst_id, position) unique constraint means we
-    # can't pass through a colliding intermediate state, so bump every row out
-    # of range first, then set the final positions (all inside one transaction).
-    async with conn.transaction():
-        await conn.execute(
-            "UPDATE class_chapters SET position = position + $2 WHERE cst_id = $1",
-            cst_id, len(ordered_book_chapter_ids) + 1,
-        )
-        for new_pos, bc_id in enumerate(ordered_book_chapter_ids, start=1):
-            await conn.execute(
-                """
-                UPDATE class_chapters
-                   SET position = $3, updated_at = now()
-                 WHERE cst_id = $1 AND book_chapter_id = $2
-                """,
-                cst_id, bc_id, new_pos,
-            )
-    log.info("reorder_path: exit cst=%s reordered=%d", cst_id, len(ordered_book_chapter_ids))
-    return await list_class_path(conn, cst_id)
-
-
-async def recommended_next_chapter(
+async def seed_class_chapters_from_breakdown(
     conn: asyncpg.Connection, cst_id: UUID
-) -> dict | None:
+) -> int:
     """
-    The global default's next-recommended chapter (D-3): the lowest-`position`
-    `syllabus_chapters` chapter whose `book_chapter_id` is NOT already in the
-    class path. Empty path → the global's first chapter. None if the path
-    already covers every global chapter (or there's no published global).
+    Auto-seed the class teaching path from the CST's published org breakdown
+    (D-2). The teacher path mirrors the org `syllabus_chapters` — chapters,
+    positions and dates are copied verbatim; the teacher no longer edits it.
 
-    Returns {book_chapter_id, chapter_number, title} or None.
+    Resolves the published `syllabus_breakdowns` for the CST's
+    (curriculum, grade, subject) via `resolve_cst_syllabus_context`. If none is
+    published → no-op (D-7 empty state).
+
+    **Clean-install rule (position-collision safety, see 02-data-model Note):**
+    seed ONLY when the CST has zero `class_chapters` rows. A CST with any
+    pre-existing path (e.g. a legacy partial teacher-built path with arbitrary
+    positions) is left untouched and logged at WARNING — copying into it could
+    collide on the `(cst_id, position)` unique constraint. This makes the helper
+    idempotent: a second call finds rows already present and inserts nothing.
+
+    All inserted rows stamp `org_id` + `cst_id` (tenancy, rule 3). Dates are the
+    org-decided ranges (non-null on every chapter of a published breakdown).
+
+    Returns the number of `class_chapters` rows inserted.
     """
-    log.info("recommended_next_chapter: entry cst=%s", cst_id)
+    log.info("seed_class_chapters_from_breakdown: entry cst=%s", cst_id)
+
+    existing = await conn.fetchval(
+        "SELECT count(*) FROM class_chapters WHERE cst_id = $1", cst_id
+    )
+    if existing:
+        log.warning(
+            "seed_class_chapters_from_breakdown: cst=%s already has %d "
+            "class_chapters rows — leaving path untouched (clean-install rule)",
+            cst_id, existing,
+        )
+        return 0
+
     ctx = await resolve_cst_syllabus_context(conn, cst_id)
     if ctx.syllabus_breakdown_id is None:
-        log.info("recommended_next_chapter: exit cst=%s no global syllabus", cst_id)
-        return None
+        log.info(
+            "seed_class_chapters_from_breakdown: exit cst=%s no published "
+            "breakdown — seeded 0", cst_id,
+        )
+        return 0
 
-    row = await conn.fetchrow(
+    # Resolve org_id from the CST (tenancy stamp on every inserted row).
+    org_id = await conn.fetchval(
+        "SELECT org_id FROM class_subject_teachers WHERE id = $1", cst_id
+    )
+    if org_id is None:
+        raise ValueError(f"cst {cst_id} not found")
+
+    src_rows = await conn.fetch(
         """
-        SELECT sch.book_chapter_id, bc.chapter_number, bc.title
-          FROM syllabus_chapters sch
-          JOIN book_chapters bc ON bc.id = sch.book_chapter_id
-         WHERE sch.syllabus_breakdown_id = $1
-           AND sch.book_chapter_id NOT IN (
-                 SELECT book_chapter_id FROM class_chapters WHERE cst_id = $2
-           )
-         ORDER BY sch.position
-         LIMIT 1
+        SELECT book_chapter_id, position, start_date, end_date
+          FROM syllabus_chapters
+         WHERE syllabus_breakdown_id = $1
+         ORDER BY position
         """,
-        ctx.syllabus_breakdown_id, cst_id,
+        ctx.syllabus_breakdown_id,
     )
-    if row is None:
-        log.info("recommended_next_chapter: exit cst=%s path covers global", cst_id)
-        return None
+
+    inserted = 0
+    async with conn.transaction():
+        for r in src_rows:
+            # ON CONFLICT guards both unique constraints; with the clean-install
+            # rule the table is empty here, so every row inserts.
+            status = await conn.execute(
+                """
+                INSERT INTO class_chapters
+                    (org_id, cst_id, book_chapter_id, position, start_date, end_date)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT DO NOTHING
+                """,
+                org_id, cst_id, r["book_chapter_id"], r["position"],
+                r["start_date"], r["end_date"],
+            )
+            # asyncpg returns e.g. "INSERT 0 1"; count the affected row.
+            if status.endswith(" 1"):
+                inserted += 1
+
     log.info(
-        "recommended_next_chapter: exit cst=%s chapter=%s",
-        cst_id, row["book_chapter_id"],
+        "seed_class_chapters_from_breakdown: exit cst=%s breakdown=%s inserted=%d",
+        cst_id, ctx.syllabus_breakdown_id, inserted,
     )
-    return {
-        "book_chapter_id": row["book_chapter_id"],
-        "chapter_number": row["chapter_number"],
-        "title": row["title"],
-    }
+    return inserted

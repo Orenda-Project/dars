@@ -173,3 +173,57 @@ class TestSyllabusAPI:
             f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
         )
         assert r.status_code == 409, r.text
+
+
+@pytest.mark.skipif(
+    os.environ.get("DATABASE_URL") is None,
+    reason="Syllabus API tests require DATABASE_URL pointing at a seeded Postgres",
+)
+class TestCstSyllabusReadOnly:
+    """teacher-readonly-syllabus Phase 1 — the CST syllabus GET is now a
+    read-only, auto-seeded mirror of the org breakdown (D-2, D-5)."""
+
+    async def _first_cst_id(self, client: AsyncClient) -> str | None:
+        r = await client.get("/api/v2/csts", headers=admin_headers())
+        assert r.status_code == 200, r.text
+        items = r.json().get("items", [])
+        return items[0]["id"] if items else None
+
+    async def test_syllabus_get_is_readonly_and_drops_recommended_next(
+        self, client: AsyncClient
+    ):
+        cst_id = await self._first_cst_id(client)
+        if cst_id is None:
+            pytest.skip("no CST seeded for the demo org")
+
+        r = await client.get(
+            f"/api/v2/csts/{cst_id}/syllabus", headers=admin_headers()
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # D-5: recommended_next was dropped from the response entirely.
+        assert "recommended_next" not in body
+        # The read-only path shape is intact.
+        assert "chapters" in body
+        assert "syllabus_breakdown_id" in body
+        assert "periods_per_week" in body
+
+        # D-2: auto-seed-on-GET is idempotent — a second read is stable.
+        r2 = await client.get(
+            f"/api/v2/csts/{cst_id}/syllabus", headers=admin_headers()
+        )
+        assert r2.status_code == 200, r2.text
+        assert len(r2.json()["chapters"]) == len(body["chapters"])
+
+    async def test_mutation_endpoints_are_gone(self, client: AsyncClient):
+        cst_id = await self._first_cst_id(client)
+        if cst_id is None:
+            pytest.skip("no CST seeded for the demo org")
+        # The four Phase-1-removed routes no longer exist on the router → 405
+        # (path matched by other methods) or 404. Either way, never a success.
+        r = await client.put(
+            f"/api/v2/csts/{cst_id}/chapters/order",
+            json={"book_chapter_ids": []},
+            headers=admin_headers(),
+        )
+        assert r.status_code in (404, 405), r.text
