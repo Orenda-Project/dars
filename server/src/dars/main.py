@@ -24,6 +24,7 @@ from dars.v2_api.router_class_actions import router as v2_class_actions_router
 from dars.v2_api.router_curriculum import router as v2_curriculum_router
 from dars.v2_api.router_generation import router as v1_generation_router
 from dars.v2_api.router_holidays import router as v2_holidays_router
+from dars.v2_api.router_planner import router as v2_planner_router
 from dars.v2_api.router_quick import router as v1_quick_router
 from dars.v2_api.router_tenancy import router as v2_tenancy_router
 from dars.v2_api.router_today_calendar import router as v2_today_calendar_router
@@ -60,6 +61,7 @@ app.include_router(v2_book_router)
 app.include_router(v2_book_import_router)
 app.include_router(v2_syllabus_router)
 app.include_router(v2_holidays_router)
+app.include_router(v2_planner_router)
 app.include_router(v2_class_actions_router)
 app.include_router(v2_today_calendar_router)
 app.include_router(v1_webhooks_router)
