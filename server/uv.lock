@@ -308,6 +308,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "asyncpg" },
     { name = "bcrypt" },
+    { name = "claude-agent-sdk" },
     { name = "colorlog" },
     { name = "email-validator" },
     { name = "fastapi" },
@@ -323,7 +324,6 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "claude-agent-sdk" },
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -335,7 +335,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.40.0" },
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "bcrypt", specifier = ">=4.0.0,<4.1" },
-    { name = "claude-agent-sdk", marker = "extra == 'dev'", specifier = ">=0.2.0" },
+    { name = "claude-agent-sdk", specifier = ">=0.2.0" },
     { name = "colorlog", specifier = ">=6.10.1" },
     { name = "email-validator", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },

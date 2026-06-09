@@ -2,9 +2,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (curl, plus Node for the Claude Code CLI).
+# The agent_sdk LLM backend (claude-agent-sdk) shells out to the `claude`
+# CLI binary, so it must be on PATH in the runtime image; the SDK then
+# authenticates the CLI headlessly via the CLAUDE_CODE_OAUTH_TOKEN env var
+# (set on Railway). CLI version pinned to match the SDK's bundled version.
 RUN apt-get update && apt-get install -y \
     curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g @anthropic-ai/claude-code@2.1.165 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
