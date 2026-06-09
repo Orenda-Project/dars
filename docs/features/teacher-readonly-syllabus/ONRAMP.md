@@ -44,7 +44,7 @@ everything this file lists.
 ## Step 5 — Current state
 | Phase | Status | PR | Bead |
 |---|---|---|---|
-| 1 — Backend: auto-seed + read-only GET; delete 4 mutation endpoints | ✅ done | [PR #PENDING](https://github.com/Orenda-Project/dars/pulls) | feat-teacher-readonly-syllabus-phase-1-backend |
+| 1 — Backend: auto-seed + read-only GET; delete 4 mutation endpoints | ✅ done | [#130](https://github.com/Orenda-Project/dars/pull/130) | feat-teacher-readonly-syllabus-phase-1-backend |
 | 2 — Frontend: read-only syllabus tab, generate-only; delete mutation client fns | ⬜ not started | — | feat-teacher-readonly-syllabus-phase-2-frontend |
 
 **Next thing to do:** execute Phase 2 (`04-phase-2-frontend-readonly.md`) — read-only syllabus tab + delete the webapp client fns that hit the now-removed mutation endpoints. It depends on (and stacks on) Phase 1.
