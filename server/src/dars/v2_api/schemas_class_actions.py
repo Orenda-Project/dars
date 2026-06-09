@@ -207,34 +207,11 @@ class ClassPathChapter(BaseModel):
     status: str  # 'yet_to_start' | 'in_progress' | 'done'
 
 
-class RecommendedNextChapter(BaseModel):
-    book_chapter_id: UUID
-    chapter_number: int
-    title: str
-
-
 class SyllabusForCstResponse(BaseModel):
     cst_id: UUID
-    syllabus_breakdown_id: UUID | None  # the advisory global; None if none published
+    syllabus_breakdown_id: UUID | None  # the org breakdown the path mirrors; None if none published
     periods_per_week: int
-    chapters: list[ClassPathChapter]  # the class path, ordered by position
-    recommended_next: RecommendedNextChapter | None  # D-3 suggestion
-
-
-# --- Request bodies for the class-path edit endpoints (Phase 1, F1.4) ---
-
-
-class PickChapterBody(BaseModel):
-    book_chapter_id: UUID
-
-
-class SetChapterDatesBody(BaseModel):
-    start_date: date | None = None
-    end_date: date | None = None
-
-
-class ReorderChaptersBody(BaseModel):
-    book_chapter_ids: list[UUID]
+    chapters: list[ClassPathChapter]  # the read-only class path, ordered by position
 
 
 class GenerateChapterPlanResponse(BaseModel):

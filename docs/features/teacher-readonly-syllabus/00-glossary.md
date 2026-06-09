@@ -1,0 +1,13 @@
+# Glossary
+
+| Term | Definition |
+|---|---|
+| **Syllabus Breakdown** | The org/admin-created, curriculum-level plan: which book chapters, in what order, with what date ranges, for a (curriculum, grade, subject) triple. Tables `syllabus_breakdowns` (header + `status` draft/published/deleted) + `syllabus_chapters` (per-chapter `book_chapter_id`, `position`, `start_date`, `end_date`). Publishing requires every chapter dated. **This is the source of truth for the teacher's path.** |
+| **Class path / teacher path** | The per-CST sequence of chapters a teacher teaches, in `class_chapters` (`cst_id`, `book_chapter_id`, `position`, `start_date`, `end_date`). Previously teacher-built; after this feature, **auto-seeded** from the published Syllabus Breakdown and read-only to the teacher. |
+| **Auto-seed** | Copying the published Syllabus Breakdown's chapters (book_chapter_id, position, start_date, end_date) into a CST's `class_chapters` rows when none exist yet, the first time the teacher's syllabus is read. Idempotent: only inserts chapters not already present. |
+| **CST** | `class_subject_teachers` row — a (class, subject, teacher) assignment. Resolves to a (curriculum, grade, subject) triple → the published Syllabus Breakdown via `resolve_cst_syllabus_context`. |
+| **Generate chapter plan / break it down** | The teacher's ONE remaining write action: turn a chapter into lesson slots via the LLM planner. Endpoint `POST /api/v2/csts/{cst_id}/chapters/{book_chapter_id}/plan`. Period count = teaching days in the chapter's date range on the CST timetable (D-3). Unchanged by this feature. |
+| **Period count** | The number of lesson slots a chapter is broken into = teaching days (CST timetable weekdays minus holidays) within the chapter's date range. The teacher controls it indirectly by maintaining their **timetable** — not by typing a number (D-3). |
+| **Timetable** | The CST's weekly teaching schedule (`timetables` rows, weekday set). Teacher-owned; drives the period count. Out of scope to change here — only noted as the period-count source. |
+| **The 4 mutations** | The teacher write actions being removed: pick chapter (`POST …/chapters`), set chapter dates (`PATCH …/chapters/{id}`), reorder (`PUT …/chapters/order`), remove (`DELETE …/chapters/{id}`). Endpoints, service functions, webapp controls, and API-client functions all deleted (D-4). |
+| **recommended_next** | The old "next suggested chapter" hint shown to the teacher (lowest-position org chapter not yet in the path). Obsolete once the whole path is auto-seeded — the teacher already has every chapter (D-5). |
