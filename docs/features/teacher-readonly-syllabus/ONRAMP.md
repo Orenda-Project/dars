@@ -45,9 +45,9 @@ everything this file lists.
 | Phase | Status | PR | Bead |
 |---|---|---|---|
 | 1 — Backend: auto-seed + read-only GET; delete 4 mutation endpoints | ✅ done | [#130](https://github.com/Orenda-Project/dars/pull/130) | feat-teacher-readonly-syllabus-phase-1-backend |
-| 2 — Frontend: read-only syllabus tab, generate-only; delete mutation client fns | ⬜ not started | — | feat-teacher-readonly-syllabus-phase-2-frontend |
+| 2 — Frontend: read-only syllabus tab, generate-only; delete mutation client fns | ✅ done | [#131](https://github.com/Orenda-Project/dars/pull/131) | feat-teacher-readonly-syllabus-phase-2-frontend |
 
-**Next thing to do:** execute Phase 2 (`04-phase-2-frontend-readonly.md`) — read-only syllabus tab + delete the webapp client fns that hit the now-removed mutation endpoints. It depends on (and stacks on) Phase 1.
+**Next thing to do:** nothing — both phases shipped. PR #131 stacks on #130; merge #130 first, then #131.
 
 ## Step 6 — Where to find supporting context
 - Backend seam: `server/src/dars/breakdown/class_chapter_service.py` (path logic + new auto-seed), `server/src/dars/v2_api/router_class_actions.py` (syllabus GET + the 4 endpoints to delete + break-it-down), `schemas_class_actions.py` (response shapes), `chapter_plan_service.py` (`resolve_cst_syllabus_context`, `chapter_slot_count` — keep).

@@ -1071,48 +1071,13 @@ export const slots = {
     ),
 
   /**
-   * teacher-adjustable-syllabus — the class teaching path: the chapters the
-   * teacher picked (ordered by `position`), each with its date range, derived
-   * slot count + status, plus the global default's `recommended_next`.
+   * teacher-readonly-syllabus — the class teaching path (read-only): the
+   * org-decided chapters (ordered by `position`), each with its date range,
+   * derived slot count + status. Auto-seeded on first read (Phase 1). The
+   * teacher cannot mutate the path; the only action is generating a plan.
    */
   getSyllabus: (cst_id: UUID) =>
     request<SyllabusForCstResponse>(`/api/v2/csts/${cst_id}/syllabus`),
-
-  /** Pick a chapter into the class path (Action 1). Records the choice; does
-   * NOT generate slots. Returns the full updated path. */
-  pickChapter: (cst_id: UUID, book_chapter_id: UUID) =>
-    request<SyllabusForCstResponse>(`/api/v2/csts/${cst_id}/chapters`, {
-      method: "POST",
-      body: { book_chapter_id },
-    }),
-
-  /** Set a picked chapter's date range (D-7). Either bound may be sent alone.
-   * Returns the full updated path (slot_count recomputes). */
-  setChapterDates: (
-    cst_id: UUID,
-    book_chapter_id: UUID,
-    body: { start_date?: ISODate; end_date?: ISODate },
-  ) =>
-    request<SyllabusForCstResponse>(
-      `/api/v2/csts/${cst_id}/chapters/${book_chapter_id}`,
-      { method: "PATCH", body },
-    ),
-
-  /** Reorder the class path (D-6). 422 if it moves a started chapter.
-   * Returns the full updated path. */
-  reorderChapters: (cst_id: UUID, book_chapter_ids: UUID[]) =>
-    request<SyllabusForCstResponse>(`/api/v2/csts/${cst_id}/chapters/order`, {
-      method: "PUT",
-      body: { book_chapter_ids },
-    }),
-
-  /** Remove a picked chapter from the path (D-6). 422 unless yet_to_start.
-   * Returns the full updated path. */
-  removeChapter: (cst_id: UUID, book_chapter_id: UUID) =>
-    request<SyllabusForCstResponse>(
-      `/api/v2/csts/${cst_id}/chapters/${book_chapter_id}`,
-      { method: "DELETE" },
-    ),
 
   /** "Break it down" (Action 2): generate a path chapter's Chapter Plan into
    * the class slots, sized by the teacher's timetable. 422 if no dates / not
@@ -1125,10 +1090,10 @@ export const slots = {
 };
 
 /**
- * teacher-adjustable-syllabus — a chapter in the CLASS PATH (the chapters
- * the teacher picked, ordered by `position`). Status is derived from the
- * chapter's generated slots (D-4): `done` = all terminal, `in_progress` =
- * some terminal, `yet_to_start` = none terminal (incl. not-yet-broken-down).
+ * teacher-readonly-syllabus — a chapter in the CLASS PATH (the org-decided
+ * chapters, ordered by `position`). Status is derived from the chapter's
+ * generated slots (D-4): `done` = all terminal, `in_progress` = some
+ * terminal, `yet_to_start` = none terminal (incl. not-yet-broken-down).
  */
 export type ClassPathChapterStatus = "yet_to_start" | "in_progress" | "done";
 
@@ -1146,23 +1111,15 @@ export interface ClassPathChapter {
   status: ClassPathChapterStatus;
 }
 
-/** The default global syllabus's recommendation for the next chapter to add (D-3). */
-export interface RecommendedNextChapter {
-  book_chapter_id: UUID;
-  chapter_number: number;
-  title: string;
-}
-
 export interface SyllabusForCstResponse {
   cst_id: UUID;
   syllabus_breakdown_id: UUID | null;
   periods_per_week: number;
   /**
    * The class teaching path, ordered by `position` — NOT the global book.
-   * Empty array = nothing picked yet (show the recommendation prompt).
+   * Empty array = the school hasn't published a syllabus for this class yet.
    */
   chapters: ClassPathChapter[];
-  recommended_next: RecommendedNextChapter | null;
 }
 
 export interface GenerateChapterPlanResponse {

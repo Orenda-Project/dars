@@ -30,4 +30,18 @@ Bead: `feat-teacher-readonly-syllabus-phase-2-frontend`.
 **Acceptance:** No new design tokens introduced; read-only rows reuse existing styles.
 
 ## Notes from execution
-_(append: anything removed beyond the plan, copy decisions, screenshots if taken)_
+
+**Shipped** on `feat/teacher-readonly-syllabus-phase-2-frontend`, stacked on PR #130 (Phase 1). Build = `next build` (Next 16 / Turbopack), which runs the TypeScript check — passed clean, all 27 routes generated. There is no standalone `tsc` in the project; build IS the typecheck.
+
+**F2.1 (dars-api.ts):** Deleted `slots.pickChapter`, `slots.setChapterDates`, `slots.reorderChapters`, `slots.removeChapter`. Dropped `recommended_next` from `SyllabusForCstResponse` and removed the `RecommendedNextChapter` interface entirely (D-5). Kept `slots.getSyllabus` + `slots.breakDownChapter`. Refreshed the stale "teacher-adjustable" docstrings on `getSyllabus` and `ClassPathChapter` to say read-only / org-decided / auto-seeded.
+
+**F2.2 (class-syllabus-tab.tsx):** Rewritten read-only. Props narrowed to `{ data, onBreakDown, busyChapterId }` — removed `bookChapters`, `onPick`, `onSetDates`, `onReorder`, `onRemove`, `pathBusy`. Deleted the `EmptyPathPrompt`, `AddNextRow`, `ChapterPicker`, and `ReorderButton` components; `PathRow` is now a read-only row. Each row shows: `position.` prefix, `Ch N · title`, status badge, `N periods`, and the date range as **plain text** via a `formatDate()` helper (ISO → "12 Mar 2026", "—" when null). Kept `StatusBadge` + the period-count span (existing styles, no new tokens — F2.4).
+
+**Copy decisions:**
+- Empty state (D-7): heading "Your school hasn't published a syllabus for this class yet." + sub "Once it does, the chapters will appear here and you can generate plans from them." No picker.
+- Tab header: kept the `N periods/week · N chapters` line and added "Your school sets this syllabus. Generate a plan from any chapter below."
+- Generate-button disabled reason: where the editable version said "Set dates first", the read-only version can't set dates, so the `slot_count === 0` state now reads **"No periods to plan"** (title: "This chapter has no teaching periods in its date range yet"). "Broken down ✓" unchanged for `is_generated`.
+
+**F2.3 (page.tsx):** Removed `runPathMutation`, `handlePick`, `handleSetDates`, `handleReorder`, `handleRemove`, the `pathBusy` state, the `syllabusBookChapters` state + `loadSyllabusBookChapters` loader, and their entries in the tab-load effect body + dep array. Kept `handleBreakDown`, `loadSyllabus`, `syllabusError`, `busyChapterId`, and the Today-tab `onBreakDown` wiring (unchanged). `BookChapter` type + `booksApi` import retained — still used by the Book tab's `loadBook`.
+
+**Deviations:** none beyond the "No periods to plan" copy above (a necessary substitute for the removed "Set dates first", since dates are no longer teacher-editable). No design-token or color/typography change, so `theme.pen` was not consulted (per F2.4).
