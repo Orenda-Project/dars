@@ -32,6 +32,10 @@ interface TimelineTabProps {
   onViewExam: (item: Extract<CstTimelineItem, { kind: "assessment" }>) => void;
   onMarkTaught: (item: CstTimelineItem) => void;
   onSkip: (item: CstTimelineItem) => void;
+  /** On-demand LP generation for a lesson slot (Generate / Retry). */
+  onGenerateLP: (item: Extract<CstTimelineItem, { kind: "lesson" }>) => void;
+  /** Slot whose LP is currently being generated/polled (shows a spinner). */
+  generatingSlotId: string | null;
   busySlotId: string | null;
 }
 
@@ -50,6 +54,8 @@ export function ClassTimelineTab({
   onViewExam,
   onMarkTaught,
   onSkip,
+  onGenerateLP,
+  generatingSlotId,
   busySlotId,
 }: TimelineTabProps) {
   const hasItems = groups.some((g) => g.items.length > 0);
@@ -110,6 +116,8 @@ export function ClassTimelineTab({
                         onViewExam={onViewExam}
                         onMarkTaught={onMarkTaught}
                         onSkip={onSkip}
+                        onGenerateLP={onGenerateLP}
+                        generating={generatingSlotId === item.id}
                         busy={busySlotId === item.id}
                       />
                     </li>
@@ -130,6 +138,8 @@ function TimelineRow({
   onViewExam,
   onMarkTaught,
   onSkip,
+  onGenerateLP,
+  generating,
   busy,
 }: {
   item: CstTimelineItem;
@@ -138,6 +148,8 @@ function TimelineRow({
   onViewExam: TimelineTabProps["onViewExam"];
   onMarkTaught: TimelineTabProps["onMarkTaught"];
   onSkip: TimelineTabProps["onSkip"];
+  onGenerateLP: TimelineTabProps["onGenerateLP"];
+  generating: boolean;
   busy: boolean;
 }) {
   const isAssessment = item.kind === "assessment";
@@ -186,13 +198,12 @@ function TimelineRow({
         <div className="flex flex-wrap gap-2 shrink-0 items-center">
           {item.kind === "lesson" ? (
             <>
-              <button
-                type="button"
-                onClick={() => onViewLP(item)}
-                className="px-2.5 py-1 rounded border border-dars-rule-dark text-xs text-dars-ink hover:bg-dars-parchment-deep"
-              >
-                View LP
-              </button>
+              <LPAction
+                item={item}
+                generating={generating}
+                onViewLP={() => onViewLP(item)}
+                onGenerateLP={() => onGenerateLP(item)}
+              />
               {item.status === "planned" ? (
                 <ActionButtons
                   busy={busy}
@@ -225,6 +236,85 @@ function TimelineRow({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * LP action for a lesson row. The button adapts to the LP's generation
+ * state — there's nothing to "view" until an LP exists:
+ *   - not_generated → "Generate LP" (the action this feature adds)
+ *   - generating / PENDING / IN_FLIGHT → disabled "Generating…"
+ *   - ERROR → "View LP" (shows the error in the slide-over) + "Retry"
+ *   - READY (or any other) → "View LP"
+ * The quiet GenPill still renders the status text alongside.
+ */
+function LPAction({
+  item,
+  generating,
+  onViewLP,
+  onGenerateLP,
+}: {
+  item: Extract<CstTimelineItem, { kind: "lesson" }>;
+  generating: boolean;
+  onViewLP: () => void;
+  onGenerateLP: () => void;
+}) {
+  const inFlight =
+    generating || item.lp_status === "PENDING" || item.lp_status === "IN_FLIGHT";
+
+  if (inFlight) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="px-2.5 py-1 rounded border border-dars-rule-light text-xs text-dars-muted disabled:opacity-70"
+      >
+        Generating…
+      </button>
+    );
+  }
+
+  if (item.lp_status === "not_generated") {
+    return (
+      <button
+        type="button"
+        onClick={onGenerateLP}
+        className="px-2.5 py-1 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90"
+      >
+        Generate LP
+      </button>
+    );
+  }
+
+  if (item.lp_status === "ERROR") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={onViewLP}
+          className="px-2.5 py-1 rounded border border-dars-rule-dark text-xs text-dars-ink hover:bg-dars-parchment-deep"
+        >
+          View LP
+        </button>
+        <button
+          type="button"
+          onClick={onGenerateLP}
+          className="px-2.5 py-1 rounded border border-dars-terra text-xs font-semibold text-dars-terra hover:bg-dars-terra/10"
+        >
+          Retry
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onViewLP}
+      className="px-2.5 py-1 rounded border border-dars-rule-dark text-xs text-dars-ink hover:bg-dars-parchment-deep"
+    >
+      View LP
+    </button>
   );
 }
 

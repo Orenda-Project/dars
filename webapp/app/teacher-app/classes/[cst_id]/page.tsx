@@ -458,6 +458,8 @@ export default function ClassDetailPage() {
     subtitle: string;
   } | null>(null);
   const [busySlotId, setBusySlotId] = useState<string | null>(null);
+  // Slot whose LP is being generated + polled on-demand (Generate LP button).
+  const [generatingSlotId, setGeneratingSlotId] = useState<string | null>(null);
 
   // Slot focus from URL — open LP slide-over for the matching timeline slot.
   useEffect(() => {
@@ -563,6 +565,49 @@ export default function ClassDetailPage() {
     }
   };
 
+  // On-demand LP generation for a lesson slot (Generate / Retry).
+  // Dispatch, then poll the slot detail until the LP is READY/ERROR,
+  // running `refetch` each tick so the relevant tab's status pills update
+  // live (and the Generate button swaps to View LP on success). The service
+  // is idempotent, so a cache hit returns a terminal status on the first
+  // response and we skip polling entirely.
+  const generateLPAndPoll = useCallback(
+    async (slotId: string, refetch: () => Promise<void>) => {
+      setGeneratingSlotId(slotId);
+      try {
+        const created = await slotsApi.generateLPForSlot(slotId);
+        await refetch(); // reflect the new in-flight (or ready) status now
+
+        let status: string = created.lp_status;
+        const POLL_MS = 3000;
+        const MAX_POLLS = 40; // ~2 min ceiling; webhook usually finishes sooner
+        let polls = 0;
+        while (status !== "READY" && status !== "ERROR" && polls < MAX_POLLS) {
+          await new Promise((r) => setTimeout(r, POLL_MS));
+          polls += 1;
+          const detail = await slotsApi.getLessonSlotDetail(slotId);
+          status = detail.lp_status;
+          await refetch(); // keep the status pill in sync as it advances
+        }
+      } finally {
+        setGeneratingSlotId(null);
+      }
+    },
+    [],
+  );
+
+  const onTimelineGenerateLP = useCallback(
+    async (item: Extract<CstTimelineItem, { kind: "lesson" }>) => {
+      setTimelineError(null);
+      try {
+        await generateLPAndPoll(item.id, loadTimeline);
+      } catch (err) {
+        setTimelineError(formatErr(err));
+      }
+    },
+    [generateLPAndPoll, loadTimeline],
+  );
+
   // Timeline grouped by chapter, honouring the kind filter (F-2.3, F-2.6).
   const timelineGroups = useMemo<TimelineChapterGroup[]>(() => {
     if (!timeline) return [];
@@ -663,6 +708,22 @@ export default function ClassDetailPage() {
     };
   }, [lessons, todayEntry]);
 
+  // Today tab: generate today's lesson LP on demand. The today card's lp
+  // status comes from the lessons list, so refetch that (+ the today entry)
+  // each poll tick. Defined after todayView so the slot id is resolvable.
+  const onTodayGenerateLP = useCallback(async () => {
+    const slotId = todayView.todayLessonSlot?.id;
+    if (!slotId) return;
+    setTodayError(null);
+    try {
+      await generateLPAndPoll(slotId, async () => {
+        await Promise.all([loadLessons(), loadToday()]);
+      });
+    } catch (err) {
+      setTodayError(formatErr(err));
+    }
+  }, [generateLPAndPoll, loadLessons, loadToday, todayView.todayLessonSlot?.id]);
+
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString("en-GB", {
@@ -707,6 +768,11 @@ export default function ClassDetailPage() {
               onMarkTaught={() => {
                 if (todayView.todayLessonSlot) onMarkTaught(todayView.todayLessonSlot);
               }}
+              onGenerateLP={onTodayGenerateLP}
+              generatingLP={
+                todayView.todayLessonSlot != null &&
+                generatingSlotId === todayView.todayLessonSlot.id
+              }
               onViewExam={() => {
                 const a = todayEntry?.assessment_slot;
                 if (a) {
@@ -778,6 +844,8 @@ export default function ClassDetailPage() {
               onViewExam={onTimelineViewExam}
               onMarkTaught={onTimelineMarkTaught}
               onSkip={onTimelineSkip}
+              onGenerateLP={onTimelineGenerateLP}
+              generatingSlotId={generatingSlotId}
               busySlotId={busySlotId}
             />
           )
