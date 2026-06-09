@@ -31,7 +31,11 @@ from dars.generated_lps.lp_assistant_client import (
     LPRequest,
     request_lp_generation,
 )
-from dars.generated_lps.service import _parse_grade_int
+from dars.generated_lps.service import (
+    _parse_grade_int,
+    get_or_generate_lp,
+    get_or_generate_revision_lp,
+)
 from dars.v2_api.deps import OrgContext, get_current_org, get_db_conn
 
 log = logging.getLogger("v2_api.generation")
@@ -237,6 +241,85 @@ async def get_class_lesson_slot_detail(
             [str(x) for x in (row["lp_covered_sub_slo_ids"] or [])]
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# On-demand per-slot LP generation
+#
+# Wires the existing generated_lps cache/dispatch service to a route so the
+# teacher app can generate a slot's LP on demand (one button per lesson
+# slot). Break-down only creates empty slots; this is the action that fills
+# one in. The service fn is idempotent (cache hit returns the existing row),
+# so re-clicking is safe.
+# ---------------------------------------------------------------------------
+
+
+class GenerateLPResponse(BaseModel):
+    """Shape the teacher app polls against (mirrors the GET detail's
+    `lp_status` so the FE can reuse its existing status handling)."""
+    generated_lp_id: UUID
+    lp_status: str  # 'PENDING' | 'IN_FLIGHT' | 'READY' | 'ERROR'
+
+
+@router.post(
+    "/class-lesson-slots/{slot_id}/generate-lp",
+    response_model=GenerateLPResponse,
+)
+async def generate_lesson_slot_lp(
+    slot_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> GenerateLPResponse:
+    """
+    Generate (or return the cached) LP for a single lesson slot.
+
+    Thin wrapper over the generated_lps service: looks up the global cache
+    (keyed on curriculum+topic+lp_type) and returns the existing row when
+    one is READY/PENDING/IN_FLIGHT, re-requests on ERROR, otherwise inserts
+    a PENDING row + dispatches to LP Assistant and links the slot's
+    `generated_lp_id`. Revision slots go through the revision path (they
+    key on the chapter's prior topics, not a single topic).
+
+    Idempotent: re-POSTing returns the same in-flight/ready row without a
+    second dispatch.
+    """
+    log.info(
+        "generate_lesson_slot_lp: entry slot_id=%s org=%s", slot_id, org.id
+    )
+
+    # Tenancy: the slot must exist and belong to the caller's org. Mirrors
+    # the GET detail's 404 pattern (no 403 leak of cross-org slot ids).
+    slot_row = await conn.fetchrow(
+        "SELECT org_id, slot_type FROM class_lesson_slots WHERE id = $1",
+        slot_id,
+    )
+    if slot_row is None or slot_row["org_id"] != org.id:
+        raise HTTPException(status_code=404, detail="lesson slot not found")
+
+    try:
+        if slot_row["slot_type"] == "revision":
+            # get_or_generate_lp raises ValueError on revision slots — the
+            # revision path keys on the chapter's prior topics instead.
+            generated = await get_or_generate_revision_lp(conn, slot_id)
+        else:
+            generated = await get_or_generate_lp(conn, slot_id)
+    except ValueError as exc:
+        # Slot context problems (no topic, empty topic_text, no prior
+        # revision topics, etc.) are caller-fixable → 422, not 500.
+        log.error(
+            "generate_lesson_slot_lp: slot context error slot_id=%s: %s",
+            slot_id, exc, exc_info=True,
+        )
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    log.info(
+        "generate_lesson_slot_lp: exit slot_id=%s generated_lp_id=%s status=%s",
+        slot_id, generated.id, generated.status,
+    )
+    return GenerateLPResponse(
+        generated_lp_id=generated.id,
+        lp_status=generated.status,
+    )
 
 
 # ---------------------------------------------------------------------------

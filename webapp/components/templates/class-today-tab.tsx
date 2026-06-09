@@ -53,6 +53,10 @@ export interface ClassTodayTabProps {
   onViewLP: () => void;
   onMarkTaught: () => void;
   onViewExam: () => void;
+  /** On-demand LP generation for today's lesson slot (Generate / Retry). */
+  onGenerateLP: () => void;
+  /** True while today's LP is being generated + polled. */
+  generatingLP: boolean;
   /** Set when today falls in a syllabus chapter that hasn't been broken down. */
   currentChapterToPlan?: CurrentChapterToPlan | null;
   onBreakDown?: (bookChapterId: string) => void;
@@ -69,6 +73,8 @@ export function ClassTodayTab({
   onViewLP,
   onMarkTaught,
   onViewExam,
+  onGenerateLP,
+  generatingLP,
   currentChapterToPlan,
   onBreakDown,
 }: ClassTodayTabProps) {
@@ -84,6 +90,8 @@ export function ClassTodayTab({
         onViewLP={onViewLP}
         onMarkTaught={onMarkTaught}
         onViewExam={onViewExam}
+        onGenerateLP={onGenerateLP}
+        generatingLP={generatingLP}
         nextSlot={nextSlot}
         currentChapterToPlan={currentChapterToPlan}
         onBreakDown={onBreakDown}
@@ -108,6 +116,8 @@ function TodayWorkCard({
   onViewLP,
   onMarkTaught,
   onViewExam,
+  onGenerateLP,
+  generatingLP,
   nextSlot,
   currentChapterToPlan,
   onBreakDown,
@@ -117,6 +127,8 @@ function TodayWorkCard({
   onViewLP: () => void;
   onMarkTaught: () => void;
   onViewExam: () => void;
+  onGenerateLP: () => void;
+  generatingLP: boolean;
   nextSlot: ProgressSlot | null;
   currentChapterToPlan?: CurrentChapterToPlan | null;
   onBreakDown?: (bookChapterId: string) => void;
@@ -218,13 +230,12 @@ function TodayWorkCard({
         <LPStatusPill lp_status={work.lpStatus} />
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onViewLP}
-          className="px-3 py-1.5 rounded border border-dars-rule-dark text-sm text-dars-ink hover:bg-dars-parchment-deep"
-        >
-          View lesson plan
-        </button>
+        <TodayLPAction
+          lpStatus={work.lpStatus}
+          generating={generatingLP}
+          onViewLP={onViewLP}
+          onGenerateLP={onGenerateLP}
+        />
         {!taught ? (
           <button
             type="button"
@@ -332,6 +343,84 @@ function SlotStatusBadge({ status }: { status: string }) {
     >
       {status}
     </span>
+  );
+}
+
+/**
+ * LP action for today's lesson card. Adapts to the LP's generation state
+ * (same logic as the timeline tab's LPAction, sized for this card):
+ *   - not_generated → "Generate LP"
+ *   - generating / PENDING / IN_FLIGHT → disabled "Generating…"
+ *   - ERROR → "View lesson plan" + "Retry"
+ *   - READY (or other) → "View lesson plan"
+ */
+function TodayLPAction({
+  lpStatus,
+  generating,
+  onViewLP,
+  onGenerateLP,
+}: {
+  lpStatus: string;
+  generating: boolean;
+  onViewLP: () => void;
+  onGenerateLP: () => void;
+}) {
+  const inFlight =
+    generating || lpStatus === "PENDING" || lpStatus === "IN_FLIGHT";
+
+  if (inFlight) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="px-3 py-1.5 rounded border border-dars-rule-light text-sm text-dars-muted disabled:opacity-70"
+      >
+        Generating…
+      </button>
+    );
+  }
+
+  if (lpStatus === "not_generated") {
+    return (
+      <button
+        type="button"
+        onClick={onGenerateLP}
+        className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-sm font-semibold hover:opacity-90"
+      >
+        Generate LP
+      </button>
+    );
+  }
+
+  if (lpStatus === "ERROR") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={onViewLP}
+          className="px-3 py-1.5 rounded border border-dars-rule-dark text-sm text-dars-ink hover:bg-dars-parchment-deep"
+        >
+          View lesson plan
+        </button>
+        <button
+          type="button"
+          onClick={onGenerateLP}
+          className="px-3 py-1.5 rounded border border-dars-terra text-sm font-semibold text-dars-terra hover:bg-dars-terra/10"
+        >
+          Retry
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onViewLP}
+      className="px-3 py-1.5 rounded border border-dars-rule-dark text-sm text-dars-ink hover:bg-dars-parchment-deep"
+    >
+      View lesson plan
+    </button>
   );
 }
 

@@ -258,6 +258,17 @@ export interface ClassLessonSlotDetail extends ClassLessonSlot {
   lp_covered_sub_slo_ids: UUID[];
 }
 
+/**
+ * Returned by `POST /api/v1/class-lesson-slots/{id}/generate-lp`. The
+ * `lp_status` mirrors ClassLessonSlotDetail.lp_status (minus
+ * `not_generated`, since generation always lands a real status) so the FE
+ * can poll getLessonSlotDetail() with the same handling.
+ */
+export interface GenerateLPResponse {
+  generated_lp_id: UUID;
+  lp_status: "PENDING" | "IN_FLIGHT" | "READY" | "ERROR";
+}
+
 export interface ClassAssessmentSlot {
   id: UUID;
   cst_id: UUID;
@@ -1017,6 +1028,19 @@ export const slots = {
   /** F3.13 — full slot detail with LP status + content. */
   getLessonSlotDetail: (slot_id: UUID) =>
     request<ClassLessonSlotDetail>(`/api/v1/class-lesson-slots/${slot_id}`),
+
+  /**
+   * On-demand per-slot LP generation. Looks up the global LP cache and
+   * returns the existing row when one exists (READY/PENDING/IN_FLIGHT),
+   * re-requests on ERROR, else dispatches a fresh generation and links the
+   * slot. Idempotent — safe to re-call. Poll getLessonSlotDetail() for the
+   * `lp_status` until READY/ERROR.
+   */
+  generateLPForSlot: (slot_id: UUID) =>
+    request<GenerateLPResponse>(
+      `/api/v1/class-lesson-slots/${slot_id}/generate-lp`,
+      { method: "POST" },
+    ),
 
   /** F4.6 — all lesson slots for a CST, joined with breakdown chapter + LP status. */
   listLessonSlotsForCST: (cst_id: UUID) =>
