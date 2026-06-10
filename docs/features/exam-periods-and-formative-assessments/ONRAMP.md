@@ -45,13 +45,17 @@ If two docs disagree, this order wins. Code is lowest authority.
 
 | Phase | Status | PR | Notes |
 |-------|--------|----|----|
-| Phase 1 — Exam Periods & Breakdown Holidays (`03-...`) | 🟡 In review | PR pending | Built F-1.1..F-1.6 on `feat/exam-periods-fa-phase-1`; route prefix is `/api/v2`; backend tests + webapp typecheck green; awaiting PR + deploy |
-| Phase 2 — Planner emits FAs (`04-...`) | ⬜ Not started | — | |
+| Phase 1 — Exam Periods & Breakdown Holidays (`03-...`) | ✅ Shipped | #136 | Squash-merged to staging (`32c6493`); both Railway deploys SUCCESS — migration applied, `exam_periods` + `breakdown_holidays` live |
+| Phase 2 — Planner emits FAs (`04-...`) | 🟡 In review | PR pending | Built F-2.1..F-2.5 on `feat/exam-periods-fa-phase-2`; FA timeline rendering already existed (no FE work); 249 passed / 57 skipped; awaiting PR + deploy |
 | Phase 3 — FA → Exam Generator inputs (`05-...`) | ⬜ Not started | — | |
 
-**Next thing to do:** open the Phase 1 PR against `staging`; after merge, watch both Railway deploys (the migration applies on the backend deploy). Then start Phase 2, F-2.1 (`PlanUnit.slot_type`).
+**Next thing to do:** open the Phase 2 PR against `staging`; after merge, watch both deploys (no migration in Phase 2 — backend code only; webapp untouched so its deploy will SKIP, which is healthy). Then start Phase 3, F-3.1 (`DEFAULT_FA_CONFIG`).
 
-**Implementation notes (Phase 1):** Two new decisions logged in `.beads/decisions.jsonl` — (1) the teacher-path breakdown resolution happens *internally* in `chapter_slot_count` / `project_cst_schedule` (no call-site signature change; projector uses a lazy import + inline `_resolve_published_breakdown_id` to dodge an import cycle); (2) no separate `exam_overlap` advisory — a chapter inside an exam/holiday window surfaces via the existing `zero_teaching_days` warning (D-4 left it optional). The endpoints live under `/api/v2/syllabus-breakdowns/{id}/exam-periods` and `/holidays` (NOT `/api/v1` — the phase doc's path strings were illustrative). `resolve_breakdown_holidays` in `chapter_calendar.py` is now unused but left defined (signature-stable future hook).
+**Implementation notes (Phase 1):** breakdown resolution happens *internally* in `chapter_slot_count` / `project_cst_schedule` (no call-site signature change; projector uses a lazy import + inline `_resolve_published_breakdown_id` to dodge an import cycle); no separate `exam_overlap` advisory (a chapter inside an exam/holiday window surfaces via the existing `zero_teaching_days` warning, D-4). Endpoints under `/api/v2/syllabus-breakdowns/{id}/exam-periods` and `/holidays`. `resolve_breakdown_holidays` in `chapter_calendar.py` is now unused but left defined.
+
+**Implementation notes (Phase 2):** `PlanUnit.slot_type` defaults to `'lesson'` (back-compat). FA units carry no `lp_type`; an echoed one is silently dropped at parse (`_build_unit`) while `validate_plan` still hard-rejects it as defence-in-depth (D-17). FA persists as `class_assessment_slots (org_id, cst_id, position, assessment_type='formative', book_chapter_id, status='scheduled')` + `class_assessment_slot_topics`, sharing the lesson/assessment position sequence. The teacher timeline (`class-timeline-tab.tsx`) already renders FA slots (rose `◆ FA` badge) — no frontend change needed. `generated_exam_id` stays NULL until Phase 3.
+
+**Reminder on running tests:** the repo's root `.env` points `DATABASE_URL` at the *live staging Postgres*, which is NOT seeded for tests — `make test` runs the DB-gated e2e/smoke suites against it and they fail spuriously on auth. Always run the suite with `env -u DATABASE_URL uv run pytest` (from `server/`) so DB-gated tests skip as designed. Green baseline: 249 passed / 57 skipped after Phase 2.
 
 **Scope note (important):** Summative Assessments are **deferred** (D-16). Exam Periods are pure no-teaching blocked ranges only — no SA slots, no summative exam generation, no results capture in this feature. SAs are a follow-on the user will hand off separately. If you find yourself building SA slot creation here, stop — that's out of scope.
 
