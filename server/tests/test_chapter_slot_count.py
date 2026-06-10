@@ -38,3 +38,44 @@ def test_custom_timetable_mon_wed_fri():
 def test_weekend_only_range_is_zero():
     # Sat 2026-06-06 .. Sun 2026-06-07, Mon-Fri class = 0 teaching days.
     assert _count(date(2026, 6, 6), date(2026, 6, 7)) == 0
+
+
+# ---------------------------------------------------------------------------
+# F-1.4 — breakdown exam + holiday dates union ADDITIVELY into the holiday set
+# that chapter_slot_count feeds to compute_teaching_days (D-2/D-3/D-15). The
+# org/school/CST effective holidays still apply (prior D-26 intact). Pure: we
+# pin the set-union -> count composition the DB wrapper performs.
+# ---------------------------------------------------------------------------
+
+
+def test_breakdown_exam_dates_reduce_slot_count():
+    from dars.breakdown.chapter_calendar import expand_ranges
+
+    # 2026-06-01 (Mon) .. 06-05 (Fri) = 5 teaching days, no other holidays.
+    exam = expand_ranges([{"start_date": date(2026, 6, 3), "end_date": date(2026, 6, 4)}])
+    effective = set()  # no org/school/CST holidays
+    holidays = effective | exam
+    assert _count(date(2026, 6, 1), date(2026, 6, 5), holidays=holidays) == 3
+
+
+def test_breakdown_dates_additive_to_effective_holidays():
+    from dars.breakdown.chapter_calendar import expand_ranges
+
+    # Effective (org) holiday on Mon 06-01; breakdown holiday range 06-04..05.
+    # Both apply: 5 weekdays - 1 org - 2 breakdown = 2.
+    effective = {date(2026, 6, 1)}
+    breakdown_hol = expand_ranges(
+        [{"start_date": date(2026, 6, 4), "end_date": date(2026, 6, 5)}]
+    )
+    holidays = effective | breakdown_hol
+    assert _count(date(2026, 6, 1), date(2026, 6, 5), holidays=holidays) == 2
+
+
+def test_no_breakdown_dates_is_unchanged():
+    from dars.breakdown.chapter_calendar import expand_ranges
+
+    # Regression: empty breakdown sets => count equals the effective-only count.
+    effective = {date(2026, 6, 3)}
+    holidays = effective | expand_ranges([]) | expand_ranges([])
+    assert _count(date(2026, 6, 1), date(2026, 6, 5), holidays=holidays) == 4
+    assert _count(date(2026, 6, 1), date(2026, 6, 5), holidays=effective) == 4

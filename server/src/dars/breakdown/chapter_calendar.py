@@ -13,7 +13,7 @@ we fall back to plain Mon-Fri (no holidays).
 Reuses `projector.compute_teaching_days` verbatim for the day walk.
 """
 import logging
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 import asyncpg
@@ -24,6 +24,68 @@ log = logging.getLogger("breakdown.chapter_calendar")
 
 # Mon-Fri (0=Monday .. 6=Sunday, matching date.weekday()).
 WEEKDAY_SET: set[int] = {0, 1, 2, 3, 4}
+
+
+# ---------------------------------------------------------------------------
+# Exam-period / breakdown-holiday date expansion (exam-periods, F-1.2, D-2/D-14)
+# ---------------------------------------------------------------------------
+
+
+def expand_ranges(rows: list) -> set[date]:
+    """
+    Expand `[start_date, end_date]` inclusive ranges into a flat set of dates.
+
+    Pure. Each row is a mapping (asyncpg.Record or dict) carrying `start_date`
+    and `end_date`. A single-day range (start == end) yields one date; an
+    inverted range (end < start) contributes nothing. The union across all
+    rows is returned (overlapping ranges collapse naturally into the set).
+    """
+    out: set[date] = set()
+    for r in rows:
+        start = r["start_date"]
+        end = r["end_date"]
+        if start is None or end is None:
+            continue
+        day = start
+        while day <= end:
+            out.add(day)
+            day += timedelta(days=1)
+    return out
+
+
+async def get_breakdown_exam_dates(
+    conn: asyncpg.Connection, syllabus_breakdown_id: UUID | None
+) -> set[date]:
+    """
+    The set of individual dates reserved by a breakdown's Exam Periods (D-2).
+
+    Returns an empty set for a `None` id (no published breakdown resolved) so
+    teacher/admin call sites degrade gracefully (D-3).
+    """
+    if syllabus_breakdown_id is None:
+        return set()
+    rows = await conn.fetch(
+        "SELECT start_date, end_date FROM exam_periods WHERE syllabus_breakdown_id = $1",
+        syllabus_breakdown_id,
+    )
+    return expand_ranges(rows)
+
+
+async def get_breakdown_holiday_dates(
+    conn: asyncpg.Connection, syllabus_breakdown_id: UUID | None
+) -> set[date]:
+    """
+    The set of individual dates reserved by a breakdown's general Holidays (D-14).
+
+    Returns an empty set for a `None` id (graceful no-op, D-3/D-15).
+    """
+    if syllabus_breakdown_id is None:
+        return set()
+    rows = await conn.fetch(
+        "SELECT start_date, end_date FROM breakdown_holidays WHERE syllabus_breakdown_id = $1",
+        syllabus_breakdown_id,
+    )
+    return expand_ranges(rows)
 
 
 async def resolve_breakdown_holidays(

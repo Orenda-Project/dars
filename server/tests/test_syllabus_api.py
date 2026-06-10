@@ -179,6 +179,288 @@ class TestSyllabusAPI:
     os.environ.get("DATABASE_URL") is None,
     reason="Syllabus API tests require DATABASE_URL pointing at a seeded Postgres",
 )
+class TestExamPeriodsAndHolidays:
+    """exam-periods Phase 1 (F-1.5/F-1.3) — nested CRUD for exam periods +
+    breakdown holidays, the detail arrays, the publish-lock, the end<start
+    guard, cascade-on-delete, and admin teaching-day reduction (D-1/D-5/D-14)."""
+
+    async def _seed_refs(self, client: AsyncClient) -> dict:
+        return await TestSyllabusAPI()._seed_refs(client)
+
+    async def _create_draft(self, client: AsyncClient, refs: dict) -> str:
+        r = await client.post(
+            "/api/v2/syllabus-breakdowns",
+            json={
+                "curriculum_id": refs["curriculum_id"],
+                "grade_id": refs["grade_id"],
+                "subject_id": refs["subject_id_eng"],
+                "book_id": refs["book_id"],
+            },
+            headers=admin_headers(),
+        )
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    async def test_exam_period_crud_roundtrip_and_detail_arrays(
+        self, client: AsyncClient
+    ):
+        refs = await self._seed_refs(client)
+        bd_id = await self._create_draft(client, refs)
+        try:
+            # Detail starts with empty arrays.
+            r = await client.get(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["exam_periods"] == []
+            assert r.json()["holidays"] == []
+
+            # Create an exam period.
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods",
+                json={
+                    "start_date": "2026-08-01",
+                    "end_date": "2026-08-20",
+                    "name": "Mid-term exams",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 201, r.text
+            ep = r.json()
+            assert ep["name"] == "Mid-term exams"
+            assert ep["syllabus_breakdown_id"] == bd_id
+            ep_id = ep["id"]
+
+            # Create a holiday.
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/holidays",
+                json={
+                    "start_date": "2026-06-15",
+                    "end_date": "2026-06-19",
+                    "name": "Eid-ul-Fitr",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 201, r.text
+            h_id = r.json()["id"]
+
+            # Detail returns both arrays.
+            r = await client.get(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert [e["id"] for e in body["exam_periods"]] == [ep_id]
+            assert [h["id"] for h in body["holidays"]] == [h_id]
+
+            # PATCH the exam period (rename + shorten).
+            r = await client.patch(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods/{ep_id}",
+                json={"name": "Finals", "end_date": "2026-08-10"},
+                headers=admin_headers(),
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["name"] == "Finals"
+            assert r.json()["end_date"] == "2026-08-10"
+
+            # DELETE the holiday.
+            r = await client.delete(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/holidays/{h_id}",
+                headers=admin_headers(),
+            )
+            assert r.status_code == 204, r.text
+            r = await client.get(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+            assert r.json()["holidays"] == []
+            assert len(r.json()["exam_periods"]) == 1
+        finally:
+            await client.delete(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+
+    async def test_end_before_start_rejected_422(self, client: AsyncClient):
+        refs = await self._seed_refs(client)
+        bd_id = await self._create_draft(client, refs)
+        try:
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods",
+                json={
+                    "start_date": "2026-08-20",
+                    "end_date": "2026-08-01",
+                    "name": "Backwards",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 422, r.text
+
+            # Also rejected on PATCH if it would invert an existing valid range.
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/holidays",
+                json={
+                    "start_date": "2026-08-01",
+                    "end_date": "2026-08-05",
+                    "name": "Break",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 201, r.text
+            h_id = r.json()["id"]
+            r = await client.patch(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/holidays/{h_id}",
+                json={"end_date": "2026-07-01"},  # before start 08-01
+                headers=admin_headers(),
+            )
+            assert r.status_code == 422, r.text
+        finally:
+            await client.delete(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+
+    async def test_mutation_on_published_breakdown_rejected(
+        self, client: AsyncClient
+    ):
+        refs = await self._seed_refs(client)
+        bd_id = await self._create_draft(client, refs)
+        # Add a dated chapter so the breakdown can publish.
+        r = await client.post(
+            f"/api/v2/syllabus-breakdowns/{bd_id}/chapters",
+            json={
+                "book_chapter_id": refs["book_chapter_id_1"],
+                "position": 1,
+                "start_date": "2026-09-01",
+                "end_date": "2026-09-11",
+            },
+            headers=admin_headers(),
+        )
+        assert r.status_code == 201, r.text
+        # Create an exam period while still a draft (allowed).
+        r = await client.post(
+            f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods",
+            json={"start_date": "2026-09-05", "end_date": "2026-09-06", "name": "Quiz"},
+            headers=admin_headers(),
+        )
+        assert r.status_code == 201, r.text
+        ep_id = r.json()["id"]
+        # Publish.
+        r = await client.post(
+            f"/api/v2/syllabus-breakdowns/{bd_id}/publish", headers=admin_headers()
+        )
+        assert r.status_code == 200, r.text
+
+        # All mutations now rejected (D-5) — published is not a draft → 409.
+        r = await client.post(
+            f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods",
+            json={"start_date": "2026-10-01", "end_date": "2026-10-02", "name": "x"},
+            headers=admin_headers(),
+        )
+        assert r.status_code == 409, r.text
+        r = await client.patch(
+            f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods/{ep_id}",
+            json={"name": "y"},
+            headers=admin_headers(),
+        )
+        assert r.status_code == 409, r.text
+        r = await client.delete(
+            f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods/{ep_id}",
+            headers=admin_headers(),
+        )
+        assert r.status_code == 409, r.text
+        # Published breakdowns can't be deleted either — leave it (no cleanup).
+
+    async def test_exam_period_reduces_derived_teaching_days(
+        self, client: AsyncClient
+    ):
+        refs = await self._seed_refs(client)
+        bd_id = await self._create_draft(client, refs)
+        try:
+            # Chapter Sep 1 (Tue) .. Sep 11 (Fri) 2026 — 9 weekdays.
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/chapters",
+                json={
+                    "book_chapter_id": refs["book_chapter_id_1"],
+                    "position": 1,
+                    "start_date": "2026-09-01",
+                    "end_date": "2026-09-11",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 201, r.text
+            r = await client.get(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+            before = r.json()["chapters"][0]["derived_teaching_days"]
+            assert before is not None and before > 0
+
+            # Add an exam period covering 2 weekdays inside the chapter.
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods",
+                json={
+                    "start_date": "2026-09-03",
+                    "end_date": "2026-09-04",
+                    "name": "Mid",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 201, r.text
+            r = await client.get(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+            after = r.json()["chapters"][0]["derived_teaching_days"]
+            assert after == before - 2, (before, after)
+        finally:
+            await client.delete(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+
+    async def test_chapter_fully_inside_exam_window_warns_zero_teaching_days(
+        self, client: AsyncClient
+    ):
+        refs = await self._seed_refs(client)
+        bd_id = await self._create_draft(client, refs)
+        try:
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/chapters",
+                json={
+                    "book_chapter_id": refs["book_chapter_id_1"],
+                    "position": 1,
+                    "start_date": "2026-09-07",
+                    "end_date": "2026-09-11",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 201, r.text
+            chapter_id = r.json()["id"]
+            # Exam period blankets the whole chapter range.
+            r = await client.post(
+                f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods",
+                json={
+                    "start_date": "2026-09-07",
+                    "end_date": "2026-09-11",
+                    "name": "Exam week",
+                },
+                headers=admin_headers(),
+            )
+            assert r.status_code == 201, r.text
+            r = await client.get(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+            body = r.json()
+            assert body["chapters"][0]["derived_teaching_days"] == 0
+            assert {
+                "type": "zero_teaching_days",
+                "chapter_ids": [chapter_id],
+            } in body["chapter_range_warnings"]
+        finally:
+            await client.delete(
+                f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
+            )
+
+
+@pytest.mark.skipif(
+    os.environ.get("DATABASE_URL") is None,
+    reason="Syllabus API tests require DATABASE_URL pointing at a seeded Postgres",
+)
 class TestCstSyllabusReadOnly:
     """teacher-readonly-syllabus Phase 1 — the CST syllabus GET is now a
     read-only, auto-seeded mirror of the org breakdown (D-2, D-5)."""

@@ -974,9 +974,26 @@ export interface ChapterRangeWarning {
   chapter_ids: UUID[];
 }
 
+/**
+ * A reserved non-teaching date range on a breakdown: an exam period or a
+ * general holiday (Eid, public holidays). Both share this shape (D-1/D-14).
+ */
+export interface BreakdownDateRange {
+  id: UUID;
+  syllabus_breakdown_id: UUID;
+  start_date: ISODate;
+  end_date: ISODate;
+  name: string;
+  created_at: ISODateTime;
+}
+
 export interface SyllabusBreakdownDetail extends SyllabusBreakdown {
   chapters: SyllabusChapter[];
   chapter_range_warnings: ChapterRangeWarning[];
+  /** Reserved exam date ranges (excluded from teaching days). */
+  exam_periods: BreakdownDateRange[];
+  /** General holiday ranges (Eid etc.) that inherit into class plans. */
+  holidays: BreakdownDateRange[];
 }
 
 export const syllabusBreakdowns = {
@@ -1036,6 +1053,58 @@ export const syllabusBreakdowns = {
   deleteChapter: (breakdownId: UUID, chapterId: UUID) =>
     request<void>(
       `/api/v2/syllabus-breakdowns/${breakdownId}/chapters/${chapterId}`,
+      { method: "DELETE" },
+    ),
+
+  // --- Exam periods (reserved non-teaching ranges, D-1) ---
+  addExamPeriod: (
+    breakdownId: UUID,
+    body: { start_date: ISODate; end_date: ISODate; name: string },
+  ) =>
+    request<BreakdownDateRange>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/exam-periods`,
+      { method: "POST", body },
+    ),
+
+  updateExamPeriod: (
+    breakdownId: UUID,
+    examPeriodId: UUID,
+    body: { start_date?: ISODate; end_date?: ISODate; name?: string },
+  ) =>
+    request<BreakdownDateRange>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/exam-periods/${examPeriodId}`,
+      { method: "PATCH", body },
+    ),
+
+  deleteExamPeriod: (breakdownId: UUID, examPeriodId: UUID) =>
+    request<void>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/exam-periods/${examPeriodId}`,
+      { method: "DELETE" },
+    ),
+
+  // --- Breakdown holidays (Eid etc., inherit into class plans, D-14) ---
+  addHoliday: (
+    breakdownId: UUID,
+    body: { start_date: ISODate; end_date: ISODate; name: string },
+  ) =>
+    request<BreakdownDateRange>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/holidays`,
+      { method: "POST", body },
+    ),
+
+  updateHoliday: (
+    breakdownId: UUID,
+    holidayId: UUID,
+    body: { start_date?: ISODate; end_date?: ISODate; name?: string },
+  ) =>
+    request<BreakdownDateRange>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/holidays/${holidayId}`,
+      { method: "PATCH", body },
+    ),
+
+  deleteHoliday: (breakdownId: UUID, holidayId: UUID) =>
+    request<void>(
+      `/api/v2/syllabus-breakdowns/${breakdownId}/holidays/${holidayId}`,
       { method: "DELETE" },
     ),
 };

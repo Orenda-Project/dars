@@ -156,6 +156,34 @@ def project_schedule(
 # ---------------------------------------------------------------------------
 
 
+async def _resolve_published_breakdown_id(
+    conn: asyncpg.Connection, cst_id: UUID
+) -> UUID | None:
+    """
+    The published global Syllabus Breakdown id for a CST's (curriculum, grade,
+    subject) triple, or None if none is published (F-1.4, D-3). Mirrors the
+    lookup in chapter_plan_service.resolve_cst_syllabus_context, inlined here to
+    avoid a chapter_plan_service <-> projector import cycle.
+    """
+    return await conn.fetchval(
+        """
+        SELECT sb.id
+        FROM class_subject_teachers cst
+        JOIN school_classes sc ON sc.id = cst.school_class_id
+        JOIN organizations o   ON o.id = cst.org_id
+        JOIN syllabus_breakdowns sb
+          ON sb.status = 'published'
+         AND sb.curriculum_id = o.curriculum_id
+         AND sb.grade_id = sc.grade_id
+         AND sb.subject_id = cst.subject_id
+        WHERE cst.id = $1
+        ORDER BY sb.created_at DESC
+        LIMIT 1
+        """,
+        cst_id,
+    )
+
+
 async def project_cst_schedule(
     conn: asyncpg.Connection,
     cst_id: UUID,
@@ -181,6 +209,24 @@ async def project_cst_schedule(
     weekday_set = {r["day_of_week"] for r in tt_rows} or {0, 1, 2, 3, 4}
 
     holidays = await get_effective_holidays(conn, cst_id)
+
+    # F-1.4 (D-2/D-3/D-15): union the CST's published Syllabus Breakdown's
+    # reserved exam-period + holiday dates into the exclusion set so the
+    # projector never lands a slot inside an exam/holiday window. Resolved via
+    # the same published-breakdown lookup the teacher path uses; absent → no-op.
+    # Imported lazily to avoid a chapter_calendar <-> projector import cycle.
+    from dars.breakdown.chapter_calendar import (
+        get_breakdown_exam_dates,
+        get_breakdown_holiday_dates,
+    )
+
+    breakdown_id = await _resolve_published_breakdown_id(conn, cst_id)
+    holidays = (
+        holidays
+        | await get_breakdown_exam_dates(conn, breakdown_id)
+        | await get_breakdown_holiday_dates(conn, breakdown_id)
+    )
+
     teaching_days = compute_teaching_days(
         ay["start_date"], ay["end_date"], weekday_set, holidays
     )
