@@ -121,13 +121,51 @@ class PlanRequest(BaseModel):
 # ============================================================================
 # Output — 200 ChapterPlan
 # ============================================================================
+
+# Allowed slot_type values for a PlanUnit (exam-periods-and-formative-assessments
+# D-6, D-12, D-13). Summative is deliberately NOT allowed here (D-12/D-16).
+VALID_SLOT_TYPES: set[str] = {"lesson", "formative_assessment"}
+
+
 class PlanUnit(BaseModel):
     sequence: int = Field(..., description="1..period_count, a permutation (D-8e)")
-    lp_type: str = Field(..., description="∈ VALID_LP_TYPES[subject] (D-5)")
+    slot_type: str = Field(
+        default="lesson",
+        description="'lesson' | 'formative_assessment' (D-6, D-12, D-13). "
+        "Omitted ⇒ 'lesson' for back-compat (D-13).",
+    )
+    lp_type: str | None = Field(
+        default=None,
+        description="∈ VALID_LP_TYPES[subject] for lessons (D-5); None for FA units (D-7)",
+    )
     topic_ids: List[str] = Field(..., description="ordered, ≥1 (D-4)")
     slo_ids: List[str] = Field(..., description="≥1, ⊆ chapter SLOs (D-8b,d)")
     topic_text: str = Field(..., description="member topics' text, joined in topic_ids order (D-4)")
     rationale: str
+
+    @field_validator("slot_type")
+    @classmethod
+    def _slot_type_allowed(cls, v: str) -> str:
+        if v not in VALID_SLOT_TYPES:
+            raise ValueError(
+                f"slot_type must be one of {sorted(VALID_SLOT_TYPES)} (D-6, D-12)"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _lp_type_matches_slot_type(self) -> "PlanUnit":
+        # D-7: a lesson MUST carry an lp_type; an FA MUST NOT. The subject-
+        # membership check (lp_type ∈ VALID_LP_TYPES[subject]) stays in
+        # validate_plan, where the request (and thus the subject) is available.
+        if self.slot_type == "lesson":
+            if not self.lp_type:
+                raise ValueError("lesson unit requires an lp_type (D-7)")
+        elif self.slot_type == "formative_assessment":
+            if self.lp_type is not None:
+                raise ValueError(
+                    "formative_assessment unit must not carry an lp_type (D-7)"
+                )
+        return self
 
 
 class ChapterPlan(BaseModel):

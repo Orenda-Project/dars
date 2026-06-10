@@ -3,9 +3,18 @@ Chapter Plan — break-it-down service.
 
 Computes a chapter's slot_count from the teacher's real timetable (D-9), builds
 a PlanRequest from the live DB (F2.1), drives the intelligent chapter planner
-(`make_chapter_plan`, Phase 1) and persists one `class_lesson_slot` per Plan
-Unit plus its `class_lesson_slot_topics` grouping (D-9). No assessment slots are
-created (D-1); no fallback on planner failure (D-5).
+(`make_chapter_plan`, Phase 1) and persists each Plan Unit into the class slot
+tables (D-9), then no fallback on planner failure (D-5).
+
+Persistence is now slot_type-aware (exam-periods-and-formative-assessments
+D-9, F-2.4): a 'lesson' unit becomes a `class_lesson_slot` (+ its
+`class_lesson_slot_topics` grouping) exactly as before; a 'formative_assessment'
+unit becomes a `class_assessment_slot` (`assessment_type='formative'`) plus its
+`class_assessment_slot_topics` grouping. Both kinds share the one global
+`position` sequence per CST so the projector can merge them by position. This
+SUPERSEDES the prior chapter-planner-in-dars D-1 ("no assessment slots are
+created") for the FA path — that decision still holds for summative (none are
+created here; D-12/D-16).
 """
 import logging
 from dataclasses import dataclass, field
@@ -232,21 +241,33 @@ async def generate_chapter_plan(
     llm: PlannerLLM | None = None,
 ) -> GeneratePlanResult:
     """
-    F2.2 / "break it down" — generate a chapter's lesson slots into the class
-    slot tables for this CST, sized by the teacher's real timetable (D-9) and
+    F2.2 / "break it down" — generate a chapter's slots into the class slot
+    tables for this CST, sized by the teacher's real timetable (D-9) and
     sequenced by the intelligent Chapter Planner (D-1).
 
     - slot_count = teaching periods in the chapter's class-path date range (the
       CST's `class_chapters` row, D-5/F1.6 — not the advisory global). It gates
       generation AND is the planner's `period_count`: the planner returns exactly
-      `slot_count` Plan Units, so lesson_slot_count == slot_count.
-    - For each Plan Unit, in `sequence` order, one `class_lesson_slot`
-      (`slot_type='lesson'`, `lp_type=unit.lp_type`, lead `topic_id=unit.topic_ids[0]`,
-      `book_chapter_id`, `status='planned'`) plus one `class_lesson_slot_topics`
-      row per member topic (position 1..N, list order). The join table is the
-      source of truth for the full topic grouping; `topic_id` is the lead topic
-      for back-compat (D-9).
-    - NO assessment slots are created (D-1).
+      `slot_count` Plan Units, so lesson_slot_count + assessment_slot_count ==
+      slot_count.
+    - For each Plan Unit, in `sequence` order, the persist branches on
+      `unit.slot_type` (exam-periods-and-formative-assessments D-9, F-2.4):
+      * 'lesson' → one `class_lesson_slot` (`slot_type='lesson'`,
+        `lp_type=unit.lp_type`, lead `topic_id=unit.topic_ids[0]`,
+        `book_chapter_id`, `status='planned'`) plus one `class_lesson_slot_topics`
+        row per member topic (position 1..N, list order). The join table is the
+        source of truth for the full topic grouping; `topic_id` is the lead topic
+        for back-compat (D-9).
+      * 'formative_assessment' → one `class_assessment_slot`
+        (`assessment_type='formative'`, `book_chapter_id`, `status='scheduled'`)
+        plus one `class_assessment_slot_topics` row per covered topic
+        (position 1..N, list order). Bumps `result.assessment_slot_count`.
+        No exam is generated here — that is Phase 3 (D-10/D-11).
+    - Lessons and assessments share ONE global `position` sequence per CST so the
+      projector merges both tables by position (1 slot = 1 teaching day, D-8/D-9).
+    - This SUPERSEDES the prior chapter-planner-in-dars D-1 ("NO assessment slots
+      are created") for the FA path. Summative slots are still NOT created
+      (D-12/D-16).
     - No fallback (D-5): a planner failure (PlannerLLMError / PlanParseError /
       PlanValidationError) propagates to the caller.
     - Refuses (ValueError) if the chapter isn't in the class path, already has
@@ -337,11 +358,40 @@ async def generate_chapter_plan(
                 cst_id,
             )
 
-            # One lesson slot per Plan Unit, in sequence order. The join table
-            # records the full topic grouping; topic_id is the lead topic.
+            # One slot per Plan Unit, in sequence order, branching on slot_type
+            # (D-9). Lessons and FAs share the single incrementing `position`.
             for unit in sorted(plan.units, key=lambda u: u.sequence):
-                lead_topic_id = UUID(unit.topic_ids[0])
                 pos += 1
+                if unit.slot_type == "formative_assessment":
+                    # FA → class_assessment_slots (assessment_type='formative',
+                    # status='scheduled') + class_assessment_slot_topics for the
+                    # covered topics. No lp_type, no exam yet (Phase 3, D-10/D-11).
+                    slot_id = await conn.fetchval(
+                        """
+                        INSERT INTO class_assessment_slots
+                          (org_id, cst_id, position, assessment_type,
+                           book_chapter_id, status)
+                        VALUES ($1, $2, $3, 'formative', $4, 'scheduled')
+                        RETURNING id
+                        """,
+                        org_id, cst_id, pos, book_chapter_id,
+                    )
+                    for member_pos, t_id in enumerate(unit.topic_ids, start=1):
+                        await conn.execute(
+                            """
+                            INSERT INTO class_assessment_slot_topics
+                              (class_assessment_slot_id, topic_id, position)
+                            VALUES ($1, $2, $3)
+                            """,
+                            slot_id, UUID(t_id), member_pos,
+                        )
+                    result.assessment_slot_count += 1
+                    continue
+
+                # lesson → class_lesson_slots (+ class_lesson_slot_topics). The
+                # join table records the full topic grouping; topic_id is the
+                # lead topic for back-compat.
+                lead_topic_id = UUID(unit.topic_ids[0])
                 slot_id = await conn.fetchval(
                     """
                     INSERT INTO class_lesson_slots
@@ -364,8 +414,9 @@ async def generate_chapter_plan(
                 result.lesson_slot_count += 1
 
         log.info(
-            "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d source=%s",
-            cst_id, book_chapter_id, result.lesson_slot_count, result.source,
+            "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d assessments=%d source=%s",
+            cst_id, book_chapter_id, result.lesson_slot_count,
+            result.assessment_slot_count, result.source,
         )
         return result
     except Exception:

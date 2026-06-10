@@ -8,10 +8,14 @@ Chapter Planner (`make_chapter_plan`). What remains to test here:
 
 - `build_plan_request` (F2.1) — DB-gated: shapes a real chapter into a
   PlanRequest (one topic per row, sub-SLOs as `[code] statement`).
-- `generate_chapter_plan` (F2.2/F2.4) — DB-gated: persists lessons-only
-  (one `class_lesson_slot` per Plan Unit + N `class_lesson_slot_topics` rows,
-  lead `topic_id` == first), ZERO assessment slots, with an injected stub
-  planner LLM. Plus the refusal paths and the no-fallback rule (D-5).
+- `generate_chapter_plan` (F2.2/F2.4) — DB-gated: persists each Plan Unit by
+  `slot_type` with an injected stub planner LLM. A 'lesson' unit → one
+  `class_lesson_slot` (+ N `class_lesson_slot_topics`, lead `topic_id` == first);
+  a 'formative_assessment' unit → one `class_assessment_slot`
+  (`assessment_type='formative'`, `status='scheduled'`) + its
+  `class_assessment_slot_topics`, sharing the single position sequence
+  (exam-periods-and-formative-assessments D-9, F-2.4). Plus the all-lesson path,
+  the refusal paths, and the no-fallback rule (D-5).
 """
 import json
 import os
@@ -286,6 +290,85 @@ class TestGenerateChapterPlanAgainstDB:
                     slot_rows[1]["id"],
                 )
                 assert len(join2) == 1 and join2[0]["position"] == 1
+            finally:
+                await cleanup()
+        finally:
+            await conn.close()
+
+    async def test_generate_persists_mixed_lesson_and_fa_slots(self):
+        # F-2.4 (D-9): 2 teaching days → planner returns 1 lesson + 1 FA. The
+        # lesson teaches t1/s1; the FA assesses t2/s2 (covers the otherwise-
+        # uncovered SLO). Expect 1 class_lesson_slot + 1 class_assessment_slot,
+        # contiguous interleaved positions, and the FA's slot-topics rows.
+        conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+        try:
+            ids, cleanup = await self._build_graph(conn)
+            try:
+                units = {
+                    "units": [
+                        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+                         "topic_ids": [str(ids["topic_ids"][0])],
+                         "slo_ids": [ids["sub_a"]], "rationale": "teach"},
+                        {"sequence": 2, "slot_type": "formative_assessment",
+                         "topic_ids": [str(ids["topic_ids"][1])],
+                         "slo_ids": [ids["sub_b"]], "rationale": "assess"},
+                    ]
+                }
+                result = await generate_chapter_plan(
+                    conn,
+                    cst_id=ids["cst_id"],
+                    book_chapter_id=ids["book_chapter_id"],
+                    org_id=ids["org_id"],
+                    llm=StubPlannerLLM(json.dumps(units)),
+                )
+                assert result.slot_count == 2
+                assert result.lesson_slot_count == 1
+                assert result.assessment_slot_count == 1
+
+                lesson_rows = await conn.fetch(
+                    """
+                    SELECT position, lp_type, topic_id, status
+                      FROM class_lesson_slots
+                     WHERE cst_id=$1 AND book_chapter_id=$2
+                     ORDER BY position
+                    """,
+                    ids["cst_id"], ids["book_chapter_id"],
+                )
+                assert len(lesson_rows) == 1
+                assert lesson_rows[0]["lp_type"] == "reading"
+                assert lesson_rows[0]["topic_id"] == ids["topic_ids"][0]
+                assert lesson_rows[0]["status"] == "planned"
+
+                asmt_rows = await conn.fetch(
+                    """
+                    SELECT id, position, assessment_type, status, generated_exam_id
+                      FROM class_assessment_slots
+                     WHERE cst_id=$1 AND book_chapter_id=$2
+                     ORDER BY position
+                    """,
+                    ids["cst_id"], ids["book_chapter_id"],
+                )
+                assert len(asmt_rows) == 1
+                assert asmt_rows[0]["assessment_type"] == "formative"
+                assert asmt_rows[0]["status"] == "scheduled"
+                assert asmt_rows[0]["generated_exam_id"] is None  # Phase 3
+
+                # Positions are contiguous and interleaved by sequence: lesson at
+                # position 1, FA at position 2 (one shared sequence).
+                assert lesson_rows[0]["position"] == 1
+                assert asmt_rows[0]["position"] == 2
+
+                # The FA's covered-topic grouping is recorded (position 1..N).
+                asmt_topics = await conn.fetch(
+                    """
+                    SELECT topic_id, position FROM class_assessment_slot_topics
+                     WHERE class_assessment_slot_id=$1 ORDER BY position
+                    """,
+                    asmt_rows[0]["id"],
+                )
+                assert len(asmt_topics) == 1
+                assert asmt_topics[0]["topic_id"] == ids["topic_ids"][1]
+                assert asmt_topics[0]["position"] == 1
             finally:
                 await cleanup()
         finally:
