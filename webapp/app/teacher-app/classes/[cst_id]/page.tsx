@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
+import { ExamViewer } from "@/components/molecules/exam-viewer";
 import { LPViewer } from "@/components/molecules/lp-viewer";
 import { SlideOver } from "@/components/molecules/slide-over";
 import {
@@ -460,6 +461,10 @@ export default function ClassDetailPage() {
   const [busySlotId, setBusySlotId] = useState<string | null>(null);
   // Slot whose LP is being generated + polled on-demand (Generate LP button).
   const [generatingSlotId, setGeneratingSlotId] = useState<string | null>(null);
+  // FA slot whose exam is being generated + polled (Generate exam button).
+  const [generatingExamSlotId, setGeneratingExamSlotId] = useState<string | null>(
+    null,
+  );
 
   // Slot focus from URL — open LP slide-over for the matching timeline slot.
   useEffect(() => {
@@ -608,6 +613,49 @@ export default function ClassDetailPage() {
     [generateLPAndPoll, loadTimeline],
   );
 
+  // On-demand FA exam generation for an assessment slot (Generate / Retry).
+  // The assessment-slot analogue of generateLPAndPoll: dispatch, then poll
+  // the assessment-slot detail until the exam is READY/ERROR, refetching the
+  // timeline each tick so the exam status pill + button stay live. The service
+  // is idempotent, so a cache hit returns a terminal status immediately and we
+  // skip polling.
+  const generateExamAndPoll = useCallback(
+    async (slotId: string, refetch: () => Promise<void>) => {
+      setGeneratingExamSlotId(slotId);
+      try {
+        const created = await slotsApi.generateExamForSlot(slotId);
+        await refetch();
+
+        let status: string = created.exam_status;
+        const POLL_MS = 3000;
+        const MAX_POLLS = 40; // ~2 min ceiling; webhook usually finishes sooner
+        let polls = 0;
+        while (status !== "READY" && status !== "ERROR" && polls < MAX_POLLS) {
+          await new Promise((r) => setTimeout(r, POLL_MS));
+          polls += 1;
+          const detail = await slotsApi.getAssessmentSlotDetail(slotId);
+          status = detail.exam_status;
+          await refetch();
+        }
+      } finally {
+        setGeneratingExamSlotId(null);
+      }
+    },
+    [],
+  );
+
+  const onTimelineGenerateExam = useCallback(
+    async (item: Extract<CstTimelineItem, { kind: "assessment" }>) => {
+      setTimelineError(null);
+      try {
+        await generateExamAndPoll(item.id, loadTimeline);
+      } catch (err) {
+        setTimelineError(formatErr(err));
+      }
+    },
+    [generateExamAndPoll, loadTimeline],
+  );
+
   // Timeline grouped by chapter, honouring the kind filter (F-2.3, F-2.6).
   const timelineGroups = useMemo<TimelineChapterGroup[]>(() => {
     if (!timeline) return [];
@@ -696,6 +744,11 @@ export default function ClassDetailPage() {
         position: a.position,
         assessmentType: a.assessment_type,
         topicCount: a.topic_ids.length,
+        // The /today endpoint doesn't surface exam_status; default to
+        // not_generated so the card offers "Generate exam". The ExamViewer
+        // (and the timeline tab) read the real status when opened. In-flight
+        // state on this card is driven by `generatingExam` during the poll.
+        examStatus: "not_generated",
       };
     }
 
@@ -723,6 +776,19 @@ export default function ClassDetailPage() {
       setTodayError(formatErr(err));
     }
   }, [generateLPAndPoll, loadLessons, loadToday, todayView.todayLessonSlot?.id]);
+
+  // Today tab: generate today's FA exam on demand (the assessment analogue of
+  // onTodayGenerateLP). Refetch the today entry each poll tick.
+  const onTodayGenerateExam = useCallback(async () => {
+    const w = todayView.work;
+    if (!w || w.kind !== "assessment") return;
+    setTodayError(null);
+    try {
+      await generateExamAndPoll(w.slotId, loadToday);
+    } catch (err) {
+      setTodayError(formatErr(err));
+    }
+  }, [generateExamAndPoll, loadToday, todayView.work]);
 
   const todayLabel = useMemo(
     () =>
@@ -772,6 +838,11 @@ export default function ClassDetailPage() {
               generatingLP={
                 todayView.todayLessonSlot != null &&
                 generatingSlotId === todayView.todayLessonSlot.id
+              }
+              onGenerateExam={onTodayGenerateExam}
+              generatingExam={
+                todayView.work?.kind === "assessment" &&
+                generatingExamSlotId === todayView.work.slotId
               }
               onViewExam={() => {
                 const a = todayEntry?.assessment_slot;
@@ -845,7 +916,9 @@ export default function ClassDetailPage() {
               onMarkTaught={onTimelineMarkTaught}
               onSkip={onTimelineSkip}
               onGenerateLP={onTimelineGenerateLP}
+              onGenerateExam={onTimelineGenerateExam}
               generatingSlotId={generatingSlotId}
+              generatingExamSlotId={generatingExamSlotId}
               busySlotId={busySlotId}
             />
           )
@@ -921,23 +994,10 @@ export default function ClassDetailPage() {
       >
         {drawer?.kind === "lp" ? <LPViewer slotId={drawer.slotId} /> : null}
         {drawer?.kind === "exam" ? (
-          <ExamPlaceholder slotId={drawer.slotId} />
+          <ExamViewer slotId={drawer.slotId} />
         ) : null}
       </SlideOver>
     </>
-  );
-}
-
-function ExamPlaceholder({ slotId }: { slotId: string }) {
-  return (
-    <div className="rounded-md border border-dars-rule-light bg-dars-parchment-mid p-4 text-sm text-dars-ink">
-      <p className="font-medium">Exam viewer coming with F4.13/F4.14.</p>
-      <p className="text-xs text-dars-muted mt-2">
-        Backend exposes the generated_exam HTML + JSON via the
-        generated_exam_id linked to this slot ({slotId.slice(0, 8)}…).
-        A dedicated exam viewer + mastery entry form lands next.
-      </p>
-    </div>
   );
 }
 

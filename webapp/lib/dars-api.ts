@@ -269,6 +269,17 @@ export interface GenerateLPResponse {
   lp_status: "PENDING" | "IN_FLIGHT" | "READY" | "ERROR";
 }
 
+/**
+ * Returned by `POST /api/v1/class-assessment-slots/{id}/generate-exam`
+ * (F-3.3). The `exam_status` mirrors ClassAssessmentSlotDetail.exam_status
+ * (minus `not_generated`) so the FE can poll getAssessmentSlotDetail() with
+ * the same handling it uses for LPs.
+ */
+export interface GenerateExamResponse {
+  generated_exam_id: UUID;
+  exam_status: "PENDING" | "IN_FLIGHT" | "READY" | "ERROR";
+}
+
 export interface ClassAssessmentSlot {
   id: UUID;
   cst_id: UUID;
@@ -1128,6 +1139,21 @@ export const slots = {
   generateLPForSlot: (slot_id: UUID) =>
     request<GenerateLPResponse>(
       `/api/v1/class-lesson-slots/${slot_id}/generate-lp`,
+      { method: "POST" },
+    ),
+
+  /**
+   * F-3.3 — On-demand per-slot FA exam generation. The assessment-slot
+   * analogue of generateLPForSlot: looks up the global exam cache (keyed on
+   * curriculum + covered topics + generation_type + config hash) and returns
+   * the existing row when one exists (READY/PENDING/IN_FLIGHT), re-requests on
+   * ERROR, else dispatches a fresh generation and links the slot. Idempotent —
+   * safe to re-call. Poll getAssessmentSlotDetail() for `exam_status` until
+   * READY/ERROR.
+   */
+  generateExamForSlot: (slot_id: UUID) =>
+    request<GenerateExamResponse>(
+      `/api/v1/class-assessment-slots/${slot_id}/generate-exam`,
       { method: "POST" },
     ),
 

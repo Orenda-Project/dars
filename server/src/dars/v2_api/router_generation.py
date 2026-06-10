@@ -23,6 +23,9 @@ from dars.breakdown.mastery_service import (
     submit_exam_results,
 )
 from dars.config import settings
+from dars.generated_exams.service import (
+    get_or_generate_exam_for_assessment_slot,
+)
 from dars.generated_exams.ug_eg_client import (
     ExamRequest,
     request_exam_generation,
@@ -319,6 +322,83 @@ async def generate_lesson_slot_lp(
     return GenerateLPResponse(
         generated_lp_id=generated.id,
         lp_status=generated.status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# F-3.3 — On-demand per-slot FA exam generation (D-10, D-11)
+#
+# The assessment-slot analogue of generate_lesson_slot_lp above. An FA slot
+# carries Exam Generator inputs (the per-subject Default FA Config); this is
+# the action that builds + dispatches its exam and links the slot's
+# generated_exam_id. The service fn is idempotent (cache hit returns the
+# existing row), so re-clicking is safe. The exam webhook
+# (/api/v1/webhooks/exam/{generated_exam_id}) later fills the generated_exams
+# row in; the slot link is set here, not by the webhook.
+# ---------------------------------------------------------------------------
+
+
+class GenerateExamResponse(BaseModel):
+    """Shape the teacher app polls against (mirrors the assessment-slot
+    detail's `exam_status` so the FE can reuse its existing status handling)."""
+    generated_exam_id: UUID
+    exam_status: str  # 'PENDING' | 'IN_FLIGHT' | 'READY' | 'ERROR'
+
+
+@router.post(
+    "/class-assessment-slots/{slot_id}/generate-exam",
+    response_model=GenerateExamResponse,
+)
+async def generate_assessment_slot_exam(
+    slot_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> GenerateExamResponse:
+    """
+    Generate (or return the cached) exam for a single FA assessment slot.
+
+    Thin wrapper over get_or_generate_exam_for_assessment_slot: builds the
+    Exam Generator inputs from the per-subject Default FA Config (D-10), looks
+    up the global cache (keyed on curriculum + covered topics + generation_type
+    + config hash) and returns the existing row when one is
+    READY/PENDING/IN_FLIGHT, re-requests on ERROR, otherwise inserts a PENDING
+    row + dispatches to UG_EG and links the slot's generated_exam_id.
+
+    Idempotent: re-POSTing returns the same in-flight/ready row without a
+    second dispatch.
+    """
+    log.info(
+        "generate_assessment_slot_exam: entry slot_id=%s org=%s", slot_id, org.id
+    )
+
+    # Tenancy: the slot must exist and belong to the caller's org. Mirrors the
+    # LP endpoint's 404 pattern (no 403 leak of cross-org slot ids). A
+    # lesson-slot id will simply miss this table → 404.
+    slot_row = await conn.fetchrow(
+        "SELECT org_id FROM class_assessment_slots WHERE id = $1",
+        slot_id,
+    )
+    if slot_row is None or slot_row["org_id"] != org.id:
+        raise HTTPException(status_code=404, detail="assessment slot not found")
+
+    try:
+        generated = await get_or_generate_exam_for_assessment_slot(conn, slot_id)
+    except ValueError as exc:
+        # Slot context problems (no covered topics, empty topic_text, bad
+        # grade, non-UG_EG subject) are caller-fixable → 422, not 500.
+        log.error(
+            "generate_assessment_slot_exam: slot context error slot_id=%s: %s",
+            slot_id, exc, exc_info=True,
+        )
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    log.info(
+        "generate_assessment_slot_exam: exit slot_id=%s generated_exam_id=%s status=%s",
+        slot_id, generated.id, generated.status,
+    )
+    return GenerateExamResponse(
+        generated_exam_id=generated.id,
+        exam_status=generated.status,
     )
 
 

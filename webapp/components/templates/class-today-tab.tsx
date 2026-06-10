@@ -24,6 +24,8 @@ export interface TodayWorkAssessment {
   position: number;
   assessmentType: "formative" | "summative";
   topicCount: number;
+  /** Exam generation state, so the card can show Generate / Generating / View. */
+  examStatus: string;
 }
 
 export type TodayWork = TodayWorkLesson | TodayWorkAssessment | null;
@@ -57,6 +59,10 @@ export interface ClassTodayTabProps {
   onGenerateLP: () => void;
   /** True while today's LP is being generated + polled. */
   generatingLP: boolean;
+  /** On-demand exam generation for today's FA assessment slot (Generate / Retry). */
+  onGenerateExam: () => void;
+  /** True while today's exam is being generated + polled. */
+  generatingExam: boolean;
   /** Set when today falls in a syllabus chapter that hasn't been broken down. */
   currentChapterToPlan?: CurrentChapterToPlan | null;
   onBreakDown?: (bookChapterId: string) => void;
@@ -75,6 +81,8 @@ export function ClassTodayTab({
   onViewExam,
   onGenerateLP,
   generatingLP,
+  onGenerateExam,
+  generatingExam,
   currentChapterToPlan,
   onBreakDown,
 }: ClassTodayTabProps) {
@@ -92,6 +100,8 @@ export function ClassTodayTab({
         onViewExam={onViewExam}
         onGenerateLP={onGenerateLP}
         generatingLP={generatingLP}
+        onGenerateExam={onGenerateExam}
+        generatingExam={generatingExam}
         nextSlot={nextSlot}
         currentChapterToPlan={currentChapterToPlan}
         onBreakDown={onBreakDown}
@@ -118,6 +128,8 @@ function TodayWorkCard({
   onViewExam,
   onGenerateLP,
   generatingLP,
+  onGenerateExam,
+  generatingExam,
   nextSlot,
   currentChapterToPlan,
   onBreakDown,
@@ -129,6 +141,8 @@ function TodayWorkCard({
   onViewExam: () => void;
   onGenerateLP: () => void;
   generatingLP: boolean;
+  onGenerateExam: () => void;
+  generatingExam: boolean;
   nextSlot: ProgressSlot | null;
   currentChapterToPlan?: CurrentChapterToPlan | null;
   onBreakDown?: (bookChapterId: string) => void;
@@ -193,13 +207,12 @@ function TodayWorkCard({
           {work.topicCount} topic{work.topicCount === 1 ? "" : "s"} covered
         </p>
         <div className="mt-4">
-          <button
-            type="button"
-            onClick={onViewExam}
-            className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-sm font-semibold hover:opacity-90"
-          >
-            View exam
-          </button>
+          <TodayExamButton
+            examStatus={work.examStatus}
+            generatingExam={generatingExam}
+            onViewExam={onViewExam}
+            onGenerateExam={onGenerateExam}
+          />
         </div>
       </div>
     );
@@ -420,6 +433,84 @@ function TodayLPAction({
       className="px-3 py-1.5 rounded border border-dars-rule-dark text-sm text-dars-ink hover:bg-dars-parchment-deep"
     >
       View lesson plan
+    </button>
+  );
+}
+
+/**
+ * Exam action for today's FA assessment card (F-3.4) — the exam analogue of
+ * TodayLPAction:
+ *   - not_generated → "Generate exam"
+ *   - generating / PENDING / IN_FLIGHT → disabled "Generating…"
+ *   - ERROR → "View exam" + "Retry"
+ *   - READY (or other) → "View exam"
+ */
+function TodayExamButton({
+  examStatus,
+  generatingExam,
+  onViewExam,
+  onGenerateExam,
+}: {
+  examStatus: string;
+  generatingExam: boolean;
+  onViewExam: () => void;
+  onGenerateExam: () => void;
+}) {
+  const inFlight =
+    generatingExam || examStatus === "PENDING" || examStatus === "IN_FLIGHT";
+
+  if (inFlight) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="px-3 py-1.5 rounded border border-dars-rule-light text-sm text-dars-muted disabled:opacity-70"
+      >
+        Generating…
+      </button>
+    );
+  }
+
+  if (examStatus === "not_generated") {
+    return (
+      <button
+        type="button"
+        onClick={onGenerateExam}
+        className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-sm font-semibold hover:opacity-90"
+      >
+        Generate exam
+      </button>
+    );
+  }
+
+  if (examStatus === "ERROR") {
+    return (
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onViewExam}
+          className="px-3 py-1.5 rounded border border-dars-rule-dark text-sm text-dars-ink hover:bg-dars-parchment-deep"
+        >
+          View exam
+        </button>
+        <button
+          type="button"
+          onClick={onGenerateExam}
+          className="px-3 py-1.5 rounded border border-dars-terra text-sm font-semibold text-dars-terra hover:bg-dars-terra/10"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onViewExam}
+      className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-sm font-semibold hover:opacity-90"
+    >
+      View exam
     </button>
   );
 }
