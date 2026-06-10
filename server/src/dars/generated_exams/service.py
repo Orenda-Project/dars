@@ -14,6 +14,7 @@ ordering / list ordering doesn't cause spurious misses.
 Class-scope variant adds cst_id (via scope_ref_id) so a CST with a
 teacher-customised assessment doesn't collide with the global row.
 """
+import copy
 import hashlib
 import json
 import logging
@@ -32,6 +33,90 @@ from dars.generated_exams.ug_eg_client import (
 log = logging.getLogger("generated_exams.service")
 
 DispatchCallable = Callable[[ExamRequest], Awaitable[str]]
+
+
+# ---------------------------------------------------------------------------
+# F-3.1 — Default per-subject FA (formative-assessment) question config (D-10)
+#
+# An FA slot has no per-slot config editor in this feature (D-10); when its
+# exam is generated on-demand we apply a sensible per-subject default — a
+# SHORT formative quiz (formative != summative, so modest counts). Each entry
+# is a dict of the question-shaping kwargs that go straight onto an
+# `ExamRequest` (see ug_eg_client.ExamRequest): question_types,
+# unseen_categories, unseen_objective_types / counts, etc. `generation_type`
+# is NOT part of this dict — it's passed separately (see GENERATION_TYPE_FA).
+#
+# Lookup goes through `default_fa_config(subject)`, which falls back to a
+# GENERIC short objective quiz for any subject without a specific entry and
+# never raises. (A separate per-subject map already lives in
+# generated_lps/batch_service.py for the F5.14 retry path; this is the
+# exam-service-local source the on-demand FA entry point reads — kept here
+# per the phase spec's "near the exam service".)
+# ---------------------------------------------------------------------------
+
+# An FA is a "class assessment" to UG_EG. `ExamRequest.generation_type` only
+# accepts {"exam", "class_assessment"} (ug_eg_client._GENERATION_TYPES), so the
+# formative slot maps to 'class_assessment' — the valid enum value that also
+# round-trips through the F5.14 retry path (which re-reads generation_type from
+# the generated_exams row and re-sends it through ExamRequest). D-10 wrote
+# "generation_type='formative'", but 'formative' is not in the ExamRequest enum
+# and would raise at construction; 'class_assessment' is the faithful mapping.
+GENERATION_TYPE_FA = "class_assessment"
+
+# Generic short formative quiz: objective-only, 10 questions. Used for any
+# subject without a specific entry below.
+_GENERIC_FA_CONFIG: dict = {
+    "question_types": ["unseen"],
+    "unseen_categories": ["objective"],
+    "unseen_objective_types": ["MCQs", "True/False", "Fill in the Blanks"],
+    "unseen_subjective_types": [],
+    "unseen_objective_counts": {"MCQs": 5, "True/False": 3, "Fill in the Blanks": 2},
+    "unseen_subjective_counts": {},
+    "include_answer_key": True,
+}
+
+DEFAULT_FA_CONFIG: dict[str, dict] = {
+    # English — objective-only formative quiz, 10 questions.
+    "Eng": {
+        "question_types": ["unseen"],
+        "unseen_categories": ["objective"],
+        "unseen_objective_types": ["MCQs", "True/False", "Fill in the Blanks"],
+        "unseen_subjective_types": [],
+        "unseen_objective_counts": {"MCQs": 5, "True/False": 3, "Fill in the Blanks": 2},
+        "unseen_subjective_counts": {},
+        "include_answer_key": True,
+    },
+    # Urdu — same objective shape; kept explicit so the subject is first-class.
+    "Urdu": {
+        "question_types": ["unseen"],
+        "unseen_categories": ["objective"],
+        "unseen_objective_types": ["MCQs", "True/False", "Fill in the Blanks"],
+        "unseen_subjective_types": [],
+        "unseen_objective_counts": {"MCQs": 5, "True/False": 3, "Fill in the Blanks": 2},
+        "unseen_subjective_counts": {},
+        "include_answer_key": True,
+    },
+    # Maths — objective formative quiz; MCQs + Fill in the Blanks only.
+    "Maths": {
+        "question_types": ["unseen"],
+        "unseen_categories": ["objective"],
+        "unseen_objective_types": ["MCQs", "Fill in the Blanks"],
+        "unseen_subjective_types": [],
+        "unseen_objective_counts": {"MCQs": 6, "Fill in the Blanks": 4},
+        "unseen_subjective_counts": {},
+        "include_answer_key": True,
+    },
+}
+
+
+def default_fa_config(subject_code: str) -> dict:
+    """Return the default FA question config for a subject (F-3.1, D-10).
+
+    Never raises: an unknown subject falls back to the generic short
+    objective quiz. Returns a deep copy so callers can't mutate the
+    module-level config (incl. its nested count dicts) in place.
+    """
+    return copy.deepcopy(DEFAULT_FA_CONFIG.get(subject_code, _GENERIC_FA_CONFIG))
 
 
 @dataclass
@@ -179,16 +264,18 @@ async def load_assessment_slot_context(
         SELECT
             cas.id            AS class_assessment_slot_id,
             cas.cst_id        AS cst_id,
-            cst.curriculum_id AS curriculum_id,
-            cst.grade_id      AS grade_id,
+            o.curriculum_id   AS curriculum_id,
+            sc.grade_id       AS grade_id,
             cst.subject_id    AS subject_id,
             c.code            AS curriculum_code,
             g.code            AS grade_code,
             s.code            AS subject_code
         FROM class_assessment_slots cas
         JOIN class_subject_teachers cst ON cst.id = cas.cst_id
-        JOIN curriculums c              ON c.id = cst.curriculum_id
-        JOIN grades g                   ON g.id = cst.grade_id
+        JOIN school_classes sc          ON sc.id = cst.school_class_id
+        JOIN organizations o            ON o.id = cst.org_id
+        JOIN curriculums c              ON c.id = o.curriculum_id
+        JOIN grades g                   ON g.id = sc.grade_id
         JOIN subjects s                 ON s.id = cst.subject_id
         WHERE cas.id = $1
         """,
@@ -518,3 +605,123 @@ async def get_or_generate_class_specific_exam(
     )
     assert fresh is not None
     return _record_to_dataclass(fresh)
+
+
+# ---------------------------------------------------------------------------
+# F-3.2 — On-demand FA exam from an assessment slot (D-10, D-11)
+#
+# Mirrors generated_lps.service.get_or_generate_lp: a slot-id-in,
+# (exam id + status)-out entry point that builds the Exam Generator inputs
+# for an FA slot from the per-subject Default FA Config, then reuses the
+# existing global-cache + dispatch path (get_or_generate_exam). The slot's
+# generated_exam_id is linked here (at insert / cache-hit), NOT by the
+# webhook — the exam webhook only fills the generated_exams row in by its own
+# id (the callback URL carries our row id, see _build_callback_url).
+# ---------------------------------------------------------------------------
+
+
+def _parse_grade_int(grade_code: str) -> int:
+    """Map `grades.code` (e.g. 'G1') to UG_EG's int grade (1..5).
+
+    `ExamRequest.grade` is an int constrained to 1..5. Anything that doesn't
+    match 'G<int>' raises ValueError so we never silently send a bogus grade.
+    """
+    if not grade_code or not grade_code.startswith("G"):
+        raise ValueError(
+            f"grade_code={grade_code!r} doesn't match expected 'G<n>' pattern"
+        )
+    try:
+        return int(grade_code[1:])
+    except ValueError as e:
+        raise ValueError(f"grade_code={grade_code!r} is not 'G<int>'") from e
+
+
+def _build_fa_payload(*, curriculum_code: str, grade_code: str, subject_code: str) -> ExamRequest:
+    """Build the seed `ExamRequest` for an FA slot from the Default FA Config.
+
+    page_content / callback_url are placeholders here; the service's
+    `_dispatch_and_mark` rebuilds the request with the DB-resolved
+    page_content + the real callback_url once the generated_exam id exists.
+    What matters at this stage is the question config (drives the cache key)
+    and generation_type. Raises ValueError on a bad grade or a subject
+    UG_EG doesn't accept (surfaced as 422 by the endpoint).
+    """
+    config = default_fa_config(subject_code)
+    return ExamRequest(
+        curriculum_code=curriculum_code,
+        grade=_parse_grade_int(grade_code),
+        subject=subject_code,
+        page_content="placeholder",  # overwritten in _dispatch_and_mark
+        callback_url="https://dars.invalid/placeholder",  # overwritten there too
+        generation_type=GENERATION_TYPE_FA,
+        **config,
+    )
+
+
+async def get_or_generate_exam_for_assessment_slot(
+    conn: asyncpg.Connection,
+    class_assessment_slot_id: UUID,
+    *,
+    dispatcher: DispatchCallable | None = None,
+) -> GeneratedExam:
+    """
+    On-demand FA exam generation for a class assessment slot (F-3.2).
+
+    1. Load the slot's context (curriculum/grade/subject, covered topic_ids,
+       joined page_content) via load_assessment_slot_context.
+    2. question_config = DEFAULT_FA_CONFIG[subject] (generic fallback);
+       generation_type = 'class_assessment' (the FA mapping).
+    3. Cache-first via get_or_generate_exam: a non-ERROR generated_exams row
+       on the (curriculum, topics, generation_type, config) key is linked to
+       the slot and returned; an ERROR row is retried; a miss inserts PENDING,
+       dispatches to UG_EG, and links the slot's generated_exam_id.
+
+    Raises ValueError (→ 422 at the endpoint) when the slot is missing, has no
+    covered topics, the topics have no text, the grade is unparseable, or the
+    subject isn't a UG_EG subject. Idempotent: a second call returns the same
+    non-ERROR row without re-dispatching.
+    """
+    log.info(
+        "get_or_generate_exam_for_assessment_slot: entry slot_id=%s",
+        class_assessment_slot_id,
+    )
+
+    # Resolve tenancy/curriculum/subject first so we can build the seed payload
+    # from the per-subject default config; this is a cheap pre-read of the slot
+    # row (load_assessment_slot_context re-reads it with topics + page_content).
+    base = await conn.fetchrow(
+        """
+        SELECT c.code AS curriculum_code,
+               g.code AS grade_code,
+               s.code AS subject_code
+        FROM class_assessment_slots cas
+        JOIN class_subject_teachers cst ON cst.id = cas.cst_id
+        JOIN school_classes sc          ON sc.id = cst.school_class_id
+        JOIN organizations o            ON o.id = cst.org_id
+        JOIN curriculums c              ON c.id = o.curriculum_id
+        JOIN grades g                   ON g.id = sc.grade_id
+        JOIN subjects s                 ON s.id = cst.subject_id
+        WHERE cas.id = $1
+        """,
+        class_assessment_slot_id,
+    )
+    if base is None:
+        raise ValueError(
+            f"class_assessment_slot_id={class_assessment_slot_id} not found"
+        )
+
+    payload = _build_fa_payload(
+        curriculum_code=base["curriculum_code"],
+        grade_code=base["grade_code"],
+        subject_code=base["subject_code"],
+    )
+    ctx = await load_assessment_slot_context(
+        conn, class_assessment_slot_id, payload=payload
+    )
+
+    exam = await get_or_generate_exam(conn, ctx, dispatcher=dispatcher)
+    log.info(
+        "get_or_generate_exam_for_assessment_slot: exit slot_id=%s gen_exam_id=%s status=%s",
+        class_assessment_slot_id, exam.id, exam.status,
+    )
+    return exam

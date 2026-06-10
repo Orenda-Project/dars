@@ -18,7 +18,7 @@ Every Term-Capitalised-Word used in the other docs is defined here. Future docs 
 - **Intelligent Chapter Planner** — the LLM-driven planner (`breakdown/planner.py::make_chapter_plan`) that turns a `PlanRequest` into a `ChapterPlan` of `PlanUnit`s. Validated against hard invariants; no fallback (prior D-5/D-8).
 - **PlanUnit** — one item in a `ChapterPlan`: `sequence`, `lp_type`, `topic_ids`, `slo_ids`, `topic_text`, `rationale`. **This feature adds `slot_type`.**
 - **Lesson Plan inputs** — the fields a lesson slot carries that drive `get_or_generate_lp` → `LPRequest` to LP Assistant: curriculum/grade/subject, `page_content` (topic text), `lp_type`, `sub_slo_statements`.
-- **Exam Generator inputs** — the analogous fields an assessment slot carries that drive the `generated_exams` service → `ExamRequest` to UG_EG: curriculum/grade/subject, `page_content`, `generation_type`, `sub_slo_statements`, and a **Question Config**.
+- **Exam Generator inputs** — the analogous fields an assessment slot carries that drive the `generated_exams` service → `ExamRequest` to UG_EG: curriculum/grade/subject, `page_content` (joined topic text), `generation_type`, and a **Question Config**. *Note (D-19/D-20):* the real `ExamRequest` has no `sub_slo_statements` field (UG_EG derives questions from `page_content` + `question_config`), and its `generation_type` enum is `{'exam','class_assessment'}` — an FA maps to `'class_assessment'`, there is no `'formative'`.
 - **Question Config** — the exam shape passed to UG_EG: question types, counts, answer-key flag, etc. Hashed into the exam cache key (`build_question_config`, `hash_question_config`).
 
 ## New concepts (introduced by this feature)

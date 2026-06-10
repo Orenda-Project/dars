@@ -34,8 +34,12 @@ interface TimelineTabProps {
   onSkip: (item: CstTimelineItem) => void;
   /** On-demand LP generation for a lesson slot (Generate / Retry). */
   onGenerateLP: (item: Extract<CstTimelineItem, { kind: "lesson" }>) => void;
+  /** On-demand exam generation for an FA assessment slot (Generate / Retry). */
+  onGenerateExam: (item: Extract<CstTimelineItem, { kind: "assessment" }>) => void;
   /** Slot whose LP is currently being generated/polled (shows a spinner). */
   generatingSlotId: string | null;
+  /** Assessment slot whose exam is currently being generated/polled. */
+  generatingExamSlotId: string | null;
   busySlotId: string | null;
 }
 
@@ -55,7 +59,9 @@ export function ClassTimelineTab({
   onMarkTaught,
   onSkip,
   onGenerateLP,
+  onGenerateExam,
   generatingSlotId,
+  generatingExamSlotId,
   busySlotId,
 }: TimelineTabProps) {
   const hasItems = groups.some((g) => g.items.length > 0);
@@ -117,7 +123,9 @@ export function ClassTimelineTab({
                         onMarkTaught={onMarkTaught}
                         onSkip={onSkip}
                         onGenerateLP={onGenerateLP}
+                        onGenerateExam={onGenerateExam}
                         generating={generatingSlotId === item.id}
+                        generatingExam={generatingExamSlotId === item.id}
                         busy={busySlotId === item.id}
                       />
                     </li>
@@ -139,7 +147,9 @@ function TimelineRow({
   onMarkTaught,
   onSkip,
   onGenerateLP,
+  onGenerateExam,
   generating,
+  generatingExam,
   busy,
 }: {
   item: CstTimelineItem;
@@ -149,7 +159,9 @@ function TimelineRow({
   onMarkTaught: TimelineTabProps["onMarkTaught"];
   onSkip: TimelineTabProps["onSkip"];
   onGenerateLP: TimelineTabProps["onGenerateLP"];
+  onGenerateExam: TimelineTabProps["onGenerateExam"];
   generating: boolean;
+  generatingExam: boolean;
   busy: boolean;
 }) {
   const isAssessment = item.kind === "assessment";
@@ -215,13 +227,12 @@ function TimelineRow({
             </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => onViewExam(item)}
-                className="px-2.5 py-1 rounded bg-dars-ink text-dars-parchment text-xs font-semibold hover:opacity-90"
-              >
-                View Exam
-              </button>
+              <ExamAction
+                item={item}
+                generating={generatingExam}
+                onViewExam={() => onViewExam(item)}
+                onGenerateExam={() => onGenerateExam(item)}
+              />
               {item.status === "scheduled" ? (
                 <ActionButtons
                   busy={busy}
@@ -314,6 +325,88 @@ function LPAction({
       className="px-2.5 py-1 rounded border border-dars-rule-dark text-xs text-dars-ink hover:bg-dars-parchment-deep"
     >
       View LP
+    </button>
+  );
+}
+
+/**
+ * Exam action for an assessment row (F-3.4) — the FA analogue of LPAction.
+ * Adapts to the exam's generation state; there's nothing to "view" until an
+ * exam exists:
+ *   - not_generated → "Generate exam" (the action this feature adds)
+ *   - generating / PENDING / IN_FLIGHT → disabled "Generating…"
+ *   - ERROR → "View exam" (shows the error in the slide-over) + "Retry"
+ *   - READY (or any other) → "View exam"
+ * No per-slot config editor (D-10). The quiet GenPill still renders alongside.
+ */
+function ExamAction({
+  item,
+  generating,
+  onViewExam,
+  onGenerateExam,
+}: {
+  item: Extract<CstTimelineItem, { kind: "assessment" }>;
+  generating: boolean;
+  onViewExam: () => void;
+  onGenerateExam: () => void;
+}) {
+  const inFlight =
+    generating ||
+    item.exam_status === "PENDING" ||
+    item.exam_status === "IN_FLIGHT";
+
+  if (inFlight) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="px-2.5 py-1 rounded border border-dars-rule-light text-xs text-dars-muted disabled:opacity-70"
+      >
+        Generating…
+      </button>
+    );
+  }
+
+  if (item.exam_status === "not_generated") {
+    return (
+      <button
+        type="button"
+        onClick={onGenerateExam}
+        className="px-2.5 py-1 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90"
+      >
+        Generate exam
+      </button>
+    );
+  }
+
+  if (item.exam_status === "ERROR") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={onViewExam}
+          className="px-2.5 py-1 rounded border border-dars-rule-dark text-xs text-dars-ink hover:bg-dars-parchment-deep"
+        >
+          View exam
+        </button>
+        <button
+          type="button"
+          onClick={onGenerateExam}
+          className="px-2.5 py-1 rounded border border-dars-terra text-xs font-semibold text-dars-terra hover:bg-dars-terra/10"
+        >
+          Retry
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onViewExam}
+      className="px-2.5 py-1 rounded bg-dars-ink text-dars-parchment text-xs font-semibold hover:opacity-90"
+    >
+      View exam
     </button>
   );
 }
