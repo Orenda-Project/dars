@@ -244,6 +244,150 @@ def test_validator_unknown_slo_id():  # (d)
 
 
 # --------------------------------------------------------------------------
+# Formative Assessment support — PlanUnit.slot_type (F-2.1, D-6/D-7/D-13)
+# --------------------------------------------------------------------------
+def test_planunit_without_slot_type_defaults_to_lesson():
+    # Back-compat (D-13): a unit dict with no slot_type parses as a lesson.
+    u = PlanUnit(sequence=1, lp_type="reading", topic_ids=["t1"],
+                 slo_ids=["s1"], topic_text="x", rationale="y")
+    assert u.slot_type == "lesson"
+    assert u.lp_type == "reading"
+
+
+def test_planunit_fa_with_lp_type_rejected():
+    # D-7: an FA must NOT carry an lp_type.
+    with pytest.raises(ValidationError):
+        PlanUnit(sequence=1, slot_type="formative_assessment", lp_type="reading",
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x", rationale="y")
+
+
+def test_planunit_lesson_without_lp_type_rejected():
+    # D-7: a lesson MUST carry an lp_type.
+    with pytest.raises(ValidationError):
+        PlanUnit(sequence=1, slot_type="lesson", lp_type=None,
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x", rationale="y")
+
+
+def test_planunit_fa_without_lp_type_ok():
+    u = PlanUnit(sequence=1, slot_type="formative_assessment", lp_type=None,
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x", rationale="y")
+    assert u.slot_type == "formative_assessment"
+    assert u.lp_type is None
+
+
+def test_planunit_unknown_slot_type_rejected():
+    # D-6/D-12: summative (or anything else) is not an allowed slot_type here.
+    with pytest.raises(ValidationError):
+        PlanUnit(sequence=1, slot_type="summative", topic_ids=["t1"],
+                 slo_ids=["s1"], topic_text="x", rationale="y")
+
+
+def _build_units(req, raw):
+    """Like units_from, but slot_type-aware (mirrors make_chapter_plan)."""
+    from dars.breakdown.planner import _build_unit
+    return [_build_unit(u, req) for u in parse_plan_units(raw)]
+
+
+def test_validator_accepts_lessons_plus_one_fa_covering_last_slo():
+    # F-2.2: (N-1) lessons + 1 FA. The FA covers s2, otherwise uncovered.
+    req = sample_request(2)
+    raw = json.dumps({"units": [
+        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "teach greetings"},
+        {"sequence": 2, "slot_type": "formative_assessment",
+         "topic_ids": ["t2"], "slo_ids": ["s2"], "rationale": "check letters"},
+    ]})
+    assert validate_plan(_build_units(req, raw), req) is None
+
+
+def test_validator_rejects_fa_carrying_lp_type():
+    # F-2.2: an FA that somehow carries an lp_type fails validation. Build the
+    # PlanUnit list directly (bypassing _build_unit's lp_type drop) to reach the
+    # validator's defence-in-depth branch.
+    req = sample_request(2)
+    units = [
+        PlanUnit(sequence=1, slot_type="lesson", lp_type="reading",
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x", rationale="a"),
+        # Construct a malformed-but-parseable FA by model_construct (skips the
+        # model validator) to test that validate_plan still catches it.
+        PlanUnit.model_construct(sequence=2, slot_type="formative_assessment",
+                                 lp_type="grammar", topic_ids=["t2"],
+                                 slo_ids=["s2"], topic_text="y", rationale="b"),
+    ]
+    msg = validate_plan(units, req)
+    assert msg is not None and "must not" in msg
+
+
+def test_validator_fa_plan_wrong_count_fails():
+    # F-2.2: count invariant still holds with FAs in the mix.
+    req = sample_request(3)  # but only 2 units returned
+    raw = json.dumps({"units": [
+        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "a"},
+        {"sequence": 2, "slot_type": "formative_assessment",
+         "topic_ids": ["t2"], "slo_ids": ["s2"], "rationale": "b"},
+    ]})
+    assert "expected 3 units" in validate_plan(_build_units(req, raw), req)
+
+
+def test_validator_fa_plan_missing_coverage_fails():
+    # F-2.2: a plan where neither lesson nor FA covers s2 fails coverage.
+    req = sample_request(2)
+    raw = json.dumps({"units": [
+        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "a"},
+        {"sequence": 2, "slot_type": "formative_assessment",
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "b"},
+    ]})
+    assert "not covered" in validate_plan(_build_units(req, raw), req)
+
+
+def test_validator_fa_plan_bad_permutation_fails():
+    # F-2.2: sequence permutation invariant still holds with FAs.
+    req = sample_request(2)
+    raw = json.dumps({"units": [
+        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "a"},
+        {"sequence": 1, "slot_type": "formative_assessment",
+         "topic_ids": ["t2"], "slo_ids": ["s2"], "rationale": "b"},
+    ]})
+    assert "permutation" in validate_plan(_build_units(req, raw), req)
+
+
+@pytest.mark.asyncio
+async def test_make_chapter_plan_with_fa_unit():
+    # F-2.1/F-2.3: a mixed plan flows through make_chapter_plan, the FA's
+    # lp_type is dropped to None, and validation passes.
+    req = sample_request(2)
+    raw = json.dumps({"units": [
+        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "a"},
+        {"sequence": 2, "slot_type": "formative_assessment",
+         "topic_ids": ["t2"], "slo_ids": ["s2"], "rationale": "b"},
+    ]})
+    plan = await make_chapter_plan(req, FakePlannerLLM(raw))
+    assert [u.slot_type for u in plan.units] == ["lesson", "formative_assessment"]
+    assert plan.units[1].lp_type is None
+    assert plan.units[0].lp_type == "reading"
+
+
+@pytest.mark.asyncio
+async def test_make_chapter_plan_drops_lp_type_echoed_on_fa():
+    # F-2.3: even if the model echoes an lp_type onto an FA, the core drops it so
+    # the resulting plan is a clean FA (no validation error).
+    req = sample_request(2)
+    raw = json.dumps({"units": [
+        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "a"},
+        {"sequence": 2, "slot_type": "formative_assessment", "lp_type": "grammar",
+         "topic_ids": ["t2"], "slo_ids": ["s2"], "rationale": "b"},
+    ]})
+    plan = await make_chapter_plan(req, FakePlannerLLM(raw))
+    assert plan.units[1].slot_type == "formative_assessment"
+    assert plan.units[1].lp_type is None
+
+
+# --------------------------------------------------------------------------
 # make_chapter_plan (F1.4)
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio

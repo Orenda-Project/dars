@@ -65,12 +65,19 @@ def parse_plan_units(raw: str) -> list[dict]:
 
 
 def validate_plan(units: list[PlanUnit], request: PlanRequest) -> Optional[str]:
-    """D-8 invariants (a)-(e). Returns the first violation message, or None if valid."""
+    """D-8 invariants (a)-(e). Returns the first violation message, or None if valid.
+
+    Formative-assessment support (exam-periods-and-formative-assessments
+    D-7/D-8): a plan now mixes 'lesson' and 'formative_assessment' units. The
+    count (a) and sequence-permutation (e) invariants are over ALL units
+    (lessons + FAs); SLO coverage (b) counts BOTH kinds; the lp_type-allowed
+    check (c) applies ONLY to lesson units (an FA carries no lp_type, D-7).
+    """
     chapter_topic_ids = {t.id for t in request.chapter.topics}
     chapter_slo_ids = {s.id for t in request.chapter.topics for s in t.slos}
     allowed_lp = set(VALID_LP_TYPES[request.subject])
 
-    # (a) exactly period_count units
+    # (a) exactly period_count units total (lessons + FAs combined, D-8)
     if len(units) != request.period_count:
         return f"expected {request.period_count} units, got {len(units)}"
 
@@ -92,15 +99,24 @@ def validate_plan(units: list[PlanUnit], request: PlanRequest) -> Optional[str]:
         bad_slos = [s for s in u.slo_ids if s not in chapter_slo_ids]
         if bad_slos:
             return f"unit {u.sequence} references unknown slo_ids: {bad_slos}"
-        # (c) lp_type allowed for subject
-        if u.lp_type not in allowed_lp:
+        # (c) lp_type allowed for subject — lessons only (D-7). An FA must not
+        # carry an lp_type at all; the PlanUnit model already enforces that, so
+        # a non-null lp_type on an FA is caught here too (defence in depth).
+        if u.slot_type == "lesson":
+            if u.lp_type not in allowed_lp:
+                return (
+                    f"unit {u.sequence} lp_type '{u.lp_type}' not allowed for "
+                    f"subject {request.subject}"
+                )
+        elif u.lp_type is not None:
             return (
-                f"unit {u.sequence} lp_type '{u.lp_type}' not allowed for "
-                f"subject {request.subject}"
+                f"unit {u.sequence} is a formative_assessment but carries an "
+                f"lp_type '{u.lp_type}' (FA units must not, D-7)"
             )
+        # (b) coverage counts both lesson and FA units (D-7)
         covered_slos.update(u.slo_ids)
 
-    # (b) every chapter SLO covered
+    # (b) every chapter SLO covered by ≥1 unit (lesson or FA)
     missing = chapter_slo_ids - covered_slos
     if missing:
         return f"SLOs not covered by any unit: {sorted(missing)}"
@@ -112,6 +128,31 @@ def _resolve_topic_text(topic_ids: list[str], request: PlanRequest) -> str:
     """Concatenate member topics' text in topic_ids order (D-4)."""
     by_id = {t.id: t.topic_text for t in request.chapter.topics}
     return "\n\n".join(by_id[t] for t in topic_ids if t in by_id)
+
+
+def _build_unit(ru: dict, request: PlanRequest) -> PlanUnit:
+    """Build one PlanUnit from a raw LLM unit dict.
+
+    `slot_type` defaults to 'lesson' when absent (back-compat, D-13). An FA unit
+    carries NO lp_type (D-7): even if the model echoes one, we drop it so the
+    PlanUnit model validator is satisfied and the persisted slot is a clean FA.
+    A lesson keeps whatever lp_type the model returned (validated downstream).
+    """
+    slot_type = str(ru.get("slot_type", "lesson"))
+    raw_lp = ru.get("lp_type")
+    lp_type = None if slot_type == "formative_assessment" else (
+        str(raw_lp) if raw_lp is not None else None
+    )
+    topic_ids = list(ru.get("topic_ids", []))
+    return PlanUnit(
+        sequence=int(ru["sequence"]),
+        slot_type=slot_type,
+        lp_type=lp_type,
+        topic_ids=topic_ids,
+        slo_ids=list(ru.get("slo_ids", [])),
+        topic_text=_resolve_topic_text(topic_ids, request),
+        rationale=str(ru.get("rationale", "")),
+    )
 
 
 async def make_chapter_plan(request: PlanRequest, llm: PlannerLLM) -> ChapterPlan:
@@ -129,17 +170,7 @@ async def make_chapter_plan(request: PlanRequest, llm: PlannerLLM) -> ChapterPla
     raw = await llm.complete(build_system_prompt(), build_user_prompt(request))
 
     raw_units = parse_plan_units(raw)
-    units = [
-        PlanUnit(
-            sequence=int(ru["sequence"]),
-            lp_type=str(ru["lp_type"]),
-            topic_ids=list(ru.get("topic_ids", [])),
-            slo_ids=list(ru.get("slo_ids", [])),
-            topic_text=_resolve_topic_text(list(ru.get("topic_ids", [])), request),
-            rationale=str(ru.get("rationale", "")),
-        )
-        for ru in raw_units
-    ]
+    units = [_build_unit(ru, request) for ru in raw_units]
 
     violation = validate_plan(units, request)
     if violation is not None:
@@ -154,8 +185,17 @@ async def make_chapter_plan(request: PlanRequest, llm: PlannerLLM) -> ChapterPla
         period_count=request.period_count,
         units=units,
     )
+    # Distribution by lp_type for lessons; FAs are counted separately (D-7: an
+    # FA has no lp_type, so it never appears in lp_dist).
     lp_dist: dict[str, int] = {}
+    fa_count = 0
     for u in units:
+        if u.slot_type == "formative_assessment":
+            fa_count += 1
+            continue
         lp_dist[u.lp_type] = lp_dist.get(u.lp_type, 0) + 1
-    logger.info("[PLANNER] exit — units=%d lp_type_dist=%s", len(units), lp_dist)
+    logger.info(
+        "[PLANNER] exit — units=%d lessons=%d formative_assessments=%d lp_type_dist=%s",
+        len(units), len(units) - fa_count, fa_count, lp_dist,
+    )
     return plan
