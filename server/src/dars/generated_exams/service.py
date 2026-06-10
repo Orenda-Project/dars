@@ -264,16 +264,18 @@ async def load_assessment_slot_context(
         SELECT
             cas.id            AS class_assessment_slot_id,
             cas.cst_id        AS cst_id,
-            cst.curriculum_id AS curriculum_id,
-            cst.grade_id      AS grade_id,
+            o.curriculum_id   AS curriculum_id,
+            sc.grade_id       AS grade_id,
             cst.subject_id    AS subject_id,
             c.code            AS curriculum_code,
             g.code            AS grade_code,
             s.code            AS subject_code
         FROM class_assessment_slots cas
         JOIN class_subject_teachers cst ON cst.id = cas.cst_id
-        JOIN curriculums c              ON c.id = cst.curriculum_id
-        JOIN grades g                   ON g.id = cst.grade_id
+        JOIN school_classes sc          ON sc.id = cst.school_class_id
+        JOIN organizations o            ON o.id = cst.org_id
+        JOIN curriculums c              ON c.id = o.curriculum_id
+        JOIN grades g                   ON g.id = sc.grade_id
         JOIN subjects s                 ON s.id = cst.subject_id
         WHERE cas.id = $1
         """,
@@ -694,8 +696,10 @@ async def get_or_generate_exam_for_assessment_slot(
                s.code AS subject_code
         FROM class_assessment_slots cas
         JOIN class_subject_teachers cst ON cst.id = cas.cst_id
-        JOIN curriculums c              ON c.id = cst.curriculum_id
-        JOIN grades g                   ON g.id = cst.grade_id
+        JOIN school_classes sc          ON sc.id = cst.school_class_id
+        JOIN organizations o            ON o.id = cst.org_id
+        JOIN curriculums c              ON c.id = o.curriculum_id
+        JOIN grades g                   ON g.id = sc.grade_id
         JOIN subjects s                 ON s.id = cst.subject_id
         WHERE cas.id = $1
         """,
