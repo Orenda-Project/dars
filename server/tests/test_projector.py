@@ -86,3 +86,36 @@ def test_project_anchor_on_non_teaching_day_flags_conflict():
     assert out[0].projected_date == date(2026, 5, 6)
     # The conflict anchor should not consume teaching days; next slot would
     # still start at 5/4 if there were a next slot.
+
+
+# ---------------------------------------------------------------------------
+# F-1.4 — exam/holiday dates excluded from the teaching-day list mean no slot
+# is ever projected inside an exam/holiday window (D-2). The DB wrapper unions
+# breakdown exam+holiday dates into `holidays` before compute_teaching_days; we
+# pin that composition here purely (no DB).
+# ---------------------------------------------------------------------------
+
+
+def test_project_never_lands_slot_inside_exam_window():
+    from dars.breakdown.chapter_calendar import expand_ranges
+
+    # Mon 2026-05-04 .. Fri 2026-05-15 (two Mon-Fri weeks = 10 weekdays).
+    # Exam period 2026-05-06..05-08 (Wed-Fri week 1) removes 3 teaching days.
+    exam_dates = expand_ranges(
+        [{"start_date": date(2026, 5, 6), "end_date": date(2026, 5, 8)}]
+    )
+    teaching = compute_teaching_days(
+        date(2026, 5, 4), date(2026, 5, 15),
+        weekday_set={0, 1, 2, 3, 4},
+        holidays=exam_dates,
+    )
+    # 10 weekdays minus the 3 exam weekdays = 7 teaching days.
+    assert len(teaching) == 7
+    assert exam_dates.isdisjoint(teaching)
+
+    slots = [_slot(p) for p in range(1, 8)]
+    out = project_schedule(slots, teaching, holidays=exam_dates)
+    projected = {p.projected_date for p in out}
+    # No slot is projected on any exam date.
+    assert projected.isdisjoint(exam_dates)
+    assert all(not p.is_overflow for p in out)

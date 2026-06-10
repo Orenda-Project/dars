@@ -10,6 +10,7 @@ the breakdown itself → 409). Publish flips status: 'draft' → 'published'.
 Delete on a draft is soft (status='deleted'); delete on a published is 409.
 """
 import logging
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -18,7 +19,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from dars.breakdown.chapter_calendar import (
     compute_range_warnings,
     derived_teaching_days,
-    resolve_breakdown_holidays,
+    expand_ranges,
 )
 from dars.breakdown.slo_breakdown_service import (
     SUBJECT_CODE_TO_KEY,
@@ -31,6 +32,9 @@ from dars.v2_api.deps import (
     get_db_pool,
 )
 from dars.v2_api.schemas_syllabus import (
+    DateRangeCreate,
+    DateRangeRead,
+    DateRangeUpdate,
     SubSLOBreakdownResponse,
     SubSLOBulkAccepted,
     SubSLOBulkRequest,
@@ -109,6 +113,59 @@ async def _validate_chapter_belongs_to_breakdown(
     return row
 
 
+# Map the two range kinds to their tables. Both share the identical shape
+# (id, syllabus_breakdown_id, start_date, end_date, name, created_at) so one
+# set of helpers and endpoint bodies serves both (D-1/D-14).
+_RANGE_TABLES = {
+    "exam-periods": "exam_periods",
+    "holidays": "breakdown_holidays",
+}
+
+
+async def _fetch_ranges(
+    conn: asyncpg.Connection, table: str, breakdown_id: UUID
+) -> list[asyncpg.Record]:
+    """All rows of a range table for a breakdown, oldest-first (stable order)."""
+    return await conn.fetch(
+        f"""
+        SELECT id, syllabus_breakdown_id, start_date, end_date, name, created_at
+        FROM {table}
+        WHERE syllabus_breakdown_id = $1
+        ORDER BY start_date, created_at
+        """,
+        breakdown_id,
+    )
+
+
+async def _validate_range_belongs(
+    conn: asyncpg.Connection, table: str, breakdown_id: UUID, range_id: UUID
+) -> asyncpg.Record:
+    """404 unless `range_id` is a row of `table` on this breakdown."""
+    row = await conn.fetchrow(
+        f"""
+        SELECT id, syllabus_breakdown_id, start_date, end_date, name, created_at
+        FROM {table}
+        WHERE id = $1 AND syllabus_breakdown_id = $2
+        """,
+        range_id, breakdown_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Date range not found on this syllabus breakdown",
+        )
+    return row
+
+
+def _reject_inverted_range(start_date: date, end_date: date) -> None:
+    """422 when end_date < start_date (advisory-uniform with chapters, D-4)."""
+    if end_date < start_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="end_date must be on or after start_date",
+        )
+
+
 async def _hydrate_breakdown(
     conn: asyncpg.Connection, row: asyncpg.Record
 ) -> SyllabusBreakdownRead:
@@ -123,9 +180,15 @@ async def _hydrate_breakdown(
         row["id"],
     )
 
-    # D-2 / D-5: derive teaching days per chapter and advisory range warnings.
-    # Global syllabus breakdowns have no academic calendar -> no holidays.
-    holidays = await resolve_breakdown_holidays(conn, row["id"])
+    # F-1.3 (D-2/D-4): the breakdown's own exam-period + holiday dates are the
+    # exclusion set for admin-side teaching-day derivation. A chapter range
+    # fully inside an exam/holiday window naturally surfaces a
+    # zero_teaching_days warning via compute_range_warnings. Global breakdowns
+    # have no org/school/CST calendar, so this is the only holiday source here.
+    exam_periods = await _fetch_ranges(conn, "exam_periods", row["id"])
+    holiday_ranges = await _fetch_ranges(conn, "breakdown_holidays", row["id"])
+    holidays = expand_ranges(exam_periods) | expand_ranges(holiday_ranges)
+
     chapter_dicts = [dict(c) for c in chapters]
     for c in chapter_dicts:
         c["derived_teaching_days"] = derived_teaching_days(
@@ -137,6 +200,8 @@ async def _hydrate_breakdown(
         **dict(row),
         chapters=[SyllabusChapterRead(**c) for c in chapter_dicts],
         chapter_range_warnings=warnings,
+        exam_periods=[DateRangeRead(**dict(r)) for r in exam_periods],
+        holidays=[DateRangeRead(**dict(r)) for r in holiday_ranges],
     )
 
 
@@ -447,6 +512,212 @@ async def delete_chapter(
         "DELETE FROM syllabus_chapters WHERE id = $1", chapter_id
     )
     log.info("delete_syllabus_chapter: deleted id=%s", chapter_id)
+
+
+# ---------------------------------------------------------------------------
+# Exam periods + breakdown holidays (F-1.5 — D-1/D-5/D-14)
+#
+# exam_periods and breakdown_holidays share an identical shape, so create /
+# update / delete bodies are shared. Mutations are publish-locked (D-5) via
+# _require_draft (409 if the breakdown isn't a draft); end_date < start_date
+# is rejected 422 (D-4). Reads reach these rows only THROUGH the breakdown,
+# which is itself tenant-scoped (the breakdown 404 gate runs first).
+# ---------------------------------------------------------------------------
+
+
+async def _create_range(
+    conn: asyncpg.Connection,
+    table: str,
+    breakdown_id: UUID,
+    payload: DateRangeCreate,
+) -> DateRangeRead:
+    log.info(
+        "create_breakdown_range: entry table=%s breakdown=%s start=%s end=%s name=%r",
+        table, breakdown_id, payload.start_date, payload.end_date, payload.name,
+    )
+    try:
+        await _require_draft(conn, breakdown_id)
+        _reject_inverted_range(payload.start_date, payload.end_date)
+        row = await conn.fetchrow(
+            f"""
+            INSERT INTO {table} (syllabus_breakdown_id, start_date, end_date, name)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, syllabus_breakdown_id, start_date, end_date, name, created_at
+            """,
+            breakdown_id, payload.start_date, payload.end_date, payload.name,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        log.error(
+            "create_breakdown_range: error table=%s breakdown=%s",
+            table, breakdown_id, exc_info=True,
+        )
+        raise
+    log.info("create_breakdown_range: exit table=%s id=%s", table, row["id"])
+    return DateRangeRead(**dict(row))
+
+
+async def _update_range(
+    conn: asyncpg.Connection,
+    table: str,
+    breakdown_id: UUID,
+    range_id: UUID,
+    payload: DateRangeUpdate,
+) -> DateRangeRead:
+    log.info(
+        "update_breakdown_range: entry table=%s breakdown=%s id=%s",
+        table, breakdown_id, range_id,
+    )
+    try:
+        await _require_draft(conn, breakdown_id)
+        current = await _validate_range_belongs(conn, table, breakdown_id, range_id)
+
+        new_start = payload.start_date if payload.start_date is not None else current["start_date"]
+        new_end = payload.end_date if payload.end_date is not None else current["end_date"]
+        _reject_inverted_range(new_start, new_end)
+
+        sets: list[str] = []
+        params: list = []
+        if payload.start_date is not None:
+            params.append(payload.start_date)
+            sets.append(f"start_date = ${len(params)}")
+        if payload.end_date is not None:
+            params.append(payload.end_date)
+            sets.append(f"end_date = ${len(params)}")
+        if payload.name is not None:
+            params.append(payload.name)
+            sets.append(f"name = ${len(params)}")
+        if not sets:
+            log.info("update_breakdown_range: no-op table=%s id=%s", table, range_id)
+            return DateRangeRead(**dict(current))
+        params.append(range_id)
+        row = await conn.fetchrow(
+            f"""
+            UPDATE {table}
+            SET {", ".join(sets)}
+            WHERE id = ${len(params)}
+            RETURNING id, syllabus_breakdown_id, start_date, end_date, name, created_at
+            """,
+            *params,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        log.error(
+            "update_breakdown_range: error table=%s breakdown=%s id=%s",
+            table, breakdown_id, range_id, exc_info=True,
+        )
+        raise
+    log.info("update_breakdown_range: exit table=%s id=%s", table, range_id)
+    return DateRangeRead(**dict(row))
+
+
+async def _delete_range(
+    conn: asyncpg.Connection,
+    table: str,
+    breakdown_id: UUID,
+    range_id: UUID,
+) -> None:
+    log.info(
+        "delete_breakdown_range: entry table=%s breakdown=%s id=%s",
+        table, breakdown_id, range_id,
+    )
+    try:
+        await _require_draft(conn, breakdown_id)
+        await _validate_range_belongs(conn, table, breakdown_id, range_id)
+        await conn.execute(f"DELETE FROM {table} WHERE id = $1", range_id)
+    except HTTPException:
+        raise
+    except Exception:
+        log.error(
+            "delete_breakdown_range: error table=%s breakdown=%s id=%s",
+            table, breakdown_id, range_id, exc_info=True,
+        )
+        raise
+    log.info("delete_breakdown_range: exit table=%s id=%s deleted", table, range_id)
+
+
+@router.post(
+    "/syllabus-breakdowns/{breakdown_id}/exam-periods",
+    response_model=DateRangeRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_exam_period(
+    breakdown_id: UUID,
+    payload: DateRangeCreate,
+    _org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> DateRangeRead:
+    return await _create_range(conn, _RANGE_TABLES["exam-periods"], breakdown_id, payload)
+
+
+@router.patch(
+    "/syllabus-breakdowns/{breakdown_id}/exam-periods/{ep_id}",
+    response_model=DateRangeRead,
+)
+async def update_exam_period(
+    breakdown_id: UUID,
+    ep_id: UUID,
+    payload: DateRangeUpdate,
+    _org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> DateRangeRead:
+    return await _update_range(conn, _RANGE_TABLES["exam-periods"], breakdown_id, ep_id, payload)
+
+
+@router.delete(
+    "/syllabus-breakdowns/{breakdown_id}/exam-periods/{ep_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_exam_period(
+    breakdown_id: UUID,
+    ep_id: UUID,
+    _org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> None:
+    await _delete_range(conn, _RANGE_TABLES["exam-periods"], breakdown_id, ep_id)
+
+
+@router.post(
+    "/syllabus-breakdowns/{breakdown_id}/holidays",
+    response_model=DateRangeRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_holiday(
+    breakdown_id: UUID,
+    payload: DateRangeCreate,
+    _org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> DateRangeRead:
+    return await _create_range(conn, _RANGE_TABLES["holidays"], breakdown_id, payload)
+
+
+@router.patch(
+    "/syllabus-breakdowns/{breakdown_id}/holidays/{h_id}",
+    response_model=DateRangeRead,
+)
+async def update_holiday(
+    breakdown_id: UUID,
+    h_id: UUID,
+    payload: DateRangeUpdate,
+    _org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> DateRangeRead:
+    return await _update_range(conn, _RANGE_TABLES["holidays"], breakdown_id, h_id, payload)
+
+
+@router.delete(
+    "/syllabus-breakdowns/{breakdown_id}/holidays/{h_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_holiday(
+    breakdown_id: UUID,
+    h_id: UUID,
+    _org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> None:
+    await _delete_range(conn, _RANGE_TABLES["holidays"], breakdown_id, h_id)
 
 
 # ---------------------------------------------------------------------------

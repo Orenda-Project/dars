@@ -14,6 +14,10 @@ from uuid import UUID
 
 import asyncpg
 
+from dars.breakdown.chapter_calendar import (
+    get_breakdown_exam_dates,
+    get_breakdown_holiday_dates,
+)
 from dars.breakdown.holidays import get_effective_holidays
 from dars.breakdown.planner import make_chapter_plan
 from dars.breakdown.planner_llm import AgentSdkPlannerLLM, PlannerLLM
@@ -105,11 +109,22 @@ async def chapter_slot_count(
     D-9/D-14: slot count = number of real teaching periods in the chapter's
     date range = teaching days on the CST's timetable weekdays, minus holidays.
     Returns 0 if the chapter has no date range (admin hasn't set dates yet).
+
+    F-1.4 (D-2/D-3/D-15): the holiday set is the union of the CST's effective
+    holidays (org ± school ± CST, prior D-26) AND the dates reserved by the
+    CST's published Syllabus Breakdown's exam periods + breakdown holidays. If
+    the CST has no published breakdown, the extra sets are empty (graceful).
     """
     if start_date is None or end_date is None:
         return 0
     weekday_set = await _cst_weekday_set(conn, cst_id)
     holidays = await get_effective_holidays(conn, cst_id)
+    ctx = await resolve_cst_syllabus_context(conn, cst_id)
+    holidays = (
+        holidays
+        | await get_breakdown_exam_dates(conn, ctx.syllabus_breakdown_id)
+        | await get_breakdown_holiday_dates(conn, ctx.syllabus_breakdown_id)
+    )
     return len(compute_teaching_days(start_date, end_date, weekday_set, holidays))
 
 
