@@ -153,14 +153,18 @@ class TestSyllabusAPI:
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "published"
 
-        # 6. Chapter mutation on a published breakdown → 409
+        # 6. Chapter mutation on a published breakdown is now ALLOWED (D-21,
+        # supersedes D-5): chapters/exam-periods/holidays stay editable after
+        # publish. Deleting the chapter succeeds.
         r = await client.delete(
             f"/api/v2/syllabus-breakdowns/{bd_id}/chapters/{chapter_id}",
             headers=admin_headers(),
         )
-        assert r.status_code == 409, r.text
+        assert r.status_code == 204, r.text
 
-        # 7. PATCH on a published breakdown → 409 (no versioning anymore)
+        # 7. Breakdown-level PATCH (changing book_id) stays draft-only → 409.
+        # D-21 covers calendar content (chapters/exam/holiday), NOT repointing
+        # the whole breakdown to a different book.
         r = await client.patch(
             f"/api/v2/syllabus-breakdowns/{bd_id}",
             json={"book_id": refs["book_id"]},
@@ -168,7 +172,8 @@ class TestSyllabusAPI:
         )
         assert r.status_code == 409, r.text
 
-        # 8. Delete the published breakdown → 409
+        # 8. Deleting a published breakdown stays blocked → 409 (destructive;
+        # classes reference it). Out of D-21 scope.
         r = await client.delete(
             f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
         )
@@ -317,9 +322,10 @@ class TestExamPeriodsAndHolidays:
                 f"/api/v2/syllabus-breakdowns/{bd_id}", headers=admin_headers()
             )
 
-    async def test_mutation_on_published_breakdown_rejected(
-        self, client: AsyncClient
-    ):
+    async def test_exam_holiday_editable_after_publish(self, client: AsyncClient):
+        """D-21 (supersedes D-5): exam-period / holiday create+update+delete are
+        allowed on a PUBLISHED breakdown — they propagate live to class calendars
+        by design. Only the breakdown-level PATCH (book_id) + delete stay locked."""
         refs = await self._seed_refs(client)
         bd_id = await self._create_draft(client, refs)
         # Add a dated chapter so the breakdown can publish.
@@ -348,21 +354,39 @@ class TestExamPeriodsAndHolidays:
         )
         assert r.status_code == 200, r.text
 
-        # All mutations now rejected (D-5) — published is not a draft → 409.
+        # Exam-period create on a PUBLISHED breakdown is now ALLOWED (D-21).
         r = await client.post(
             f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods",
             json={"start_date": "2026-10-01", "end_date": "2026-10-02", "name": "x"},
             headers=admin_headers(),
         )
-        assert r.status_code == 409, r.text
+        assert r.status_code == 201, r.text
+        # PATCH an exam period on a published breakdown → allowed.
         r = await client.patch(
             f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods/{ep_id}",
             json={"name": "y"},
             headers=admin_headers(),
         )
-        assert r.status_code == 409, r.text
+        assert r.status_code == 200, r.text
+        assert r.json()["name"] == "y"
+        # DELETE an exam period on a published breakdown → allowed.
         r = await client.delete(
             f"/api/v2/syllabus-breakdowns/{bd_id}/exam-periods/{ep_id}",
+            headers=admin_headers(),
+        )
+        assert r.status_code == 204, r.text
+        # Holiday create on a published breakdown → allowed too.
+        r = await client.post(
+            f"/api/v2/syllabus-breakdowns/{bd_id}/holidays",
+            json={"start_date": "2026-10-10", "end_date": "2026-10-12", "name": "Eid"},
+            headers=admin_headers(),
+        )
+        assert r.status_code == 201, r.text
+
+        # But the breakdown-level PATCH (book_id) stays draft-only → 409.
+        r = await client.patch(
+            f"/api/v2/syllabus-breakdowns/{bd_id}",
+            json={"book_id": refs["book_id"]},
             headers=admin_headers(),
         )
         assert r.status_code == 409, r.text

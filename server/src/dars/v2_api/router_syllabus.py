@@ -415,7 +415,7 @@ async def add_chapter(
     _org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> SyllabusChapterRead:
-    await _require_draft(conn, breakdown_id)
+    await _load_breakdown_or_404(conn, breakdown_id)  # editable after publish (D-21)
     exists = await conn.fetchval(
         "SELECT 1 FROM book_chapters WHERE id = $1", payload.book_chapter_id
     )
@@ -455,7 +455,7 @@ async def update_chapter(
     _org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> SyllabusChapterRead:
-    await _require_draft(conn, breakdown_id)
+    await _load_breakdown_or_404(conn, breakdown_id)  # editable after publish (D-21)
     await _validate_chapter_belongs_to_breakdown(conn, breakdown_id, chapter_id)
     sets: list[str] = []
     params: list = []
@@ -506,7 +506,7 @@ async def delete_chapter(
     _org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> None:
-    await _require_draft(conn, breakdown_id)
+    await _load_breakdown_or_404(conn, breakdown_id)  # editable after publish (D-21)
     await _validate_chapter_belongs_to_breakdown(conn, breakdown_id, chapter_id)
     await conn.execute(
         "DELETE FROM syllabus_chapters WHERE id = $1", chapter_id
@@ -518,10 +518,11 @@ async def delete_chapter(
 # Exam periods + breakdown holidays (F-1.5 — D-1/D-5/D-14)
 #
 # exam_periods and breakdown_holidays share an identical shape, so create /
-# update / delete bodies are shared. Mutations are publish-locked (D-5) via
-# _require_draft (409 if the breakdown isn't a draft); end_date < start_date
-# is rejected 422 (D-4). Reads reach these rows only THROUGH the breakdown,
-# which is itself tenant-scoped (the breakdown 404 gate runs first).
+# update / delete bodies are shared. Mutations are allowed on a published
+# breakdown too (D-21, supersedes D-5) — exam/holiday edits propagate live to
+# class calendars by design; only the breakdown-404 gate runs. end_date <
+# start_date is rejected 422 (D-4). Reads reach these rows only THROUGH the
+# breakdown, which is itself tenant-scoped (the 404 gate runs first).
 # ---------------------------------------------------------------------------
 
 
@@ -536,7 +537,7 @@ async def _create_range(
         table, breakdown_id, payload.start_date, payload.end_date, payload.name,
     )
     try:
-        await _require_draft(conn, breakdown_id)
+        await _load_breakdown_or_404(conn, breakdown_id)  # editable after publish (D-21)
         _reject_inverted_range(payload.start_date, payload.end_date)
         row = await conn.fetchrow(
             f"""
@@ -570,7 +571,7 @@ async def _update_range(
         table, breakdown_id, range_id,
     )
     try:
-        await _require_draft(conn, breakdown_id)
+        await _load_breakdown_or_404(conn, breakdown_id)  # editable after publish (D-21)
         current = await _validate_range_belongs(conn, table, breakdown_id, range_id)
 
         new_start = payload.start_date if payload.start_date is not None else current["start_date"]
@@ -624,7 +625,7 @@ async def _delete_range(
         table, breakdown_id, range_id,
     )
     try:
-        await _require_draft(conn, breakdown_id)
+        await _load_breakdown_or_404(conn, breakdown_id)  # editable after publish (D-21)
         await _validate_range_belongs(conn, table, breakdown_id, range_id)
         await conn.execute(f"DELETE FROM {table} WHERE id = $1", range_id)
     except HTTPException:

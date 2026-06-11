@@ -4,8 +4,9 @@
  * The breakdown is a global, chapter→date-range plan. Each chapter has an
  * explicit start/end date; teaching days are derived from the range vs. the
  * academic calendar. Advisory, non-blocking warnings (overlap / gap / zero
- * teaching days) are shown inline. Draft breakdowns are editable; published
- * are read-only. Publish via the button at top.
+ * teaching days) are shown inline. Both draft and published breakdowns are
+ * editable (D-21): exam/holiday edits propagate live to class calendars by
+ * design. Publishing (draft → published) is via the button at top.
  */
 "use client";
 
@@ -173,7 +174,10 @@ export default function SyllabusBreakdownEditorPage() {
 
   if (!data) return <p className="text-sm text-dars-muted">Loading…</p>;
 
-  const editable = data.status === "draft";
+  // Both draft and published breakdowns are editable (D-21, supersedes D-5):
+  // exam/holiday edits propagate live to class calendars by design. The publish
+  // button below stays draft-only (publish-once, then edit in place).
+  const editable = data.status !== "deleted";
 
   return (
     <div>
@@ -317,8 +321,9 @@ type RangeKind = "exam" | "holiday";
 
 /**
  * One labelled section (Exam Periods or Holidays): a list of named date ranges
- * with inline edit + delete, and an add row at the bottom. Read-only when the
- * breakdown is published (`editable=false`) — inputs/buttons are hidden/disabled.
+ * with inline edit + delete, and an add row at the bottom. Editable on draft and
+ * published breakdowns alike (`editable` is false only for deleted, D-21); edits
+ * to a published breakdown propagate live to class calendars by design.
  * Pure presentational + local form state; all persistence is delegated to the
  * page via the on* callbacks.
  */
