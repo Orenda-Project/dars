@@ -65,7 +65,7 @@ Use the Agent tool for any self-contained backend or frontend build that would o
     - Use `logger = logging.getLogger(__name__)` — never `print()`
 12. **Default execution mode: autonomous** — never pause to confirm understanding before proceeding. Just proceed; the user will redirect if needed. The only valid exception is a genuine blocker (missing spec, missing credential).
 13. **No pre-action narration** — never write "I'll now X" or "Let me Y" before a tool call. Do X, then state the result. Output text that reports findings, not announces intentions.
-14. **After any PR merge — poll Railway automatically** — if Railway MCP is in the deferred tools list, immediately use `mcp__Railway__list-deployments` to find the latest deployment and begin polling. Do not wait for the user to ask.
+14. **Railway: CLI ONLY — never the Railway MCP, ever** — all Railway operations (deploy status, logs, anything) go through the `railway` CLI. Do not load or call any `mcp__Railway__*` tool; treat the Railway MCP as unavailable. The MCP tokens expire and return `Unauthorized`; the CLI is the reliable path (this dir is linked to project `dars` / env `staging`). After any PR merge, poll deploys automatically without being asked. Commands: `railway deployment list --service <name> --json` (write to a file and parse with `json.load`; the CLI prints banners that break stdin piping). **Poll BOTH services:** `dars` = backend (root `/server`), `truthful-renewal` = webapp (root `/webapp`, config `/webapp/railway.json`; NOT Vercel). A webapp deploy showing `SKIPPED` with `rootDirectory: None` is **healthy, not a failure** — Railway path-filters and skips the webapp build when the merge touched nothing under `/webapp`; that service stays on its last `SUCCESS`. Only a `FAILED`/`CRASHED` (or a `SKIPPED` when the PR *did* change that service's root) is a real problem. Railway can batch/lag 15–30 min — don't call it broken on a single short poll.
 15. **Before editing a file modified earlier in the same session, re-read it first** — never assume file state matches your earlier write.
 
 ---
@@ -92,7 +92,7 @@ The division must be visually and structurally clear. `/teacher-app` is not part
 
 ## Key Decisions (summary)
 
-FastAPI (async-native) · Supabase (hosted Postgres) · Row-level multitenancy via `client_id` · API keys over JWT · LP generation delegated to LP Assistant (Phase 1), absorbed in Phase 2
+FastAPI (async-native) · Railway-hosted Postgres (`DATABASE_URL` in `.env`; Supabase retired) · Row-level multitenancy via `client_id` · API keys over JWT · LP generation delegated to LP Assistant (Phase 1), absorbed in Phase 2
 
 Full rationale: [docs/adr/README.md](docs/adr/README.md)
 
