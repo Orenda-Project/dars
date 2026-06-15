@@ -66,3 +66,27 @@ call; auto-inserting makes coverage data fictional. *Apply:* below-threshold
 added sqlite3 specifically so slot-mutation logic is testable without a live DB; the
 `breakdown/` layer uses portable raw SQL. *Apply:* `tests/test_slot_mutation_service.py`
 provisions an in-memory/file sqlite DB; keep all mutation SQL portable. *Decided:* 2026-06-12.
+
+**D-12: Renumber via two-step large-offset; generate slot ids in Python; one ADD COLUMN
+per ALTER.** *Rationale (renumber):* a single `UPDATE ... SET position = position ± 1` can
+transiently violate `UNIQUE (cst_id, position)` mid-statement on sqlite (which checks the
+constraint per-row); rather than depend on Postgres-only statement-end checking we keep ONE
+portable path. *Apply:* `_shift_positions` first parks affected rows out of the live range
+(`position += 1_000_000`), then settles them to their final `±1` — collision-free on both
+asyncpg and sqlite, verified by `test_insert_preserves_uniqueness_across_renumber`.
+*Rationale (ids):* the live tables get `id` from a `gen_random_uuid()` DEFAULT + `RETURNING`,
+which the sqlite test schema has no equivalent for (RETURNING yields NULL). *Apply:*
+`insert_lesson_slot` generates `uuid4()` in Python and inserts it explicitly — identical on
+Postgres (the column accepts an explicit id), portable to sqlite. *Rationale (DDL split):*
+sqlite rejects multiple `ADD COLUMN` clauses in one `ALTER TABLE` (Postgres accepts both);
+verified `ALTER ... ADD COLUMN x, ADD COLUMN y` → `near ",": syntax error` on sqlite.
+*Apply:* migration `20260612000000_dynamic_planner_slot_origin.sql` uses one `ALTER TABLE …
+ADD COLUMN` statement per column; `02-data-model.md` shows the split form. *Decided:* 2026-06-12.
+
+**D-13: Overflow surfacing (F-1.4) rides the existing CST timeline read, not a new endpoint.**
+*Rationale:* `GET /api/v2/csts/{cst_id}/timeline` already runs the projector and carries
+per-item `is_overflow`; adding a count there is the thinnest seam and avoids a second route
++ a second projector call. *Apply:* `CstTimelineResponse.overflow_count` (additive,
+default 0) tallies `is_overflow` over the already-computed items; no new projection logic.
+A CST whose slots exceed its teaching days reports `overflow_count > 0`; one that fits reports
+0. *Decided:* 2026-06-12.

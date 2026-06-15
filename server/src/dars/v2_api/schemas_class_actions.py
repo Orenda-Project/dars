@@ -177,6 +177,13 @@ TimelineItem = Annotated[
 class CstTimelineResponse(BaseModel):
     cst_id: UUID
     items: list[TimelineItem]
+    # F-1.4 (dynamic-chapter-planner): count of tail slots the projector could
+    # not land on a teaching day (ProjectedSlot.is_overflow). 0 when the plan
+    # fits the academic year; > 0 means the class is genuinely behind and a
+    # human alert should fire. Surfaced here so Case-1 (holidays push slots past
+    # year-end) is visible before reteach exists. No new projection logic — the
+    # projector already sets the flag per item.
+    overflow_count: int = 0
 
 
 # ---------------------------------------------------------------------------

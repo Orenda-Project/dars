@@ -531,13 +531,18 @@ async def get_cst_timeline(
         # Global teaching order is the spine (D-1).
         items.sort(key=lambda i: i.position)
 
+        # F-1.4 (dynamic-chapter-planner): surface the projector's existing
+        # overflow flag as a count. No new projection — just tally the items.
+        overflow_count = sum(1 for i in items if i.is_overflow)
+
         log.info(
             "get_cst_timeline: exit cst=%s items=%d overflow=%d conflicts=%d",
-            cst_id, len(items),
-            sum(1 for i in items if i.is_overflow),
+            cst_id, len(items), overflow_count,
             sum(1 for i in items if i.is_conflict),
         )
-        return CstTimelineResponse(cst_id=cst_id, items=items)
+        return CstTimelineResponse(
+            cst_id=cst_id, items=items, overflow_count=overflow_count
+        )
     except HTTPException:
         raise
     except Exception:

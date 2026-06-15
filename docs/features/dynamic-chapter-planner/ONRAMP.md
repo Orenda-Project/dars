@@ -49,13 +49,14 @@ If two docs disagree, this order wins. Code is lowest authority. Surface conflic
 
 | Phase | Status | PR(s) | Notes |
 |-------|--------|-------|-------|
-| 1 — Slot-mutation foundation | 🟡 in flight | — | migration + `slot_mutation_service` + taught-lock + sqlite tests + overflow read |
+| 1 — Slot-mutation foundation | 🟡 built, awaiting PR merge | — | DONE on branch `feat/dynamic-chapter-planner-phase-1`: F-1.1 migration `20260612000000_dynamic_planner_slot_origin.sql` (origin/reteach_for_sub_slo_id/flex; sqlite-verified); F-1.2 `slot_mutation_service.py` (insert/remove/consume-flex, two-step large-offset renumber per D-12); F-1.3 `_assert_mutable` taught-lock; F-1.4 overflow read via `CstTimelineResponse.overflow_count` (D-13); F-1.5 `tests/test_slot_mutation_service.py` 13 tests green on sqlite. Suite: 273 passed / 60 skipped. Stays 🟡 until the PR squash-merges to staging. |
 | 2 — Buffer-budgeted planner | ⬜ not started | — | flex/mandatory tagging, completion-target knob |
 | 3 — Reteach trigger | ⬜ not started | — | mastery threshold → suggestion → confirm → consume-flex/insert → LP |
 
-**Next thing to do:** Phase 1, feature F-1.1 (migration) → F-1.2/F-1.3 (service + taught-lock)
-→ F-1.5 (sqlite tests) → F-1.4 (overflow read). Branch from staging. Bead
-`feat-dynamic-chapter-planner-phase-1`.
+**Next thing to do:** Phase 1 code is complete on its branch; open the PR to staging, watch
+both deploys on merge, then mark Phase 1 ✅ and close bead `feat-dynamic-chapter-planner-phase-1`.
+After that: Phase 2 (F-2.1 …). New decisions logged this phase: D-12 (renumber/ids/DDL-split),
+D-13 (overflow read seam).
 
 Upstream dependency (FAs + breakdown holidays + exam periods on `syllabus_breakdowns`) is
 **MERGED** (#136–#141). On-demand LP generation (`get_or_generate_lp`) is **MERGED** (#133).

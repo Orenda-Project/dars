@@ -20,13 +20,19 @@ assessed_on DATE`. Written by `mastery_service.submit_exam_results`.
 
 ## Deltas added by this feature
 
-### Phase 1 migration — `<ts>_dynamic_planner_slot_origin.sql`
+### Phase 1 migration — `20260612000000_dynamic_planner_slot_origin.sql`
+
+One `ADD COLUMN` per `ALTER TABLE` (D-12): sqlite rejects a single `ALTER TABLE … ADD
+COLUMN a, ADD COLUMN b` (`near ",": syntax error`); Postgres accepts both forms, so the
+split is the portable one used by the shipped migration.
 
 ```sql
 ALTER TABLE class_lesson_slots
   ADD COLUMN origin TEXT NOT NULL DEFAULT 'breakdown'
-    CHECK (origin IN ('breakdown', 'reteach', 'manual')),
-  ADD COLUMN reteach_for_sub_slo_id UUID REFERENCES sub_slos(id),
+    CHECK (origin IN ('breakdown', 'reteach', 'manual'));
+ALTER TABLE class_lesson_slots
+  ADD COLUMN reteach_for_sub_slo_id UUID REFERENCES sub_slos(id);
+ALTER TABLE class_lesson_slots
   ADD COLUMN flex BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE class_assessment_slots
@@ -42,9 +48,11 @@ ALTER TABLE class_assessment_slots
 - `flex` — droppable buffer lesson slot (D-3/D-4). Only on `class_lesson_slots` (flex slots
   are revision lessons, never assessments).
 
-**sqlite note (D-11):** these are plain `ADD COLUMN` with literal defaults and a CHECK —
-both portable to sqlite. `UUID` columns are TEXT in sqlite (existing pattern); keep the FK
-inline. No `gen_random_uuid()` here, so no dialect split.
+**sqlite note (D-11):** plain `ADD COLUMN` with literal defaults and a CHECK — portable to
+sqlite once split one-per-statement (above). `UUID` columns are TEXT in sqlite (existing
+pattern); the FK stays inline. No `gen_random_uuid()` here, so no dialect split on defaults.
+Verified clean against an in-memory sqlite DB (existing rows default to `origin='breakdown'`,
+`flex=false`; the CHECK rejects bad origins).
 
 ### Phase 2 — completion target knob
 
