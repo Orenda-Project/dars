@@ -1,13 +1,15 @@
 """
 Class-chapter path tests.
 
-Pure-logic: status derivation (D-4). The teacher path is now a read-only mirror
-of the org breakdown — auto-seeded by `seed_class_chapters_from_breakdown`
-(teacher-readonly-syllabus Phase 1, D-2). The pick/reorder/remove/date-set
-mutation ops were removed in Phase 1, so their tests are gone.
+Pure-logic: status derivation (D-4) and the reorder lock (D-6, `validate_reorder`).
+The class path is auto-seeded from the org breakdown by
+`seed_class_chapters_from_breakdown` (D-10) and then teacher-editable on top —
+pick / set-dates / reorder / remove (Phase 3 Revival, D-9). The reorder-lock
+tests below were restored verbatim from PR #109.
 
 DB-gated: `seed_class_chapters_from_breakdown` (copy rule, idempotency,
-no-op cases) — follows the DATABASE_URL gating pattern from
+no-op cases) and `remove_chapter`'s D-11 guard (a chapter with any generated
+slot can't be removed) — follow the DATABASE_URL gating pattern from
 `test_chapter_plan_service.py`.
 """
 import os
@@ -23,7 +25,9 @@ from dars.breakdown.class_chapter_service import (
     STATUS_IN_PROGRESS,
     STATUS_YET_TO_START,
     derive_chapter_status,
+    remove_chapter,
     seed_class_chapters_from_breakdown,
+    validate_reorder,
 )
 from dars.config import settings
 
@@ -68,6 +72,92 @@ def test_status_skipped_counts_as_terminal():
 
 def test_status_skipped_partial_is_in_progress():
     assert derive_chapter_status(["skipped", "planned"]) == STATUS_IN_PROGRESS
+
+
+# ---------------------------------------------------------------------------
+# Reorder lock (D-6) — restored verbatim from PR #109 (F3.1).
+# ---------------------------------------------------------------------------
+
+
+def _ids(n: int):
+    return [uuid4() for _ in range(n)]
+
+
+def test_reorder_all_yet_to_start_freely_reorders():
+    a, b, c = _ids(3)
+    statuses = {a: STATUS_YET_TO_START, b: STATUS_YET_TO_START, c: STATUS_YET_TO_START}
+    # Any permutation of the full set is allowed.
+    validate_reorder([a, b, c], statuses, [c, a, b])
+    validate_reorder([a, b, c], statuses, [b, c, a])
+
+
+def test_reorder_rejects_missing_chapter():
+    a, b, c = _ids(3)
+    statuses = {a: STATUS_YET_TO_START, b: STATUS_YET_TO_START, c: STATUS_YET_TO_START}
+    with pytest.raises(ValueError, match="exactly the chapters"):
+        validate_reorder([a, b, c], statuses, [a, b])
+
+
+def test_reorder_rejects_extra_chapter():
+    a, b, c = _ids(3)
+    d = uuid4()
+    statuses = {a: STATUS_YET_TO_START, b: STATUS_YET_TO_START, c: STATUS_YET_TO_START}
+    with pytest.raises(ValueError, match="exactly the chapters"):
+        validate_reorder([a, b, c], statuses, [a, b, c, d])
+
+
+def test_reorder_rejects_duplicates():
+    a, b, c = _ids(3)
+    statuses = {a: STATUS_YET_TO_START, b: STATUS_YET_TO_START, c: STATUS_YET_TO_START}
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_reorder([a, b, c], statuses, [a, b, b])
+
+
+def test_reorder_started_chapter_must_stay_at_front():
+    # a is in_progress (started) and leads; moving it back is rejected (D-6).
+    a, b, c = _ids(3)
+    statuses = {a: STATUS_IN_PROGRESS, b: STATUS_YET_TO_START, c: STATUS_YET_TO_START}
+    with pytest.raises(ValueError, match="locked"):
+        validate_reorder([a, b, c], statuses, [b, a, c])
+
+
+def test_reorder_upcoming_after_started_reorders_freely():
+    # a started and stays first; b and c (upcoming) may swap behind it.
+    a, b, c = _ids(3)
+    statuses = {a: STATUS_IN_PROGRESS, b: STATUS_YET_TO_START, c: STATUS_YET_TO_START}
+    validate_reorder([a, b, c], statuses, [a, c, b])
+
+
+def test_reorder_keeps_relative_order_of_multiple_started():
+    # a (done) then b (in_progress) lead and must keep that relative order;
+    # c is upcoming. Submitting them in the same leading order is fine.
+    a, b, c = _ids(3)
+    statuses = {a: STATUS_DONE, b: STATUS_IN_PROGRESS, c: STATUS_YET_TO_START}
+    validate_reorder([a, b, c], statuses, [a, b, c])
+
+
+def test_reorder_rejects_reordering_two_started_chapters():
+    # Swapping the two locked chapters' relative order is rejected.
+    a, b, c = _ids(3)
+    statuses = {a: STATUS_DONE, b: STATUS_IN_PROGRESS, c: STATUS_YET_TO_START}
+    with pytest.raises(ValueError, match="locked"):
+        validate_reorder([a, b, c], statuses, [b, a, c])
+
+
+def test_reorder_done_chapter_locked_at_front():
+    a, b = _ids(2)
+    statuses = {a: STATUS_DONE, b: STATUS_YET_TO_START}
+    with pytest.raises(ValueError, match="locked"):
+        validate_reorder([a, b], statuses, [b, a])
+
+
+def test_reorder_single_chapter_noop():
+    (a,) = _ids(1)
+    validate_reorder([a], {a: STATUS_YET_TO_START}, [a])
+
+
+def test_reorder_empty_path_noop():
+    validate_reorder([], {}, [])
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +365,69 @@ class TestSeedClassChaptersAgainstDB:
                 # Still just the one legacy row — untouched.
                 assert len(rows) == 1
                 assert rows[0]["book_chapter_id"] == ids["chapter_ids"][2]
+            finally:
+                await cleanup()
+        finally:
+            await conn.close()
+
+    async def test_remove_chapter_422s_when_chapter_has_a_generated_slot(self):
+        # D-11: a chapter with ANY generated slot (even a non-terminal one)
+        # cannot be removed — it would orphan the plan. The slot below is
+        # 'planned' (NON-terminal), so the #109 status-lock alone would have
+        # allowed removal; the D-11 guard rejects it.
+        conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+        try:
+            ids, cleanup = await self._build_graph(conn, num_chapters=2)
+            try:
+                # Seed the path from the breakdown so the chapter is in it.
+                seeded = await seed_class_chapters_from_breakdown(
+                    conn, ids["cst_id"]
+                )
+                assert seeded == 2
+                target = ids["chapter_ids"][0]
+                # Generate a single NON-terminal lesson slot for the chapter.
+                await conn.execute(
+                    """
+                    INSERT INTO class_lesson_slots
+                      (org_id, cst_id, position, slot_type, book_chapter_id, status)
+                    VALUES ($1, $2, 1, 'lesson', $3, 'planned')
+                    """,
+                    ids["org_id"], ids["cst_id"], target,
+                )
+                with pytest.raises(ValueError, match="generated plan"):
+                    await remove_chapter(conn, ids["cst_id"], target)
+                # The path row survives — nothing was deleted.
+                still_there = await conn.fetchval(
+                    """
+                    SELECT 1 FROM class_chapters
+                     WHERE cst_id = $1 AND book_chapter_id = $2
+                    """,
+                    ids["cst_id"], target,
+                )
+                assert still_there == 1
+            finally:
+                await cleanup()
+        finally:
+            await conn.close()
+
+    async def test_remove_chapter_succeeds_when_no_slots(self):
+        # Control for the D-11 test: a seeded chapter with no generated slots
+        # is yet_to_start and removable.
+        conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+        try:
+            ids, cleanup = await self._build_graph(conn, num_chapters=2)
+            try:
+                await seed_class_chapters_from_breakdown(conn, ids["cst_id"])
+                target = ids["chapter_ids"][1]
+                await remove_chapter(conn, ids["cst_id"], target)
+                gone = await conn.fetchval(
+                    """
+                    SELECT 1 FROM class_chapters
+                     WHERE cst_id = $1 AND book_chapter_id = $2
+                    """,
+                    ids["cst_id"], target,
+                )
+                assert gone is None
             finally:
                 await cleanup()
         finally:

@@ -32,7 +32,10 @@ import {
   type SLOProgressGroup,
   type SLOTreeSubSLO,
 } from "@/components/templates/class-slos-tab";
-import { ClassSyllabusTab } from "@/components/templates/class-syllabus-tab";
+import {
+  ClassSyllabusTab,
+  type BookChapterOption,
+} from "@/components/templates/class-syllabus-tab";
 import { ClassTimetableTab } from "@/components/templates/class-timetable-tab";
 import {
   ClassTodayTab,
@@ -144,12 +147,21 @@ export default function ClassDetailPage() {
   // tab's expandable chapter contents (and pins the "Now" marker).
   const [timeline, setTimeline] = useState<CstTimelineItem[] | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
-  // Syllabus tab: the read-only class teaching path (org-decided, auto-seeded
-  // server-side). The teacher cannot mutate it here — only generate plans and
-  // expand a chapter to view its lessons + assessments.
+  // Syllabus tab: the class teaching path. Auto-seeded server-side from the org
+  // breakdown (D-10); the teacher edits it on top in Edit mode (D-9/D-13) —
+  // re-date, reorder, remove, add — and can expand a chapter to view its
+  // lessons + assessments / break it down in BOTH modes.
   const [syllabus, setSyllabus] = useState<SyllabusForCstResponse | null>(null);
   const [syllabusError, setSyllabusError] = useState<string | null>(null);
   const [busyChapterId, setBusyChapterId] = useState<string | null>(null);
+  // D-13: explicit Edit-syllabus mode toggle, owned here (template is prop-driven).
+  const [editingSyllabus, setEditingSyllabus] = useState(false);
+  // Set while any path mutation (pick/set-dates/reorder/remove) is in flight.
+  const [pathBusy, setPathBusy] = useState(false);
+  // Flat book-chapter list for the add-a-chapter picker (lazy, edit-mode only).
+  const [pickerChapters, setPickerChapters] = useState<BookChapterOption[] | null>(
+    null,
+  );
   // Which syllabus chapter is expanded (by book_chapter_id), or null.
   const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
@@ -253,6 +265,95 @@ export default function ClassDetailPage() {
     },
     [cstId, loadSyllabus, loadTimeline, timeline, todayLoaded, loadToday],
   );
+
+  // ---- F3.5: class-path edits (pick / set-dates / reorder / remove) --------
+  // Each mutation endpoint returns the full updated SyllabusForCstResponse, so
+  // we re-render the tab straight from the payload (no extra GET). The Today /
+  // timeline tabs reflect path order + dates, so refresh them when loaded.
+  const runPathMutation = useCallback(
+    async (mutate: () => Promise<SyllabusForCstResponse>) => {
+      setSyllabusError(null);
+      setPathBusy(true);
+      try {
+        const res = await mutate();
+        setSyllabus(res);
+        await Promise.all([
+          timeline !== null ? loadTimeline() : Promise.resolve(),
+          todayLoaded ? loadToday() : Promise.resolve(),
+        ]);
+      } catch (err) {
+        setSyllabusError(formatErr(err));
+        // Re-sync from the server so the inputs reflect persisted state after
+        // a rejected edit (e.g. a 422 reorder/remove lock).
+        await loadSyllabus();
+      } finally {
+        setPathBusy(false);
+      }
+    },
+    [timeline, loadTimeline, todayLoaded, loadToday, loadSyllabus],
+  );
+
+  const handlePick = useCallback(
+    (book_chapter_id: string) =>
+      runPathMutation(() => slotsApi.pickChapter(cstId, book_chapter_id)),
+    [cstId, runPathMutation],
+  );
+
+  const handleSetDates = useCallback(
+    (
+      book_chapter_id: string,
+      dates: { start_date?: string; end_date?: string },
+    ) =>
+      runPathMutation(() =>
+        slotsApi.setChapterDates(cstId, book_chapter_id, dates),
+      ),
+    [cstId, runPathMutation],
+  );
+
+  const handleReorder = useCallback(
+    (book_chapter_ids: string[]) =>
+      runPathMutation(() => slotsApi.reorderChapters(cstId, book_chapter_ids)),
+    [cstId, runPathMutation],
+  );
+
+  const handleRemove = useCallback(
+    (book_chapter_id: string) =>
+      runPathMutation(() => slotsApi.removeChapter(cstId, book_chapter_id)),
+    [cstId, runPathMutation],
+  );
+
+  // Lazy flat book-chapter list for the add-a-chapter picker (D-13). Fetched
+  // once when edit mode is first entered and the book is known.
+  const loadPickerChapters = useCallback(async () => {
+    if (!header?.bookId) {
+      setPickerChapters([]);
+      return;
+    }
+    try {
+      const { items } = await booksApi.getBookChapters(header.bookId);
+      setPickerChapters(
+        [...items]
+          .sort((a, b) => a.chapter_number - b.chapter_number)
+          .map<BookChapterOption>((c) => ({
+            book_chapter_id: c.id,
+            chapter_number: c.chapter_number,
+            title: c.title,
+          })),
+      );
+    } catch {
+      // Picker is non-critical; leave it null so the panel shows "Loading…".
+      setPickerChapters([]);
+    }
+  }, [header?.bookId]);
+
+  const onToggleEditSyllabus = useCallback(() => {
+    setEditingSyllabus((prev) => {
+      const next = !prev;
+      // Lazy-load the picker the first time edit mode opens.
+      if (next && pickerChapters === null) void loadPickerChapters();
+      return next;
+    });
+  }, [pickerChapters, loadPickerChapters]);
 
   // Holidays tab data
   const loadHolidays = useCallback(async () => {
@@ -916,6 +1017,14 @@ export default function ClassDetailPage() {
                 data={syllabus}
                 onBreakDown={handleBreakDown}
                 busyChapterId={busyChapterId}
+                editing={editingSyllabus}
+                onToggleEdit={onToggleEditSyllabus}
+                onPick={handlePick}
+                onSetDates={handleSetDates}
+                onReorder={handleReorder}
+                onRemove={handleRemove}
+                bookChapters={pickerChapters}
+                pathBusy={pathBusy}
                 timeline={timeline}
                 currentSlotId={currentSlotId}
                 expandedChapterId={expandedChapterId}
