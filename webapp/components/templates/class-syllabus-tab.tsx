@@ -336,24 +336,23 @@ function ChapterContents({
   generatingExamSlotId: string | null;
   busySlotId: string | null;
 }) {
-  // Not broken down yet → nudge to generate a plan (the action lives in the
-  // header's right rail).
-  if (!brokenDown) {
-    return (
-      <p className="text-xs text-dars-muted">
-        Generate a plan for this chapter to see its lessons and assessments.
-      </p>
-    );
-  }
-
-  if (timelineLoading) {
+  // Items win over the chapter's `is_generated` flag: the flag tracks whether
+  // LPs were generated, NOT whether slots exist, so a freshly broken-down
+  // chapter reads is_generated=false while already having a full set of
+  // lesson/assessment slots. Render whatever slots the timeline carries; only
+  // fall back to the hints when there's genuinely nothing to show.
+  if (timelineLoading && items.length === 0) {
     return <p className="text-xs text-dars-muted">Loading lessons…</p>;
   }
 
   if (items.length === 0) {
+    // No slots for this chapter. If it hasn't been broken down, nudge toward
+    // the "Generate chapter plan" action in the header's right rail.
     return (
       <p className="text-xs text-dars-muted">
-        No lessons or assessments in this chapter yet.
+        {brokenDown
+          ? "No lessons or assessments in this chapter yet."
+          : "Generate a plan for this chapter to see its lessons and assessments."}
       </p>
     );
   }
