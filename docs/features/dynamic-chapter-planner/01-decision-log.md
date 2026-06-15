@@ -134,3 +134,30 @@ the "after" projection sees the inserted slot. *Apply:* `reteach_service` return
 with `path` (`'lightweight'|'consume_flex'|'insert'`), `slot_id`, and `consequence` (None for
 lightweight/consume; `{overflow_before, overflow_after, newly_overflowed_positions,
 first_overflow_position}` for insert). *Decided:* 2026-06-12.
+
+**D-18: The teacher-app reteach UI lives on the mastery-entry/results page (NOT a separate
+badge on the FA timeline card), and the overflow consequence is shown as a calendar outcome,
+not raw numbers.** *Rationale (placement):* F-3.3's "badge on the FA slot card" is the spirit
+("class struggled with X — reteach?"), but the suggestion is only meaningful *after* grading,
+and the results page (`…/assessments/[slot_id]/results/page.tsx`) is exactly where grading
+finishes — the teacher is already there with full context. Surfacing the panel inline right
+after a successful `submitExamResults` (and re-fetching on load when the slot is already
+`completed`, so a returning teacher still sees it) keeps the confirm step one screen away from
+the data that triggered it, instead of asking the teacher to navigate back to a timeline badge.
+The FA timeline card can link here later; this is the highest-context home for the confirm
+step. *Rationale (phrasing):* `OverflowConsequence` ships raw integers
+(`newly_overflowed_positions`, `first_overflow_position`). A teacher doesn't read "positions";
+they read days and lessons. We translate each path into a one-line calendar outcome —
+lightweight → "re-cover in your next class, schedule unchanged"; `consume_flex` → "added a
+reteach lesson using a spare revision day, schedule unchanged"; `insert` with no overflow →
+"added on a new day, everything still fits"; `insert` with overflow → "pushed N later
+lesson(s) past the end of the school year, starting at lesson #first_overflow_position —
+you'll need to drop a revision day, move an exam, or trim coverage." This is the "what falls
+off" moment the spec asks to make legible. *Apply:* presentational molecule
+`webapp/components/molecules/reteach-panel.tsx` (hook-free, page owns state per the layer
+rules — mirrors `mastery-entry-template`); per-sub-SLO confirm with lightweight pre-selected
+(recommended); after acting, the row shows the outcome and disables further action; declining
+("Not now") leaves the plan untouched. NOTE: the shipped client methods are
+`slots.getReteachSuggestion` / `slots.confirmReteach` (the `slots` namespace in `dars-api.ts`),
+not `mastery.*`; the UI consumes the contract as shipped — no signature change. *Decided:*
+2026-06-15.
