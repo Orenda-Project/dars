@@ -1,11 +1,12 @@
 /**
- * class-timeline-view — unified, dated timeline tab.
+ * class-timeline-view — dated lesson/assessment rows, grouped by chapter.
  *
- * Replaces the separate Lessons + Assessments tabs. Lessons and assessments
- * are interleaved by global position, grouped by breakdown chapter, each row
- * stamped with the projector's date. Exactly one row is marked "Now". A kind
- * filter (All / Lessons / Assessments) narrows the list. Generation status is
- * a quiet inline signal; conflict/overflow slots carry an inline warning.
+ * The separate Timeline tab was retired (the Syllabus tab now expands each
+ * chapter to reveal its rows in place). This file is kept as the home of the
+ * shared row renderer (`TimelineRow`) + its prop contract (`TimelineRowProps`),
+ * which the Syllabus tab reuses: lessons + assessments stamped with the
+ * projector's date, "Now" marker, view/generate LP + exam, mark-taught/skip,
+ * quiet generation pills, and inline conflict/overflow warnings.
  *
  * Pure layout — the page owns fetching + mark-taught/skip + slide-over.
  */
@@ -13,133 +14,26 @@
 
 import type { CstTimelineItem } from "@/lib/dars-api";
 
-export type TimelineKindFilter = "all" | "lesson" | "assessment";
-
-export interface TimelineChapterGroup {
-  chapter_id: string;
-  chapter_position: number;
-  chapter_title: string;
-  items: CstTimelineItem[];
-}
-
-interface TimelineTabProps {
-  groups: TimelineChapterGroup[];
-  /** The single "you are here" slot id, if any. */
-  currentSlotId: string | null;
-  filter: TimelineKindFilter;
-  onFilterChange: (f: TimelineKindFilter) => void;
+/** Callbacks + flags a single {@link TimelineRow} needs. The Syllabus tab
+ *  threads these straight through from the page's timeline handlers. */
+export interface TimelineRowCallbacks {
   onViewLP: (item: Extract<CstTimelineItem, { kind: "lesson" }>) => void;
   onViewExam: (item: Extract<CstTimelineItem, { kind: "assessment" }>) => void;
   onMarkTaught: (item: CstTimelineItem) => void;
   onSkip: (item: CstTimelineItem) => void;
-  /** On-demand LP generation for a lesson slot (Generate / Retry). */
   onGenerateLP: (item: Extract<CstTimelineItem, { kind: "lesson" }>) => void;
-  /** On-demand exam generation for an FA assessment slot (Generate / Retry). */
   onGenerateExam: (item: Extract<CstTimelineItem, { kind: "assessment" }>) => void;
-  /** Slot whose LP is currently being generated/polled (shows a spinner). */
-  generatingSlotId: string | null;
-  /** Assessment slot whose exam is currently being generated/polled. */
-  generatingExamSlotId: string | null;
-  busySlotId: string | null;
 }
 
-const FILTERS: { key: TimelineKindFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "lesson", label: "Lessons" },
-  { key: "assessment", label: "Assessments" },
-];
-
-export function ClassTimelineTab({
-  groups,
-  currentSlotId,
-  filter,
-  onFilterChange,
-  onViewLP,
-  onViewExam,
-  onMarkTaught,
-  onSkip,
-  onGenerateLP,
-  onGenerateExam,
-  generatingSlotId,
-  generatingExamSlotId,
-  busySlotId,
-}: TimelineTabProps) {
-  const hasItems = groups.some((g) => g.items.length > 0);
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-1 rounded-md border border-dars-rule-light bg-dars-parchment p-0.5 w-fit">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => onFilterChange(f.key)}
-            className={
-              "px-3 py-1 rounded text-xs font-semibold transition-colors " +
-              (filter === f.key
-                ? "bg-dars-terra text-dars-parchment"
-                : "text-dars-muted hover:text-dars-ink")
-            }
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {!hasItems ? (
-        <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-6 text-center">
-          <p className="text-sm font-medium text-dars-ink">Nothing to show</p>
-          <p className="text-xs text-dars-muted mt-1">
-            {filter === "all"
-              ? "No lessons or assessments are set up for this class yet. Reach out to your administrator."
-              : "No items of this kind. Try the All filter."}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {groups
-            .filter((g) => g.items.length > 0)
-            .map((group) => (
-              <section key={group.chapter_id}>
-                <h2 className="sticky top-[105px] z-10 bg-dars-parchment/95 backdrop-blur py-1 border-b border-dars-rule-light text-sm font-semibold text-dars-ink-soft flex items-baseline gap-2">
-                  <span className="text-dars-muted font-mono text-xs">
-                    Ch {group.chapter_position}
-                  </span>
-                  <span>{group.chapter_title}</span>
-                  <span className="ml-auto text-xs text-dars-muted font-normal">
-                    {group.items.length} item
-                    {group.items.length === 1 ? "" : "s"}
-                  </span>
-                </h2>
-
-                <ul className="mt-2 space-y-2">
-                  {group.items.map((item) => (
-                    <li key={`${item.kind}-${item.id}`}>
-                      <TimelineRow
-                        item={item}
-                        isNow={item.id === currentSlotId}
-                        onViewLP={onViewLP}
-                        onViewExam={onViewExam}
-                        onMarkTaught={onMarkTaught}
-                        onSkip={onSkip}
-                        onGenerateLP={onGenerateLP}
-                        onGenerateExam={onGenerateExam}
-                        generating={generatingSlotId === item.id}
-                        generatingExam={generatingExamSlotId === item.id}
-                        busy={busySlotId === item.id}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-        </div>
-      )}
-    </div>
-  );
+export interface TimelineRowProps extends TimelineRowCallbacks {
+  item: CstTimelineItem;
+  isNow: boolean;
+  generating: boolean;
+  generatingExam: boolean;
+  busy: boolean;
 }
 
-function TimelineRow({
+export function TimelineRow({
   item,
   isNow,
   onViewLP,
@@ -151,19 +45,7 @@ function TimelineRow({
   generating,
   generatingExam,
   busy,
-}: {
-  item: CstTimelineItem;
-  isNow: boolean;
-  onViewLP: TimelineTabProps["onViewLP"];
-  onViewExam: TimelineTabProps["onViewExam"];
-  onMarkTaught: TimelineTabProps["onMarkTaught"];
-  onSkip: TimelineTabProps["onSkip"];
-  onGenerateLP: TimelineTabProps["onGenerateLP"];
-  onGenerateExam: TimelineTabProps["onGenerateExam"];
-  generating: boolean;
-  generatingExam: boolean;
-  busy: boolean;
-}) {
+}: TimelineRowProps) {
   const isAssessment = item.kind === "assessment";
   const accent = isNow
     ? "border-dars-terra ring-1 ring-dars-terra/40"
