@@ -5,21 +5,25 @@
  * D-1) and auto-seeded on the server (Phase 1). The teacher cannot add,
  * reorder, remove, or re-date chapters here.
  *
- * Each chapter row is now EXPANDABLE: clicking it reveals that chapter's
- * lessons + assessments in place (the unified rows formerly on the retired
- * Timeline tab). The per-chapter "Generate chapter plan" button stays in the
- * right rail for chapters that haven't been broken down yet.
+ * lp-context-header Phase 3 (D-8/D-11): each chapter row is now a NAVIGATION
+ * link to its dedicated chapter page (`/teacher-app/classes/[cst_id]/chapters/
+ * [position]`) instead of an inline accordion. The per-chapter "Generate chapter
+ * plan" button stays in the right rail for chapters that haven't been broken
+ * down yet (and does NOT navigate). The chapter body (lessons + assessments)
+ * now lives on the chapter page, which reuses {@link ChapterContents} below.
  *
  * - Empty path → calm read-only message (D-7): the school hasn't published a
  *   syllabus for this class yet. NOT a picker.
  * - Non-empty  → the ordered path: each row shows the chapter number + title,
- *   position, date range as plain text, slot count, status badge; expanding it
- *   lists its lesson/assessment rows (view/generate LP + exam, mark-taught,
- *   skip). Chapters not yet broken down expand to a "generate a plan" hint.
+ *   position, date range as plain text, slot count, status badge; clicking it
+ *   opens that chapter's page. Chapters not yet broken down show a "generate a
+ *   plan" action in the right rail.
  *
  * Pure template — data + callbacks as props, no fetching.
  */
 "use client";
+
+import Link from "next/link";
 
 import type {
   ClassPathChapter,
@@ -34,28 +38,12 @@ import {
 
 interface SyllabusTabProps {
   data: SyllabusForCstResponse;
+  /** CST id — used to build each chapter row's link to its chapter page. */
+  cstId: string;
   /** Action 2: break a chapter down into slots. */
   onBreakDown: (book_chapter_id: string) => void;
   /** Set while a single chapter's break-down is in flight. */
   busyChapterId: string | null;
-
-  /* ---- Expandable chapter contents (lessons + assessments) ---- */
-  /** Unified timeline items for this CST; null while still loading. */
-  timeline: CstTimelineItem[] | null;
-  /** The single "you are here" slot id, if any. */
-  currentSlotId: string | null;
-  /** Which chapter is expanded (by book_chapter_id), or null. */
-  expandedChapterId: string | null;
-  /** Toggle a chapter open/closed. */
-  onToggleChapter: (book_chapter_id: string) => void;
-  /** Row callbacks (view/generate LP + exam, mark-taught, skip). */
-  rowCallbacks: TimelineRowCallbacks;
-  /** Slot whose LP is currently being generated/polled. */
-  generatingSlotId: string | null;
-  /** Assessment slot whose exam is currently being generated/polled. */
-  generatingExamSlotId: string | null;
-  /** Slot with an in-flight mark-taught/skip/complete. */
-  busySlotId: string | null;
 }
 
 const STATUS_LABEL: Record<ClassPathChapterStatus, string> = {
@@ -70,8 +58,12 @@ const STATUS_CLASS: Record<ClassPathChapterStatus, string> = {
   done: "bg-emerald-100 text-emerald-800",
 };
 
-/** ISO date (YYYY-MM-DD) → "12 Mar 2026" plain text, or "—" when unset. */
-function formatDate(iso: string | null): string {
+/**
+ * ISO date (YYYY-MM-DD) → "12 Mar 2026" plain text, or "—" when unset.
+ * Exported so the chapter page can render the same date range without
+ * re-implementing the format (D-11).
+ */
+export function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
@@ -83,33 +75,11 @@ function formatDate(iso: string | null): string {
 }
 
 export function ClassSyllabusTab(props: SyllabusTabProps) {
-  const {
-    data,
-    onBreakDown,
-    busyChapterId,
-    timeline,
-    currentSlotId,
-    expandedChapterId,
-    onToggleChapter,
-    rowCallbacks,
-    generatingSlotId,
-    generatingExamSlotId,
-    busySlotId,
-  } = props;
+  const { data, cstId, onBreakDown, busyChapterId } = props;
 
   // Path is server-ordered by `position`; keep that order explicitly.
   const path = [...data.chapters].sort((a, b) => a.position - b.position);
   const isEmpty = path.length === 0;
-
-  // The syllabus chapter is keyed by book_chapter_id; the timeline items carry
-  // breakdown_chapter_position. Both derive from the same ordered class path,
-  // so chapter `position` is the stable join key between the two.
-  const itemsByPosition = new Map<number, CstTimelineItem[]>();
-  for (const item of timeline ?? []) {
-    const list = itemsByPosition.get(item.breakdown_chapter_position);
-    if (list) list.push(item);
-    else itemsByPosition.set(item.breakdown_chapter_position, [item]);
-  }
 
   return (
     <div className="space-y-4">
@@ -125,7 +95,7 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
           ) : null}
         </div>
         <p className="text-xs text-dars-muted">
-          Your school sets this syllabus. Click a chapter to see its lessons and
+          Your school sets this syllabus. Open a chapter to see its lessons and
           assessments, or generate a plan from any chapter below.
         </p>
       </div>
@@ -138,17 +108,9 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
             <PathRow
               key={ch.book_chapter_id}
               ch={ch}
+              cstId={cstId}
               onBreakDown={onBreakDown}
               breakingDown={busyChapterId === ch.book_chapter_id}
-              expanded={expandedChapterId === ch.book_chapter_id}
-              onToggle={() => onToggleChapter(ch.book_chapter_id)}
-              items={itemsByPosition.get(ch.position) ?? []}
-              timelineLoading={timeline === null}
-              currentSlotId={currentSlotId}
-              rowCallbacks={rowCallbacks}
-              generatingSlotId={generatingSlotId}
-              generatingExamSlotId={generatingExamSlotId}
-              busySlotId={busySlotId}
             />
           ))}
         </ol>
@@ -176,35 +138,19 @@ function EmptyPathMessage() {
 }
 
 /* ------------------------------------------------------------------ */
-/* F2.2 — an expandable chapter row in the path                        */
+/* F-3.3 — a chapter row in the path: a link to the chapter page       */
 /* ------------------------------------------------------------------ */
 
 function PathRow({
   ch,
+  cstId,
   onBreakDown,
   breakingDown,
-  expanded,
-  onToggle,
-  items,
-  timelineLoading,
-  currentSlotId,
-  rowCallbacks,
-  generatingSlotId,
-  generatingExamSlotId,
-  busySlotId,
 }: {
   ch: ClassPathChapter;
+  cstId: string;
   onBreakDown: (book_chapter_id: string) => void;
   breakingDown: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  items: CstTimelineItem[];
-  timelineLoading: boolean;
-  currentSlotId: string | null;
-  rowCallbacks: TimelineRowCallbacks;
-  generatingSlotId: string | null;
-  generatingExamSlotId: string | null;
-  busySlotId: string | null;
 }) {
   const isCurrent = ch.status === "in_progress";
   // "Broken down" = the chapter actually has generated slots — NOT slot_count,
@@ -225,22 +171,14 @@ function PathRow({
         <span className="absolute -left-px top-3 bottom-3 w-0.5 rounded bg-dars-terra" />
       ) : null}
 
-      {/* Header — clicking anywhere here toggles the chapter open. */}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="w-full text-left p-3 flex items-start gap-3"
+      {/* Header — the whole row links to this chapter's dedicated page (D-8). */}
+      <Link
+        href={`/teacher-app/classes/${cstId}/chapters/${ch.position}`}
+        className="w-full text-left p-3 flex items-start gap-3 hover:bg-dars-parchment-mid rounded-md transition-colors"
       >
-        {/* Disclosure caret */}
-        <span
-          className={
-            "pt-0.5 text-dars-muted-light transition-transform " +
-            (expanded ? "rotate-90" : "")
-          }
-          aria-hidden
-        >
-          ▸
+        {/* Disclosure caret — always points right ("go to page"), no rotation. */}
+        <span className="pt-0.5 text-dars-muted-light" aria-hidden>
+          ›
         </span>
 
         {/* Position (read-only, set by the school) */}
@@ -253,7 +191,7 @@ function PathRow({
             <span className="text-sm font-semibold text-dars-ink truncate">
               Ch {ch.chapter_number} · {ch.title}
             </span>
-            <StatusBadge status={ch.status} />
+            <ChapterStatusBadge status={ch.status} />
             {ch.slot_count > 0 ? (
               <span className="text-xs text-dars-muted">
                 {ch.slot_count} period{ch.slot_count === 1 ? "" : "s"}
@@ -269,8 +207,8 @@ function PathRow({
           </div>
         </div>
 
-        {/* Right rail: generate the chapter plan. Stop propagation so the
-            button doesn't also toggle the row. */}
+        {/* Right rail: generate the chapter plan. Prevent the link from
+            navigating when this button is clicked. */}
         <div className="shrink-0 flex flex-col items-end gap-2">
           {brokenDown ? (
             <span className="text-xs font-medium text-dars-muted">Broken down ✓</span>
@@ -285,6 +223,7 @@ function PathRow({
             <button
               type="button"
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onBreakDown(ch.book_chapter_id);
               }}
@@ -295,29 +234,16 @@ function PathRow({
             </button>
           )}
         </div>
-      </button>
-
-      {/* Expanded body — this chapter's lessons + assessments. */}
-      {expanded ? (
-        <div className="border-t border-dars-rule-light px-3 pb-3 pt-3">
-          <ChapterContents
-            brokenDown={brokenDown}
-            items={items}
-            timelineLoading={timelineLoading}
-            currentSlotId={currentSlotId}
-            rowCallbacks={rowCallbacks}
-            generatingSlotId={generatingSlotId}
-            generatingExamSlotId={generatingExamSlotId}
-            busySlotId={busySlotId}
-          />
-        </div>
-      ) : null}
+      </Link>
     </li>
   );
 }
 
-/** The expanded contents of a chapter: its lesson + assessment rows. */
-function ChapterContents({
+/**
+ * The contents of a chapter: its lesson + assessment rows. Shared by the
+ * chapter page (lp-context-header Phase 3, D-11) — one renderer, one place.
+ */
+export function ChapterContents({
   brokenDown,
   items,
   timelineLoading,
@@ -383,7 +309,11 @@ function ChapterContents({
   );
 }
 
-function StatusBadge({ status }: { status: ClassPathChapterStatus }) {
+/**
+ * The chapter's status pill. Exported so the chapter page can render the same
+ * badge in its header (D-11).
+ */
+export function ChapterStatusBadge({ status }: { status: ClassPathChapterStatus }) {
   return (
     <span
       className={

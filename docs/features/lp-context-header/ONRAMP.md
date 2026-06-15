@@ -42,11 +42,11 @@ Single PR. Branch: `feature/lp-context-header`.
 
 | Work | Status |
 |---|---|
-| Phase 1 — backend context fields (F-1.1 topic_title on /today, F-1.2 chapter on slot-detail) | ✅ (uncommitted on branch) |
-| Phase 2 — `lpTypeLabel()` + `LpContextHeader` + apply at slide-over/today/class-today/timeline | ✅ (uncommitted on branch) |
-| Phase 3 — syllabus chapter page + row→navigation | 🟡 in progress |
+| Phase 1 — backend context fields (F-1.1 topic_title on /today, F-1.2 chapter on slot-detail) | ✅ committed (bf58635) |
+| Phase 2 — `lpTypeLabel()` + `LpContextHeader` + apply at slide-over/today/class-today/timeline | ✅ committed (bf58635) |
+| Phase 3 — syllabus chapter page + row→navigation | ✅ committed |
 
-**Next thing to do:** finish Phase 3 (chapter page route + syllabus row→Link), typecheck/lint, then commit all three phases + open the single PR.
+**Next thing to do:** all three phases built on branch `feature/lp-context-header`. tsc 0 · eslint clean (one pre-existing unrelated lp-viewer warning) · webapp build 0 (new route present) · backend 300 passed/60 skipped. Open the single PR → staging; after merge watch BOTH Railway deploys (server + webapp).
 
 ## Step 6 — Where to find supporting context
 - Backend LP endpoints: `server/src/dars/v2_api/router_today_calendar.py`, `router_generation.py`, `router_class_actions.py`. `lp_type` enum: `server/src/dars/breakdown/planner_models.py` (`VALID_LP_TYPES`).

@@ -65,4 +65,41 @@ Context (from exploration):
 - Changing the syllabus data endpoints — Chapter Page reuses `getSyllabus` + `getTimeline` as-is.
 
 ## Notes from execution
-_(append-only; fill in during the phase)_
+
+**Built (2026-06-15).** Frontend-only, on top of Phases 1+2 (commit `bf58635`).
+
+### Files created
+- `webapp/app/teacher-app/classes/[cst_id]/chapters/[position]/page.tsx` — the Chapter Page (F-3.1/F-3.2).
+
+### Files modified
+- `webapp/components/templates/class-syllabus-tab.tsx` — `PathRow` → navigation `Link`; exported shared pieces (F-3.3).
+- `webapp/app/teacher-app/classes/[cst_id]/page.tsx` — removed dead inline-expand plumbing; pass `cstId` to the syllabus tab.
+
+### F-3.1 / F-3.2 — Chapter Page
+- `"use client"`, reads `cst_id` + `position` via `useParams<{ cst_id; position }>()`, `pos = Number(position)` (per the spec + the bundled `use-params.md`; the existing class detail page uses the same `useParams` pattern, so no `await params`/`use(params)` plumbing).
+- Self-fetching (D-10): on mount, `Promise.allSettled([getSyllabus, getTimeline, today.get])` under a `cancelled` guard. Today is fetched too so the "Now" marker (`currentSlotId`) can pin today's slot exactly as the class detail page does. Shell + "← Back to syllabus" link paint immediately; body shows "Loading chapter…" until the syllabus lands, then "Chapter not found" (with back link, no crash) for an out-of-range position.
+- Resolves the chapter via `chapters.find(c => c.position === pos)` and its slots via `timeline.filter(t => t.breakdown_chapter_position === pos)`, position-sorted (D-9).
+- Header reuses the exact `PathRow` presentation by importing `formatDate` + `ChapterStatusBadge` (newly exported from `class-syllabus-tab.tsx`) plus the same `Ch {n} · {title}` / `{slot_count} periods` / `formatDate(start)→formatDate(end)` strings — no duplicated date logic.
+- Body renders `ChapterContents` (now exported from `class-syllabus-tab.tsx` — D-11), so the lesson/assessment rows are the same `TimelineRow`s with the Phase-2 compact LP-type badge; not re-styled.
+
+### How the Chapter Page wires its handlers
+The page owns the same slot-action surface the class detail page has, copied over: `openLP`, `onTimelineViewLP`, `onTimelineViewExam`, `onTimelineMarkTaught` (lesson → mark-taught, assessment → complete), `onTimelineSkip`, `generateLPAndPoll` + `onTimelineGenerateLP`, `generateExamAndPoll` + `onTimelineGenerateExam`, `markTaughtById`, the `rowCallbacks` useMemo, `currentSlotId` useMemo, and the `{ kind; slotId; title; subtitle }` drawer state with `currentSlotId`/`generatingSlotId`/`generatingExamSlotId`/`busySlotId`. Each handler's `refetch` reloads **this page's** timeline (`loadTimeline`); mark-taught/skip/complete also re-fetch the syllabus (chapter status + slot_count can change). The slide-over renders at the bottom exactly like the class detail page: `<SlideOver open={drawer!==null} …>` containing `<LPViewer slotId/>` or `<ExamViewer slotId/>`. Result: a superset of the old inline accordion — View LP, View exam, Mark taught, Skip, Generate LP (+poll), Generate exam (+poll) all work.
+
+### F-3.3 — syllabus row navigates instead of expanding
+`PathRow` is now a `next/link` `Link` to `/teacher-app/classes/${cstId}/chapters/${ch.position}`; the whole row header is the link target. The "Generate chapter plan" button uses `e.preventDefault()` + `e.stopPropagation()` so it acts without navigating. The disclosure caret is a static right chevron (`›`, no rotation = "go to page"). Added a `cstId: string` prop to `ClassSyllabusTab`, threaded from the page. The chapter card summary (number, title, status, periods, dates) is unchanged.
+
+### What was removed from the syllabus tab + page
+- **`class-syllabus-tab.tsx`:** dropped the inline-expand props from `SyllabusTabProps` and `ClassSyllabusTab` (`timeline`, `currentSlotId`, `expandedChapterId`, `onToggleChapter`, `rowCallbacks`, `generatingSlotId`, `generatingExamSlotId`, `busySlotId`) and the `itemsByPosition` map; `PathRow` lost `expanded`/`onToggle`/`ChapterContents`. `ChapterContents` itself is **kept and exported** (shared by the Chapter Page). `formatDate`, `ChapterContents`, and the chapter `StatusBadge` (renamed `ChapterStatusBadge` on export) are now exported.
+- **`page.tsx`:** removed `expandedChapterId` state, `onToggleChapter`, `rowCallbacks` (useMemo), `currentSlotId` (useMemo), and the six `onTimeline*` handlers (`onTimelineViewLP/ViewExam/MarkTaught/Skip/GenerateLP/GenerateExam`) — all of which existed *only* to back the inline accordion. The `<ClassSyllabusTab>` call site now passes just `data` / `cstId` / `onBreakDown` / `busyChapterId`. Removed the now-unused `TimelineRowCallbacks` import.
+
+### Deliberately KEPT (still used elsewhere — not dead)
+- `timeline` state + `timelineError` + `loadTimeline`, and the `?slot=` deep-link `useEffect` (`openLP`): the calendar template deep-links to `…?tab=lessons&slot=<id>`, which `asTab` maps to the **syllabus** tab; the `slotFocus` effect needs `timeline` loaded to find that slot and open its LP slide-over. Per "when in doubt, leave the load in place," `loadTimeline()` still fires on syllabus-tab activation. The `timelineError` banner above the syllabus tab is preserved.
+- `generateLPAndPoll` / `generateExamAndPoll`, `markTaughtById`, `loadToday`, `loadLessons`, `generatingSlotId` / `generatingExamSlotId` / `busySlotId` state: all still used by the **Today** tab (`onTodayGenerateLP`/`onTodayGenerateExam`, the today card's mark-taught/view-LP, its busy/generating flags).
+
+### Verification (in the worktree, after `npm ci`)
+- `npx tsc --noEmit` → **exit 0**.
+- `npx eslint` on the three files → **exit 0** (clean).
+- `npm run build` → **exit 0**, "Compiled successfully"; the new route `ƒ /teacher-app/classes/[cst_id]/chapters/[position]` appears in the route manifest.
+
+### Deviations / ambiguities
+- None that required a new decision. The back-link copy ("← Back to syllabus") and styling (`text-sm text-dars-muted` + `hover:text-dars-terra`) match the existing "← All classes" pattern. The chapter `StatusBadge` was exported under the name `ChapterStatusBadge` to avoid colliding with the unrelated `StatusBadge` in `class-timeline-tab.tsx` (different visual contract).
