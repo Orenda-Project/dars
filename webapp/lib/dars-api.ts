@@ -640,6 +640,10 @@ export type SubSLOCoverageStatus = "taught" | "not_taught" | "unknown";
 export interface SubSLOCoverageEntry {
   sub_slo_id: UUID;
   sub_slo_code: string;
+  /** Parent SLO — lets the FE roll sub-SLO coverage up to full-SLO coverage
+   * (today-screen-focus D-4). */
+  slo_id: UUID;
+  slo_code: string;
   status: SubSLOCoverageStatus;
 }
 
@@ -647,6 +651,41 @@ export interface SubSLOCoverageResponse {
   cst_id: UUID;
   joined_at_position: number;
   items: SubSLOCoverageEntry[];
+}
+
+/** Full-SLO coverage rolled up from per-sub-SLO coverage (today-screen-focus
+ * D-3). `percent` is 0–100; `sloCount` is the number of distinct in-scope SLOs. */
+export interface SloCoverageRollup {
+  percent: number;
+  sloCount: number;
+}
+
+/**
+ * Roll per-sub-SLO coverage up to **full-SLO** coverage, proportionally
+ * (today-screen-focus D-3): each SLO contributes its taught-sub-SLO fraction,
+ * and the result is the mean of those fractions across all in-scope SLOs.
+ * Only `taught` counts toward the numerator; `unknown` / `not_taught` do not.
+ * Returns `null` when there are no in-scope SLOs (caller renders no bar).
+ */
+export function rollupSloCoverage(
+  resp: SubSLOCoverageResponse,
+): SloCoverageRollup | null {
+  const bySlo = new Map<UUID, { taught: number; total: number }>();
+  for (const entry of resp.items) {
+    const acc = bySlo.get(entry.slo_id) ?? { taught: 0, total: 0 };
+    acc.total += 1;
+    if (entry.status === "taught") acc.taught += 1;
+    bySlo.set(entry.slo_id, acc);
+  }
+  if (bySlo.size === 0) return null;
+  let fractionSum = 0;
+  for (const { taught, total } of bySlo.values()) {
+    fractionSum += total > 0 ? taught / total : 0;
+  }
+  return {
+    percent: Math.round((fractionSum / bySlo.size) * 100),
+    sloCount: bySlo.size,
+  };
 }
 
 // ---------------------------------------------------------------------------

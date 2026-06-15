@@ -11,6 +11,7 @@ import Link from "next/link";
 import type {
   AssessmentSlotEntry,
   LessonSlotEntry,
+  SloCoverageRollup,
   TodayEntry,
   TodayResponse,
 } from "@/lib/dars-api";
@@ -23,10 +24,22 @@ interface TodayTemplateProps {
   onMarkTaught: (slot: LessonSlotEntry, ctx: TodayEntry) => void;
   onViewExam: (slot: AssessmentSlotEntry, ctx: TodayEntry) => void;
   busySlotId: string | null;
+  /** Full-SLO coverage per CST, keyed by cst_id. Absent entry → no bar
+   * (today-screen-focus D-2/D-5). */
+  coverageByCst: Map<string, SloCoverageRollup>;
 }
 
 export function TodayTemplate(props: TodayTemplateProps) {
-  const { today, loading, error, onViewLP, onMarkTaught, onViewExam, busySlotId } = props;
+  const {
+    today,
+    loading,
+    error,
+    onViewLP,
+    onMarkTaught,
+    onViewExam,
+    busySlotId,
+    coverageByCst,
+  } = props;
 
   if (loading && !today) {
     // The first load can take ~30s: the backend lazily breaks down the current
@@ -105,6 +118,7 @@ export function TodayTemplate(props: TodayTemplateProps) {
               onMarkTaught={onMarkTaught}
               onViewExam={onViewExam}
               busy={busySlotId}
+              coverage={coverageByCst.get(entry.cst_id) ?? null}
             />
           </li>
         ))}
@@ -119,12 +133,14 @@ function CSTBlock({
   onMarkTaught,
   onViewExam,
   busy,
+  coverage,
 }: {
   entry: TodayEntry;
   onViewLP: TodayTemplateProps["onViewLP"];
   onMarkTaught: TodayTemplateProps["onMarkTaught"];
   onViewExam: TodayTemplateProps["onViewExam"];
   busy: string | null;
+  coverage: SloCoverageRollup | null;
 }) {
   const chapter = entry.current_chapter;
   return (
@@ -200,66 +216,39 @@ function CSTBlock({
           )}
         </div>
 
-        {/* Last lesson / Next lesson — bracket today so the teacher always
-            sees where they are in the chapter. */}
-        <PrevNextStrip entry={entry} />
+        {/* Full-SLO coverage — how far this class has progressed against its
+            learning outcomes (today-screen-focus D-2). Hidden when there's no
+            coverage to show. */}
+        {coverage ? (
+          <div className="mt-4 pt-4 border-t border-dars-rule-light">
+            <SloCoverageBar coverage={coverage} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-/** Plain-language prev/next pair shown under today's lesson. "Last lesson" is
- * the most recent taught slot; "Next lesson" is the upcoming slot + its date. */
-function PrevNextStrip({ entry }: { entry: TodayEntry }) {
-  const prev = entry.previous_taught;
-  const next = entry.next_up;
+/** Full-SLO coverage bar, reusing the CoverageMeter idiom (terra fill on a
+ * parchment-deep track). `percent` is the proportional rollup (D-3). */
+function SloCoverageBar({ coverage }: { coverage: SloCoverageRollup }) {
+  const { percent, sloCount } = coverage;
   return (
-    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <PrevNextCell
-        label="Last lesson"
-        value={
-          prev
-            ? `Day ${prev.position}`
-            : "Nothing taught yet"
-        }
-        sub={prev?.taught_on ? `Taught ${prev.taught_on}` : undefined}
-      />
-      <PrevNextCell
-        label="Next lesson"
-        value={next ? `Day ${next.position}` : "End of the course"}
-        sub={
-          next
-            ? [
-                next.lp_type ?? undefined,
-                next.projected_date ? `on ${next.projected_date}` : undefined,
-              ]
-                .filter(Boolean)
-                .join(" · ") || undefined
-            : undefined
-        }
-      />
-    </div>
-  );
-}
-
-function PrevNextCell({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-md border border-dars-rule-light bg-dars-parchment p-3">
-      <p className="text-[10px] uppercase tracking-wide text-dars-muted font-semibold">
-        {label}
-      </p>
-      <p className="text-sm font-semibold text-dars-ink mt-0.5">{value}</p>
-      {sub ? (
-        <p className="text-xs text-dars-muted truncate mt-0.5">{sub}</p>
-      ) : null}
+    <div>
+      <div className="flex items-baseline justify-between mb-1">
+        <p className="text-[10px] uppercase tracking-wide text-dars-muted font-semibold">
+          SLO coverage
+        </p>
+        <p className="text-xs text-dars-muted">
+          {percent}% · {sloCount} SLO{sloCount === 1 ? "" : "s"}
+        </p>
+      </div>
+      <div className="h-2 rounded-full bg-dars-parchment-deep overflow-hidden">
+        <div
+          className="h-full bg-dars-terra rounded-full"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
     </div>
   );
 }
