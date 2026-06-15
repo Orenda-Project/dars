@@ -38,15 +38,18 @@ You will NOT execute code, open beads, or write files until you have read everyt
 
 ## Step 5 — Current state
 
-Single PR. Branch: `feature/lp-context-header`.
+**SHIPPED.** PR #150 squash-merged to staging 2026-06-15 (merge commit `4fd1f73`, admin-override of the 1-review gate per user).
 
 | Work | Status |
 |---|---|
-| Phase 1 — backend context fields (F-1.1 topic_title on /today, F-1.2 chapter on slot-detail) | ✅ committed (bf58635) |
-| Phase 2 — `lpTypeLabel()` + `LpContextHeader` + apply at slide-over/today/class-today/timeline | ✅ committed (bf58635) |
-| Phase 3 — syllabus chapter page + row→navigation | ✅ committed |
+| Phase 1 — backend context fields (F-1.1 topic_title on /today, F-1.2 chapter on slot-detail) | ✅ shipped #150 |
+| Phase 2 — `lpTypeLabel()` + `LpContextHeader` + apply at slide-over/today/class-today/timeline | ✅ shipped #150 |
+| Phase 3 — syllabus chapter page + view-mode row→navigation | ✅ shipped #150 |
+| Reconcile w/ teacher-adjustable-syllabus #152 (D-12) | ✅ done in the merge |
 
-**Next thing to do:** all three phases built on branch `feature/lp-context-header`. tsc 0 · eslint clean (one pre-existing unrelated lp-viewer warning) · webapp build 0 (new route present) · backend 300 passed/60 skipped. Open the single PR → staging; after merge watch BOTH Railway deploys (server + webapp).
+Mid-build, #151 (today-screen-focus) and #152 (teacher-adjustable-syllabus) landed on staging. Reconciled via two merge commits on the branch; the load-bearing call is **D-12** (view→chapter page, edit→list-level re-date/reorder/remove/add). Verified pre-merge: webapp tsc 0 · eslint 0 · build 0 (chapter route present) · backend 311 passed/62 skipped.
+
+**Deploys:** both green on the merge commit (19:17 PKT) — server (`dars`) `a425aeb1` SUCCESS, webapp (`truthful-renewal`) `b95c5cf0` SUCCESS. **Feature complete end-to-end.**
 
 ## Step 6 — Where to find supporting context
 - Backend LP endpoints: `server/src/dars/v2_api/router_today_calendar.py`, `router_generation.py`, `router_class_actions.py`. `lp_type` enum: `server/src/dars/breakdown/planner_models.py` (`VALID_LP_TYPES`).
