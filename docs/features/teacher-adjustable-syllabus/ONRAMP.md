@@ -32,7 +32,7 @@ You will NOT execute code, open beads, or write files until you've read what thi
 - Autonomous; no pre-action narration. One question at a time via AskUserQuestion. Sub-agents for big self-contained builds. Re-read a file before editing if edited earlier. "gg"/"chammaar".
 
 ## Step 5 — Current state
-**As of 2026-06-15 — 🟡 Phase 3 (Revival) BUILT on `feat/teacher-adjustable-syllabus-revival`; awaiting PR merge.**
+**As of 2026-06-15 — ✅ CLOSED. Phase 3 (Revival) shipped via PR #152 (merge `00a4d05`); both Railway deploys (server `dars` + webapp `truthful-renewal`) green on the merge commit.**
 
 History: Phases 1+2 shipped 2026-06-03 (PR #109) → then the mutation layer was **removed**
 and the tab made read-only by `teacher-readonly-syllabus` (#130/#131). The `class_chapters`
@@ -45,7 +45,7 @@ the editable UI do not. User reopened it 2026-06-15 (full re-date + pick + reord
 | Phase 1 — backend (#109) | `class_chapters` + pick/date/reorder/remove/recommend | ✅ shipped, then ⛔ removed by #130/#131 |
 | Phase 2 — teacher UI (#109) | recommendation → pick → date → reorder → break down | ✅ shipped, then ⛔ read-only-fied by #130/#131 |
 | Plan (revival) | D-9…D-12 + `05-phase-3-revival.md` | ✅ |
-| **Phase 3 — Revival** | restore mutation layer + editable UI on today's auto-seeded expandable tab | 🟡 **built; awaiting PR merge** — backend mutation layer (pick/set-dates/reorder/remove + `validate_reorder` + D-11 `remove_chapter`) + endpoints/schemas + dars-api client + explicit Edit-syllabus mode grafted on the accordion (D-13). 311 backend tests pass; tsc/lint/build clean. |
+| **Phase 3 — Revival** | restore mutation layer + editable UI on today's auto-seeded expandable tab | ✅ **shipped (PR #152, `00a4d05`)** — backend mutation layer (pick/set-dates/reorder/remove + `validate_reorder` + D-11 `remove_chapter`) + endpoints/schemas + dars-api client + explicit Edit-syllabus mode grafted on the accordion (D-13/D-17). 311 backend tests pass; tsc/lint/build clean. Rebased over #151 (`today-screen-focus`) — additive merge in `router_class_actions.py`/`schemas_class_actions.py`/`dars-api.ts`, re-verified. Both deploys green. |
 
 **What changed since #109 (must account for):** (1) **auto-seed** stays — class path is
 pre-copied from the org breakdown; teacher edits on top (D-10). (2) dynamic-planner added
@@ -53,9 +53,9 @@ pre-copied from the org breakdown; teacher edits on top (D-10). (2) dynamic-plan
 chapter with generated slots (D-11). (3) the syllabus tab is now expandable-to-LPs (#147) —
 graft edits onto it, don't revert (D-12).
 
-**Next thing to do:** open bead `feat-teacher-adjustable-syllabus-phase-3-revival`, branch
-`feat/teacher-adjustable-syllabus-revival` from staging, implement F3.1→F3.5 in order
-(lift backend from `91e1763`, modulo D-11), one PR → staging, watch both deploys.
+**Next thing to do:** nothing — feature complete end-to-end. (If `lp-context-header` later
+moves the chapter view to a dedicated Chapter Page, the edit affordances grafted on the
+accordion here will need re-homing onto that page per D-15/D-17.)
 
 ## Step 6 — Context
 - Staging DB (Railway Postgres) conn string in conversation / `creds/dars/dars.txt`.
