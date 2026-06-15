@@ -255,18 +255,23 @@ async def get_sub_slo_coverage(
     joined_at = state["joined_at_position"] if state else 1
 
     # Build the universe + map each sub-SLO to its earliest lesson position.
+    # Carry the parent SLO (slo_id/slo_code) so the frontend can roll sub-SLO
+    # coverage up to full-SLO coverage (today-screen-focus D-4).
     rows = await conn.fetch(
         """
         SELECT
             ss.id AS sub_slo_id,
             ss.code AS sub_slo_code,
+            sl.id AS slo_id,
+            sl.code AS slo_code,
             MIN(cls.position) AS first_position
         FROM class_lesson_slots cls
         JOIN topic_sub_slos tss ON tss.topic_id = cls.topic_id
         JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+        JOIN slos sl ON sl.id = ss.slo_id
         WHERE cls.cst_id = $1
-        GROUP BY ss.id, ss.code
-        ORDER BY ss.code
+        GROUP BY ss.id, ss.code, sl.id, sl.code
+        ORDER BY sl.code, ss.code
         """,
         cst_id,
     )
@@ -288,6 +293,8 @@ async def get_sub_slo_coverage(
             SubSLOCoverageEntry(
                 sub_slo_id=r["sub_slo_id"],
                 sub_slo_code=r["sub_slo_code"],
+                slo_id=r["slo_id"],
+                slo_code=r["slo_code"],
                 status=status_,
             )
         )

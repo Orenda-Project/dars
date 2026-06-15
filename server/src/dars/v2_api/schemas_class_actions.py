@@ -60,6 +60,11 @@ class OnboardResponse(BaseModel):
 class SubSLOCoverageEntry(BaseModel):
     sub_slo_id: UUID
     sub_slo_code: str
+    # Parent SLO of this sub-SLO — lets the frontend roll sub-SLO coverage up
+    # to full-SLO coverage (today-screen-focus D-4). Additive; existing
+    # consumers ignore these fields.
+    slo_id: UUID
+    slo_code: str
     status: str  # 'taught' | 'not_taught' | 'unknown'
 
 
