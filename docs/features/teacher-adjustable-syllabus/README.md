@@ -1,5 +1,12 @@
 # Teacher-Adjustable Syllabus (suggestion-led)
 
+> **Status: REOPENED 2026-06-15 (Phase 3 — Revival).** Originally shipped 2026-06-03 (PR
+> #109), then frozen read-only by `teacher-readonly-syllabus` (#130/#131). The user has
+> reversed that: teachers edit their own class's path again — full pick / set-dates /
+> reorder / remove. The class is auto-seeded from the org's published breakdown (kept,
+> D-10) and the teacher edits on top. See **[`05-phase-3-revival.md`](05-phase-3-revival.md)**
+> and D-9…D-12 in the decision log. D-1…D-8 stand unchanged.
+
 **Scope (deliberately narrow):** let the teacher decide *which chapters to teach, and in
 what order*, guided by a recommendation from the global syllabus. That's the whole job.
 
@@ -31,9 +38,10 @@ class its own ordered chapter path:
 1. [`00-glossary.md`](00-glossary.md) — terms (class path, recommendation, pick, reorder).
 2. [`01-decision-log.md`](01-decision-log.md) — frozen decisions D-1….
 3. [`02-data-model.md`](02-data-model.md) — `class_chapters` table.
-4. [`03-phase-1-class-chapters.md`](03-phase-1-class-chapters.md) — `class_chapters` + pick/date/list + recommended-next (backend).
-5. [`04-phase-2-teacher-ui.md`](04-phase-2-teacher-ui.md) — teacher-app: recommendation prompt, pick, set dates, reorder; (optional) status badges + lock.
-6. [`ONRAMP.md`](ONRAMP.md) — single entry point for any agent picking this up.
+4. [`03-phase-1-class-chapters.md`](03-phase-1-class-chapters.md) — `class_chapters` + pick/date/list + recommended-next (backend). _(shipped #109, mutation layer later removed)_
+5. [`04-phase-2-teacher-ui.md`](04-phase-2-teacher-ui.md) — teacher-app: recommendation prompt, pick, set dates, reorder; (optional) status badges + lock. _(shipped #109, later read-only-fied)_
+6. [`05-phase-3-revival.md`](05-phase-3-revival.md) — **active.** Restore the mutation layer + editable UI on top of today's auto-seeded, expandable tab (D-9…D-12).
+7. [`ONRAMP.md`](ONRAMP.md) — single entry point for any agent picking this up.
 
 ## Document precedence
 

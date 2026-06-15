@@ -10,7 +10,7 @@ You will NOT execute code, open beads, or write files until you've read what thi
 3. `docs/features/teacher-adjustable-syllabus/00-glossary.md`
 4. `docs/features/teacher-adjustable-syllabus/01-decision-log.md` — D-1…D-8 frozen.
 5. `docs/features/teacher-adjustable-syllabus/02-data-model.md` — `class_chapters`.
-6. The active phase file (Step 5).
+6. The active phase file: `05-phase-3-revival.md` (Step 5). The decision log's **Revival** section (D-9…D-12) is the load-bearing read.
 
 ## Step 2 — Document precedence
 ```
@@ -22,28 +22,40 @@ You will NOT execute code, open beads, or write files until you've read what thi
 ```
 
 ## Step 3 — Who you are
-- **This feature ships as ONE PR** (both phases) per user instruction — not phase-per-PR.
-- **Working in a git worktree** `.claude/worktrees/teacher-adjustable-syllabus` on branch `feat/teacher-adjustable-syllabus` (another agent works the main checkout on `intelligent-chapter-planner` — do NOT touch their files).
-- PR targets `staging`. NEVER main/prod.
-- After merge, watch BOTH Railway deploys (server `dars`, webapp `truthful-renewal`) via `railway deployment list -s <svc>` (MCP auth flaky; CLI works).
+- **Phase 3 (Revival) ships as ONE PR** (backend + frontend together; small + coupled).
+- **Own worktree, own branch (D-15):** worktree `.claude/worktrees/teacher-adjustable-syllabus-revival`, branch `feat/teacher-adjustable-syllabus-revival` off `staging`. Isolated from `lp-context-header` — do NOT touch its worktree/files. NEVER main/prod.
+- **Baseline:** lift the removed backend from commit `91e1763` (#109); graft the UI onto today's expandable tab (D-12) — do NOT revert `class-syllabus-tab.tsx`.
+- **⚠️ Before F3.4/F3.5:** check the `lp-context-header` collision (see `05-phase-3-revival.md` + D-15) — if its Chapter Page (`webapp/app/teacher-app/classes/[cst_id]/chapters/[position]/page.tsx`) is on staging, put the edit affordances there, not on the removed accordion.
+- After merge, watch BOTH Railway deploys (server + webapp; webapp is Railway, not Vercel) via `mcp__Railway__list_deployments`.
 
 ## Step 4 — Conversational style
 - Autonomous; no pre-action narration. One question at a time via AskUserQuestion. Sub-agents for big self-contained builds. Re-read a file before editing if edited earlier. "gg"/"chammaar".
 
 ## Step 5 — Current state
-**As of 2026-06-03 — ✅ CLOSED. Shipped PR #109, server+webapp green, class_chapters live.**
+**As of 2026-06-15 — ✅ CLOSED. Phase 3 (Revival) shipped via PR #152 (merge `00a4d05`); both Railway deploys (server `dars` + webapp `truthful-renewal`) green on the merge commit.**
+
+History: Phases 1+2 shipped 2026-06-03 (PR #109) → then the mutation layer was **removed**
+and the tab made read-only by `teacher-readonly-syllabus` (#130/#131). The `class_chapters`
+table, auto-seed, and `list_class_path` survive on staging; pick/set-dates/reorder/remove +
+the editable UI do not. User reopened it 2026-06-15 (full re-date + pick + reorder + remove).
 
 | Phase | Scope | Status |
 |---|---|---|
-| Plan | scope, decision log, data model | ✅ |
-| Phase 1 — backend | `class_chapters` + pick/date/reorder/recommend + break-it-down date source | ✅ built; 176 non-DB tests pass |
-| Phase 2 — teacher UI | recommendation prompt → pick → date → reorder → break down | ✅ built; tsc clean |
-| → single PR | both phases together | ✅ open |
+| Plan (orig) | scope, decision log D-1…D-8, data model | ✅ |
+| Phase 1 — backend (#109) | `class_chapters` + pick/date/reorder/remove/recommend | ✅ shipped, then ⛔ removed by #130/#131 |
+| Phase 2 — teacher UI (#109) | recommendation → pick → date → reorder → break down | ✅ shipped, then ⛔ read-only-fied by #130/#131 |
+| Plan (revival) | D-9…D-12 + `05-phase-3-revival.md` | ✅ |
+| **Phase 3 — Revival** | restore mutation layer + editable UI on today's auto-seeded expandable tab | ✅ **shipped (PR #152, `00a4d05`)** — backend mutation layer (pick/set-dates/reorder/remove + `validate_reorder` + D-11 `remove_chapter`) + endpoints/schemas + dars-api client + explicit Edit-syllabus mode grafted on the accordion (D-13/D-17). 311 backend tests pass; tsc/lint/build clean. Rebased over #151 (`today-screen-focus`) — additive merge in `router_class_actions.py`/`schemas_class_actions.py`/`dars-api.ts`, re-verified. Both deploys green. |
 
-**Phase 1 detail:** migration `20260603100000_class_chapters.sql` (validated rolled-back); new `class_chapter_service.py` (list/pick/set-dates/reorder/remove/recommend + derived status + reorder-lock, 19 logic tests); reworked `GET /csts/{id}/syllabus` + 4 CRUD endpoints; `generate_chapter_plan` now reads dates from `class_chapters`.
-**Phase 2 detail:** reworked `class-syllabus-tab.tsx` (empty→recommendation prompt + pick-any; non-empty→ordered path with date edit, status badge, reorder ▲▼ with lock, remove, break-it-down); page handlers set state from each mutation's returned response; fixed a Today-tab regression (removed `is_current`/`is_planned` refs).
+**What changed since #109 (must account for):** (1) **auto-seed** stays — class path is
+pre-copied from the org breakdown; teacher edits on top (D-10). (2) dynamic-planner added
+`origin`/`reteach_for_sub_slo_id`/`flex` to slot tables → `remove_chapter` must reject any
+chapter with generated slots (D-11). (3) the syllabus tab is now expandable-to-LPs (#147) —
+graft edits onto it, don't revert (D-12).
 
-**Next:** after PR merges + both Railway deploys green, mark ✅ Closed; move to Closed in docs/features/README.md; close bead.
+**Next thing to do:** nothing — feature complete end-to-end. (If `lp-context-header` later
+moves the chapter view to a dedicated Chapter Page, the edit affordances grafted on the
+accordion here will need re-homing onto that page per D-15/D-17.)
 
 ## Step 6 — Context
 - Staging DB (Railway Postgres) conn string in conversation / `creds/dars/dars.txt`.

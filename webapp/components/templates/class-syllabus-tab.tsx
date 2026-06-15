@@ -1,25 +1,33 @@
 /**
- * teacher-readonly-syllabus (Phase 2, F2.2) — Syllabus tab template.
+ * Syllabus tab template — teacher-adjustable-syllabus (Phase 3 Revival, F3.4)
+ * reconciled with lp-context-header Phase 3 (D-12).
  *
- * READ-ONLY path. The class teaching path is set by the school (org-decided,
- * D-1) and auto-seeded on the server (Phase 1). The teacher cannot add,
- * reorder, remove, or re-date chapters here.
+ * The class teaching path is auto-seeded from the org's published breakdown
+ * (D-10) and shown as a settled plan by default (VIEW mode: dates as plain
+ * text, no controls). The teacher can flip into EDIT mode (D-13) to adjust the
+ * path for THIS class only (D-1/D-9): re-date, reorder upcoming chapters,
+ * remove yet-to-start un-generated chapters, and add a chapter.
  *
- * lp-context-header Phase 3 (D-8/D-11): each chapter row is now a NAVIGATION
- * link to its dedicated chapter page (`/teacher-app/classes/[cst_id]/chapters/
- * [position]`) instead of an inline accordion. The per-chapter "Generate chapter
- * plan" button stays in the right rail for chapters that haven't been broken
- * down yet (and does NOT navigate). The chapter body (lessons + assessments)
- * now lives on the chapter page, which reuses {@link ChapterContents} below.
+ * VIEW vs EDIT interaction (lp-context-header D-12):
+ *   - VIEW  → each chapter row is a navigation Link to the dedicated Chapter
+ *             Page (`/teacher-app/classes/{cstId}/chapters/{position}`), which
+ *             shows that chapter's lessons + assessments. No inline accordion.
+ *   - EDIT  → the row reveals path-mutation affordances (reorder ▲▼, date
+ *             inputs, remove ✕) and does NOT navigate; "Add a chapter" shows.
+ *   The per-chapter "Generate chapter plan" button stays in the right rail for
+ *   chapters that haven't been broken down yet, in both modes.
  *
- * - Empty path → calm read-only message (D-7): the school hasn't published a
- *   syllabus for this class yet. NOT a picker.
- * - Non-empty  → the ordered path: each row shows the chapter number + title,
- *   position, date range as plain text, slot count, status badge; clicking it
- *   opens that chapter's page. Chapters not yet broken down show a "generate a
- *   plan" action in the right rail.
+ * - Empty path → calm message (D-7) when there is no recommendation; when a
+ *   recommendation exists, the add-a-chapter prompt lets the teacher start.
+ * - Non-empty  → the ordered path: chapter number + title, position, date range
+ *   (plain text in view; inputs in edit), slot count, status badge.
  *
- * Pure template — data + callbacks as props, no fetching.
+ * Pure template — data + callbacks as props, no fetching (webapp/CLAUDE.md).
+ * The `editing` boolean is owned by the page (D-13) and passed in with
+ * `onToggleEdit`; the template never holds it.
+ *
+ * `ChapterContents`, `formatDate`, and `ChapterStatusBadge` are exported so the
+ * dedicated Chapter Page reuses one renderer (lp-context-header D-11).
  */
 "use client";
 
@@ -36,14 +44,42 @@ import {
   type TimelineRowCallbacks,
 } from "@/components/templates/class-timeline-tab";
 
+/** A book chapter the teacher may add to the path (the picker source). */
+export interface BookChapterOption {
+  book_chapter_id: string;
+  chapter_number: number;
+  title: string;
+}
+
 interface SyllabusTabProps {
   data: SyllabusForCstResponse;
-  /** CST id — used to build each chapter row's link to its chapter page. */
+  /** The CST whose syllabus this is — used to build chapter-page links. */
   cstId: string;
   /** Action 2: break a chapter down into slots. */
   onBreakDown: (book_chapter_id: string) => void;
   /** Set while a single chapter's break-down is in flight. */
   busyChapterId: string | null;
+
+  /* ---- Edit-syllabus mode (D-13) — owned by the page ---- */
+  /** True when the tab is in edit mode (controls revealed). */
+  editing: boolean;
+  /** Flip between view and edit mode. */
+  onToggleEdit: () => void;
+  /** Pick a chapter into the path (add-a-chapter). */
+  onPick: (book_chapter_id: string) => void;
+  /** Set a path chapter's date range (one or both bounds). */
+  onSetDates: (
+    book_chapter_id: string,
+    dates: { start_date?: string; end_date?: string },
+  ) => void;
+  /** Reorder the path to this exact book_chapter_id order. */
+  onReorder: (book_chapter_ids: string[]) => void;
+  /** Remove a yet-to-start, un-generated chapter from the path. */
+  onRemove: (book_chapter_id: string) => void;
+  /** Every book chapter (for the picker); null while still loading. */
+  bookChapters: BookChapterOption[] | null;
+  /** True while any path mutation (pick/date/reorder/remove) is in flight. */
+  pathBusy: boolean;
 }
 
 const STATUS_LABEL: Record<ClassPathChapterStatus, string> = {
@@ -58,11 +94,7 @@ const STATUS_CLASS: Record<ClassPathChapterStatus, string> = {
   done: "bg-emerald-100 text-emerald-800",
 };
 
-/**
- * ISO date (YYYY-MM-DD) → "12 Mar 2026" plain text, or "—" when unset.
- * Exported so the chapter page can render the same date range without
- * re-implementing the format (D-11).
- */
+/** ISO date (YYYY-MM-DD) → "12 Mar 2026" plain text, or "—" when unset. */
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
@@ -75,45 +107,186 @@ export function formatDate(iso: string | null): string {
 }
 
 export function ClassSyllabusTab(props: SyllabusTabProps) {
-  const { data, cstId, onBreakDown, busyChapterId } = props;
+  const {
+    data,
+    cstId,
+    onBreakDown,
+    busyChapterId,
+    editing,
+    onToggleEdit,
+    onPick,
+    onSetDates,
+    onReorder,
+    onRemove,
+    bookChapters,
+    pathBusy,
+  } = props;
 
   // Path is server-ordered by `position`; keep that order explicitly.
   const path = [...data.chapters].sort((a, b) => a.position - b.position);
   const isEmpty = path.length === 0;
+  const recommended = data.recommended_next;
+
+  // Move a chapter one step up/down within the path and submit the new order
+  // (D-6 lock is enforced server-side; the UI only offers handles on
+  // yet_to_start rows). No-op at the ends.
+  const orderIds = path.map((c) => c.book_chapter_id);
+  function move(idx: number, delta: number) {
+    const target = idx + delta;
+    if (target < 0 || target >= orderIds.length) return;
+    const next = [...orderIds];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    onReorder(next);
+  }
 
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-sm font-semibold text-dars-ink">
-            {data.periods_per_week} periods/week
-          </span>
-          {!isEmpty ? (
-            <span className="text-xs text-dars-muted">
-              · {path.length} chapter{path.length === 1 ? "" : "s"}
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold text-dars-ink">
+              {data.periods_per_week} periods/week
             </span>
+            {!isEmpty ? (
+              <span className="text-xs text-dars-muted">
+                · {path.length} chapter{path.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </div>
+          {/* Edit-syllabus toggle (D-13). Hidden on a genuinely empty path
+              with no recommendation — there's nothing to edit yet. */}
+          {!isEmpty || recommended ? (
+            <button
+              type="button"
+              onClick={onToggleEdit}
+              className={
+                "shrink-0 px-3 py-1 rounded text-xs font-semibold " +
+                (editing
+                  ? "bg-dars-ink text-dars-parchment hover:opacity-90"
+                  : "border border-dars-rule-light text-dars-ink hover:bg-dars-parchment-deep")
+              }
+            >
+              {editing ? "Done" : "Edit syllabus"}
+            </button>
           ) : null}
         </div>
         <p className="text-xs text-dars-muted">
-          Your school sets this syllabus. Open a chapter to see its lessons and
-          assessments, or generate a plan from any chapter below.
+          {editing
+            ? "Editing this class's syllabus — adjust dates, reorder upcoming chapters, or add/remove. Changes apply to this class only."
+            : "Your school sets this syllabus. Open a chapter to see its lessons and assessments, or generate a plan from any chapter below."}
         </p>
       </div>
 
-      {isEmpty ? (
+      {isEmpty && !recommended ? (
         <EmptyPathMessage />
       ) : (
-        <ol className="space-y-2">
-          {path.map((ch) => (
-            <PathRow
-              key={ch.book_chapter_id}
-              ch={ch}
-              cstId={cstId}
-              onBreakDown={onBreakDown}
-              breakingDown={busyChapterId === ch.book_chapter_id}
+        <>
+          {!isEmpty ? (
+            <ol className="space-y-2">
+              {path.map((ch, idx) => (
+                <PathRow
+                  key={ch.book_chapter_id}
+                  ch={ch}
+                  cstId={cstId}
+                  onBreakDown={onBreakDown}
+                  breakingDown={busyChapterId === ch.book_chapter_id}
+                  editing={editing}
+                  onSetDates={onSetDates}
+                  onRemove={onRemove}
+                  onMoveUp={() => move(idx, -1)}
+                  onMoveDown={() => move(idx, +1)}
+                  canMoveUp={idx > 0}
+                  canMoveDown={idx < path.length - 1}
+                  pathBusy={pathBusy}
+                />
+              ))}
+            </ol>
+          ) : null}
+
+          {/* Add-a-chapter (D-13). Always shown in edit mode; on an empty path
+              with a recommendation it's the only way to start the path. */}
+          {editing || (isEmpty && recommended) ? (
+            <AddChapterPanel
+              recommended={recommended}
+              bookChapters={bookChapters}
+              pathBookChapterIds={new Set(orderIds)}
+              onPick={onPick}
+              pathBusy={pathBusy}
             />
-          ))}
-        </ol>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* F3.4 — add-a-chapter affordance (edit mode, or empty-path start)    */
+/* ------------------------------------------------------------------ */
+
+function AddChapterPanel({
+  recommended,
+  bookChapters,
+  pathBookChapterIds,
+  onPick,
+  pathBusy,
+}: {
+  recommended: SyllabusForCstResponse["recommended_next"];
+  bookChapters: BookChapterOption[] | null;
+  pathBookChapterIds: Set<string>;
+  onPick: (book_chapter_id: string) => void;
+  pathBusy: boolean;
+}) {
+  // Pickable = book chapters not already in the path.
+  const pickable = (bookChapters ?? []).filter(
+    (c) => !pathBookChapterIds.has(c.book_chapter_id),
+  );
+
+  return (
+    <div className="rounded-md border border-dashed border-dars-rule-light bg-dars-parchment p-3 space-y-2">
+      <p className="text-xs font-semibold text-dars-ink">Add a chapter</p>
+
+      {recommended ? (
+        <button
+          type="button"
+          onClick={() => onPick(recommended.book_chapter_id)}
+          disabled={pathBusy}
+          className="w-full text-left px-3 py-2 rounded border border-dars-terra/40 bg-dars-terra/10 text-xs text-dars-ink hover:bg-dars-terra/15 disabled:opacity-50"
+        >
+          <span className="font-semibold text-dars-terra">Suggested next:</span>{" "}
+          Ch {recommended.chapter_number} — {recommended.title}
+        </button>
+      ) : null}
+
+      {bookChapters === null ? (
+        <p className="text-xs text-dars-muted">Loading chapters…</p>
+      ) : pickable.length === 0 ? (
+        <p className="text-xs text-dars-muted">
+          Every chapter is already in this class&rsquo;s path.
+        </p>
+      ) : (
+        <label className="block">
+          <span className="sr-only">Pick a chapter to add</span>
+          <select
+            defaultValue=""
+            disabled={pathBusy}
+            onChange={(e) => {
+              const id = e.target.value;
+              if (id) onPick(id);
+              e.target.value = "";
+            }}
+            className="w-full text-xs rounded border border-dars-rule-light bg-dars-parchment px-2 py-1.5 text-dars-ink disabled:opacity-50"
+          >
+            <option value="" disabled>
+              Pick another chapter…
+            </option>
+            {pickable.map((c) => (
+              <option key={c.book_chapter_id} value={c.book_chapter_id}>
+                Ch {c.chapter_number} — {c.title}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
     </div>
   );
@@ -138,7 +311,9 @@ function EmptyPathMessage() {
 }
 
 /* ------------------------------------------------------------------ */
-/* F-3.3 — a chapter row in the path: a link to the chapter page       */
+/* A chapter row in the path.                                          */
+/*   VIEW → navigation Link to the Chapter Page (D-8/D-12).            */
+/*   EDIT → re-date / reorder / remove controls; no navigation.        */
 /* ------------------------------------------------------------------ */
 
 function PathRow({
@@ -146,11 +321,30 @@ function PathRow({
   cstId,
   onBreakDown,
   breakingDown,
+  editing,
+  onSetDates,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+  pathBusy,
 }: {
   ch: ClassPathChapter;
   cstId: string;
   onBreakDown: (book_chapter_id: string) => void;
   breakingDown: boolean;
+  editing: boolean;
+  onSetDates: (
+    book_chapter_id: string,
+    dates: { start_date?: string; end_date?: string },
+  ) => void;
+  onRemove: (book_chapter_id: string) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  pathBusy: boolean;
 }) {
   const isCurrent = ch.status === "in_progress";
   // "Broken down" = the chapter actually has generated slots — NOT slot_count,
@@ -161,9 +355,49 @@ function PathRow({
   // has nothing to size against, so the action is disabled with a reason.
   const noCapacity = ch.slot_count === 0;
 
+  // D-6 / D-11 locks: only a yet_to_start chapter may move; only a
+  // yet_to_start AND un-generated chapter may be removed.
+  const reorderable = ch.status === "yet_to_start";
+  const removable = ch.status === "yet_to_start" && !ch.is_generated;
+
   const accent = isCurrent
     ? "relative border-dars-terra ring-1 ring-dars-terra/40"
     : "border-dars-rule-light";
+
+  const chapterHref = `/teacher-app/classes/${cstId}/chapters/${ch.position}`;
+
+  // The title region: identical content in both modes, but in VIEW it's a
+  // Link to the chapter page (D-12) and in EDIT it's plain (no navigation, so
+  // the date inputs / controls below stay the focus).
+  const titleInner = (
+    <>
+      <span className="pt-0.5 text-xs font-mono text-dars-muted-light tabular-nums">
+        {ch.position}.
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span className="text-sm font-semibold text-dars-ink truncate">
+            Ch {ch.chapter_number} · {ch.title}
+          </span>
+          <ChapterStatusBadge status={ch.status} />
+          {ch.slot_count > 0 ? (
+            <span className="text-xs text-dars-muted">
+              {ch.slot_count} period{ch.slot_count === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </span>
+
+        {/* View-mode date range — plain text. */}
+        {!editing ? (
+          <span className="flex items-center gap-1 text-xs text-dars-ink-soft">
+            <span className="font-mono">{formatDate(ch.start_date)}</span>
+            <span className="text-dars-muted-light">→</span>
+            <span className="font-mono">{formatDate(ch.end_date)}</span>
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
 
   return (
     <li className={"rounded-md border bg-dars-parchment " + accent}>
@@ -171,44 +405,69 @@ function PathRow({
         <span className="absolute -left-px top-3 bottom-3 w-0.5 rounded bg-dars-terra" />
       ) : null}
 
-      {/* Header — the whole row links to this chapter's dedicated page (D-8). */}
-      <Link
-        href={`/teacher-app/classes/${cstId}/chapters/${ch.position}`}
-        className="w-full text-left p-3 flex items-start gap-3 hover:bg-dars-parchment-mid rounded-md transition-colors"
-      >
-        {/* Disclosure caret — always points right ("go to page"), no rotation. */}
-        <span className="pt-0.5 text-dars-muted-light" aria-hidden>
-          ›
-        </span>
-
-        {/* Position (read-only, set by the school) */}
-        <span className="pt-0.5 text-xs font-mono text-dars-muted-light tabular-nums">
-          {ch.position}.
-        </span>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="text-sm font-semibold text-dars-ink truncate">
-              Ch {ch.chapter_number} · {ch.title}
-            </span>
-            <ChapterStatusBadge status={ch.status} />
-            {ch.slot_count > 0 ? (
-              <span className="text-xs text-dars-muted">
-                {ch.slot_count} period{ch.slot_count === 1 ? "" : "s"}
+      <div className="p-3 flex items-start gap-3">
+        {/* Reorder ▲▼ — edit mode, yet_to_start only (D-6). */}
+        {editing ? (
+          <div className="flex flex-col items-center pt-0.5">
+            {reorderable ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onMoveUp}
+                  disabled={!canMoveUp || pathBusy}
+                  aria-label="Move chapter up"
+                  className="text-dars-muted hover:text-dars-ink disabled:opacity-30 leading-none text-xs"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  onClick={onMoveDown}
+                  disabled={!canMoveDown || pathBusy}
+                  aria-label="Move chapter down"
+                  className="text-dars-muted hover:text-dars-ink disabled:opacity-30 leading-none text-xs"
+                >
+                  ▼
+                </button>
+              </>
+            ) : (
+              <span
+                className="text-dars-muted-light leading-none text-xs"
+                title="Started chapters are locked in place"
+                aria-hidden
+              >
+                🔒
               </span>
-            ) : null}
+            )}
           </div>
+        ) : null}
 
-          {/* Date range (D-7) — plain text, org-decided, not editable. */}
-          <div className="flex items-center gap-1 text-xs text-dars-ink-soft">
-            <span className="font-mono">{formatDate(ch.start_date)}</span>
-            <span className="text-dars-muted-light">→</span>
-            <span className="font-mono">{formatDate(ch.end_date)}</span>
+        {/* Title region. VIEW → Link to the chapter page (chevron points right,
+            "open"); EDIT → plain, non-navigating. */}
+        {editing ? (
+          <div className="flex-1 min-w-0 flex items-start gap-3">
+            <span className="pt-0.5 text-dars-muted-light text-xs" aria-hidden>
+              ▸
+            </span>
+            {titleInner}
           </div>
-        </div>
+        ) : (
+          <Link
+            href={chapterHref}
+            aria-label={`Open chapter ${ch.chapter_number}: ${ch.title}`}
+            className="flex-1 min-w-0 text-left flex items-start gap-3 group"
+          >
+            <span
+              className="pt-0.5 text-dars-muted-light text-xs group-hover:text-dars-terra"
+              aria-hidden
+            >
+              ›
+            </span>
+            {titleInner}
+          </Link>
+        )}
 
-        {/* Right rail: generate the chapter plan. Prevent the link from
-            navigating when this button is clicked. */}
+        {/* Right rail. */}
         <div className="shrink-0 flex flex-col items-end gap-2">
           {brokenDown ? (
             <span className="text-xs font-medium text-dars-muted">Broken down ✓</span>
@@ -222,27 +481,86 @@ function PathRow({
           ) : (
             <button
               type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onBreakDown(ch.book_chapter_id);
-              }}
+              onClick={() => onBreakDown(ch.book_chapter_id)}
               disabled={breakingDown}
               className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90 disabled:opacity-50"
             >
               {breakingDown ? "Generating…" : "Generate chapter plan"}
             </button>
           )}
+
+          {/* Remove ✕ — edit mode; only a yet_to_start, un-generated chapter
+              (D-11). Otherwise show the reason. */}
+          {editing ? (
+            removable ? (
+              <button
+                type="button"
+                onClick={() => onRemove(ch.book_chapter_id)}
+                disabled={pathBusy}
+                className="text-xs text-dars-terra hover:underline disabled:opacity-50"
+              >
+                ✕ Remove
+              </button>
+            ) : (
+              <span
+                className="text-[10px] text-dars-muted-light"
+                title={
+                  ch.is_generated
+                    ? "This chapter has a generated plan; clear it before removing."
+                    : "Started chapters can't be removed."
+                }
+              >
+                Can&rsquo;t remove
+              </span>
+            )
+          ) : null}
         </div>
-      </Link>
+      </div>
+
+      {/* Edit-mode date inputs — a full-width strip under the header. onBlur
+          persists only a changed bound; COALESCE on the server keeps the
+          other one. */}
+      {editing ? (
+        <div className="px-3 pb-3 -mt-1 flex items-center gap-2 text-xs text-dars-ink-soft">
+          <label className="flex items-center gap-1">
+            <span className="sr-only">Start date</span>
+            <input
+              type="date"
+              defaultValue={ch.start_date ?? ""}
+              disabled={pathBusy}
+              onBlur={(e) => {
+                const v = e.target.value || undefined;
+                if ((ch.start_date ?? undefined) !== v && v) {
+                  onSetDates(ch.book_chapter_id, { start_date: v });
+                }
+              }}
+              className="rounded border border-dars-rule-light bg-dars-parchment px-2 py-1 text-dars-ink disabled:opacity-50"
+            />
+          </label>
+          <span className="text-dars-muted-light">→</span>
+          <label className="flex items-center gap-1">
+            <span className="sr-only">End date</span>
+            <input
+              type="date"
+              defaultValue={ch.end_date ?? ""}
+              disabled={pathBusy}
+              onBlur={(e) => {
+                const v = e.target.value || undefined;
+                if ((ch.end_date ?? undefined) !== v && v) {
+                  onSetDates(ch.book_chapter_id, { end_date: v });
+                }
+              }}
+              className="rounded border border-dars-rule-light bg-dars-parchment px-2 py-1 text-dars-ink disabled:opacity-50"
+            />
+          </label>
+        </div>
+      ) : null}
     </li>
   );
 }
 
-/**
- * The contents of a chapter: its lesson + assessment rows. Shared by the
- * chapter page (lp-context-header Phase 3, D-11) — one renderer, one place.
- */
+/** The contents of a chapter: its lesson + assessment rows. Rendered on the
+ * dedicated Chapter Page (lp-context-header D-11). */
 export function ChapterContents({
   brokenDown,
   items,
@@ -273,7 +591,7 @@ export function ChapterContents({
 
   if (items.length === 0) {
     // No slots for this chapter. If it hasn't been broken down, nudge toward
-    // the "Generate chapter plan" action in the header's right rail.
+    // the "Generate chapter plan" action.
     return (
       <p className="text-xs text-dars-muted">
         {brokenDown
@@ -309,10 +627,6 @@ export function ChapterContents({
   );
 }
 
-/**
- * The chapter's status pill. Exported so the chapter page can render the same
- * badge in its header (D-11).
- */
 export function ChapterStatusBadge({ status }: { status: ClassPathChapterStatus }) {
   return (
     <span
