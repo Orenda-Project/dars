@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { admin, DarsApiError, setAdminSession } from "@/lib/dars-api";
+import { admin, DarsApiError, setApiKey, setAdminSession } from "@/lib/dars-api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,6 +23,18 @@ export default function LoginPage() {
     try {
       const res = await admin.login({ email, password });
       setAdminSession(res.session_token);
+      // Login can't return the org API key (keys are hashed + shown-once), so
+      // mint a fresh one now and stash it under dars_org_api_key. This is what
+      // lets the teacher app run on a real X-API-Key without a separate setup
+      // step. NOTE: rotation invalidates the org's previous key — any other
+      // client using it must re-key. Non-fatal: if rotate fails, the admin
+      // session still drives the teacher app via the X-Admin-Session fallback.
+      try {
+        const rotated = await admin.rotateApiKey();
+        setApiKey(rotated.api_key);
+      } catch {
+        /* keep going — session fallback covers the teacher app */
+      }
       router.replace("/dashboard/overview");
     } catch (err) {
       setError(
