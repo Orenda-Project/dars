@@ -14,6 +14,8 @@ import type {
   TodayEntry,
   TodayResponse,
 } from "@/lib/dars-api";
+import { LpContextHeader } from "@/components/molecules/lp-context-header";
+import { lpTypeLabel } from "@/lib/lp-type-label";
 
 interface TodayTemplateProps {
   today: TodayResponse | null;
@@ -230,7 +232,7 @@ function PrevNextStrip({ entry }: { entry: TodayEntry }) {
         sub={
           next
             ? [
-                next.lp_type ?? undefined,
+                lpTypeLabel(next.lp_type) ?? undefined,
                 next.projected_date ? `on ${next.projected_date}` : undefined,
               ]
                 .filter(Boolean)
@@ -277,21 +279,20 @@ function LessonCard({
   onMarkTaught: TodayTemplateProps["onMarkTaught"];
   busy: boolean;
 }) {
-  const isRevision = slot.slot_type === "revision";
+  const chapter = entry.current_chapter;
   return (
     <div className="rounded-md border border-dars-terra-light/50 bg-dars-parchment p-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-dars-terra font-semibold">
-            {isRevision ? "Revision" : "Lesson"}
-            {slot.lp_type ? <span className="text-dars-muted ml-2 normal-case font-normal">· {slot.lp_type}</span> : null}
-          </p>
-          <p className="text-sm text-dars-ink mt-1 font-mono">
-            slot #{slot.position}
-            {slot.topic_id ? <span className="text-dars-muted ml-2">topic {slot.topic_id.slice(0, 8)}</span> : null}
-          </p>
+      <div className="mb-3">
+        <div className="flex items-start justify-between gap-3">
+          <LpContextHeader
+            chapterNumber={chapter?.chapter_number}
+            chapterTitle={chapter?.title}
+            topicTitle={slot.topic_title}
+            lpType={slot.lp_type}
+            className="flex-1 min-w-0"
+          />
+          <StatusBadge status={slot.status} />
         </div>
-        <StatusBadge status={slot.status} />
       </div>
 
       <div className="flex flex-wrap gap-2">

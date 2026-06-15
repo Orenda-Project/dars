@@ -7,6 +7,8 @@
  */
 "use client";
 
+import { lpTypeLabel } from "@/lib/lp-type-label";
+
 export interface TodayWorkLesson {
   kind: "lesson";
   slotId: string;
@@ -236,9 +238,11 @@ function TodayWorkCard({
       <h2 className="font-[var(--font-cormorant)] text-2xl font-bold text-dars-ink mt-1">
         {work.topicTitle ?? "No topic"}
       </h2>
-      <div className="mt-1 flex items-center gap-3">
-        {work.lpType ? (
-          <span className="text-xs text-dars-muted font-mono">{work.lpType}</span>
+      <div className="mt-1.5 flex items-center gap-3">
+        {lpTypeLabel(work.lpType) ? (
+          <span className="inline-flex items-center rounded-full bg-dars-terra px-2 py-0.5 text-[11px] font-semibold text-dars-parchment">
+            {lpTypeLabel(work.lpType)}
+          </span>
         ) : null}
         <LPStatusPill lp_status={work.lpStatus} />
       </div>

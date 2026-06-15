@@ -209,14 +209,17 @@ async def get_class_lesson_slot_detail(
             cls.topic_id, cls.anchor_date, cls.status,
             cls.generated_lp_id, cls.org_id,
             t.topic_text,
+            bc.chapter_number AS chapter_number,
+            bc.title          AS chapter_title,
             gl.status         AS lp_status,
             gl.content        AS lp_content,
             gl.error_message  AS lp_error_message,
             gl.tagging_status AS lp_tagging_status,
             gl.covered_sub_slo_ids AS lp_covered_sub_slo_ids
         FROM class_lesson_slots cls
-        LEFT JOIN topics t        ON t.id = cls.topic_id
-        LEFT JOIN generated_lps gl ON gl.id = cls.generated_lp_id
+        LEFT JOIN topics t          ON t.id = cls.topic_id
+        LEFT JOIN book_chapters bc  ON bc.id = cls.book_chapter_id
+        LEFT JOIN generated_lps gl  ON gl.id = cls.generated_lp_id
         WHERE cls.id = $1
         """,
         slot_id,
@@ -234,6 +237,8 @@ async def get_class_lesson_slot_detail(
         "lp_type": row["lp_type"],
         "topic_id": str(row["topic_id"]) if row["topic_id"] else None,
         "topic_text": row["topic_text"],
+        "chapter_number": row["chapter_number"],
+        "chapter_title": row["chapter_title"],
         "anchor_date": row["anchor_date"].isoformat() if row["anchor_date"] else None,
         "status": row["status"],
         "lp_status": row["lp_status"] or "not_generated",

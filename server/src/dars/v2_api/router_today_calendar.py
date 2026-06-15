@@ -75,8 +75,13 @@ async def _load_lesson_slot_full(
 ) -> LessonSlotEntry | None:
     row = await conn.fetchrow(
         """
-        SELECT id, position, slot_type, lp_type, topic_id, status, anchor_date
-        FROM class_lesson_slots WHERE id = $1
+        SELECT
+            cls.id, cls.position, cls.slot_type, cls.lp_type, cls.topic_id,
+            cls.status, cls.anchor_date,
+            t.title AS topic_title
+        FROM class_lesson_slots cls
+        LEFT JOIN topics t ON t.id = cls.topic_id
+        WHERE cls.id = $1
         """,
         slot_id,
     )
@@ -88,6 +93,7 @@ async def _load_lesson_slot_full(
         slot_type=row["slot_type"],
         lp_type=row["lp_type"],
         topic_id=row["topic_id"],
+        topic_title=row["topic_title"],
         status=row["status"],
         anchor_date=row["anchor_date"],
     )

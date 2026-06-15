@@ -246,6 +246,8 @@ export interface ClassLessonSlot {
 
 export interface ClassLessonSlotDetail extends ClassLessonSlot {
   topic_text: string | null;
+  chapter_number: number | null;
+  chapter_title: string | null;
   lp_status:
     | "not_generated"
     | "PENDING"
@@ -551,6 +553,7 @@ export interface LessonSlotEntry {
   slot_type: "lesson" | "revision";
   lp_type: string | null;
   topic_id: UUID | null;
+  topic_title: string | null;
   status: string;
   anchor_date: ISODate | null;
 }

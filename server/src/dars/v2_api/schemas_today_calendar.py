@@ -11,6 +11,7 @@ class LessonSlotEntry(BaseModel):
     slot_type: str  # 'lesson' | 'revision'
     lp_type: str | None
     topic_id: UUID | None
+    topic_title: str | None = None
     status: str
     anchor_date: date | None
 

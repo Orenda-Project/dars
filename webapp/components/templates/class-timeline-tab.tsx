@@ -13,6 +13,7 @@
 "use client";
 
 import type { CstTimelineItem } from "@/lib/dars-api";
+import { lpTypeLabel } from "@/lib/lp-type-label";
 
 /** Callbacks + flags a single {@link TimelineRow} needs. The Syllabus tab
  *  threads these straight through from the page's timeline handlers. */
@@ -359,9 +360,12 @@ function KindTag({ item }: { item: CstTimelineItem }) {
         </span>
       );
     }
-    return item.lp_type ? (
-      <span className="text-[10px] text-dars-muted-light font-mono">
-        {item.lp_type}
+    // lp-context-header F-2.6 / D-3: the LP type is the readable badge, no
+    // longer a raw monospace enum.
+    const typeLabel = lpTypeLabel(item.lp_type);
+    return typeLabel ? (
+      <span className="inline-flex items-center rounded-full bg-dars-terra px-2 py-0.5 text-[10px] font-semibold text-dars-parchment">
+        {typeLabel}
       </span>
     ) : null;
   }

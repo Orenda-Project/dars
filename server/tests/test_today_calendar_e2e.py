@@ -96,6 +96,12 @@ class TestTodayCalendarE2E:
         # Position 1 is a lesson slot per the auto-build algorithm.
         assert entry["lesson_slot"] is not None
         assert entry["assessment_slot"] is None
+        # lp-context-header F-1.1: the lesson slot carries its topic title so
+        # the teacher app can show "what topic" without a second fetch. The
+        # demo seed's first lesson is topic-backed.
+        assert "topic_title" in entry["lesson_slot"]
+        assert isinstance(entry["lesson_slot"]["topic_title"], str)
+        assert entry["lesson_slot"]["topic_title"]
         # No previous taught records.
         assert entry["previous_taught"] is None
 
