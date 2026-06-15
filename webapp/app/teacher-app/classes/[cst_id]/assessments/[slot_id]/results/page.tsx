@@ -4,6 +4,12 @@
  * Loads the assessment slot detail (which includes the exam JSON),
  * walks the question tree, lets the teacher enter students_correct per
  * question, then submits to POST /class-assessment-slots/{id}/results.
+ *
+ * dynamic-chapter-planner F-3.3 — after a successful submit (and on load if the
+ * slot was already graded), we fetch the reteach suggestion for this FA slot.
+ * If the class fell below the mastery threshold on any sub-SLO, a confirm panel
+ * appears so the teacher can re-cover it (lightweight) or add a reteach lesson
+ * (heavy). Reteach NEVER auto-applies (D-9).
  */
 "use client";
 
@@ -15,10 +21,17 @@ import {
   type MasteryEntryRow,
 } from "@/components/templates/mastery-entry-template";
 import {
+  emptyReteachItemState,
+  ReteachPanel,
+  type ReteachItemState,
+  type ReteachMode,
+} from "@/components/molecules/reteach-panel";
+import {
   DarsApiError,
   mastery as masteryApi,
   slots as slotsApi,
   type ClassAssessmentSlotDetail,
+  type ReteachSuggestionResponse,
 } from "@/lib/dars-api";
 import { walkExamQuestions } from "@/lib/exam-walker";
 
@@ -36,6 +49,27 @@ export default function MasteryEntryPage() {
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Reteach suggestion (F-3.3). Null until fetched; empty items ⇒ no panel.
+  const [suggestion, setSuggestion] = useState<ReteachSuggestionResponse | null>(
+    null,
+  );
+  // Per-sub-SLO confirm/outcome state, keyed by sub_slo_id.
+  const [reteachStates, setReteachStates] = useState<
+    Record<string, ReteachItemState>
+  >({});
+
+  // Fetch the reteach suggestion for this slot. Quiet — a missing/empty
+  // suggestion simply means no panel, never an error toast on this page.
+  const fetchSuggestion = useCallback(async () => {
+    try {
+      const s = await slotsApi.getReteachSuggestion(slotId);
+      setSuggestion(s);
+    } catch {
+      // Non-fatal: leave the panel hidden if the read fails.
+      setSuggestion(null);
+    }
+  }, [slotId]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -44,12 +78,17 @@ export default function MasteryEntryPage() {
       setDetail(d);
       const questions = walkExamQuestions(d.exam_result);
       setRows(questions.map((q) => ({ question: q, studentsCorrect: "" })));
+      // If the slot is already graded, surface any below-threshold sub-SLOs so
+      // a teacher returning to a graded slot still sees the reteach panel.
+      if (d.status === "completed") {
+        await fetchSuggestion();
+      }
     } catch (err) {
       setError(formatErr(err));
     } finally {
       setLoading(false);
     }
-  }, [slotId]);
+  }, [slotId, fetchSuggestion]);
 
   useEffect(() => {
     load();
@@ -81,14 +120,52 @@ export default function MasteryEntryPage() {
       setSuccess(
         `Saved. ${resp.sub_slo_mastery_rows} sub-SLO mastery row${resp.sub_slo_mastery_rows === 1 ? "" : "s"} updated.`,
       );
-      // After a beat, navigate back to the assessments tab.
-      setTimeout(() => {
-        router.replace(`/teacher-app/classes/${cstId}?tab=assessments`);
-      }, 1200);
+      // F-3.3: grading is done — fetch the reteach suggestion. If the class fell
+      // below threshold on any sub-SLO, the panel renders below and the teacher
+      // stays on this page to act on it (no auto-navigate when there's a
+      // suggestion to handle).
+      const s = await slotsApi.getReteachSuggestion(slotId).catch(() => null);
+      setSuggestion(s);
+      if (!s || s.items.length === 0) {
+        // Nothing to reteach — return to the assessments tab as before.
+        setTimeout(() => {
+          router.replace(`/teacher-app/classes/${cstId}?tab=assessments`);
+        }, 1200);
+      }
     } catch (err) {
       setError(formatErr(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  function patchReteachState(subSloId: string, patch: Partial<ReteachItemState>) {
+    setReteachStates((prev) => ({
+      ...prev,
+      [subSloId]: { ...(prev[subSloId] ?? emptyReteachItemState()), ...patch },
+    }));
+  }
+
+  function handleSelectMode(subSloId: string, mode: ReteachMode) {
+    patchReteachState(subSloId, { mode });
+  }
+
+  function handleDecline(subSloId: string) {
+    patchReteachState(subSloId, { declined: true, error: null });
+  }
+
+  async function handleConfirmReteach(subSloId: string) {
+    const current = reteachStates[subSloId] ?? emptyReteachItemState();
+    patchReteachState(subSloId, { busy: true, error: null });
+    try {
+      const result = await slotsApi.confirmReteach(slotId, {
+        sub_slo_id: subSloId,
+        mode: current.mode,
+      });
+      // Acted: record the result and disable further action on this sub-SLO.
+      patchReteachState(subSloId, { busy: false, result });
+    } catch (err) {
+      patchReteachState(subSloId, { busy: false, error: formatErr(err) });
     }
   }
 
@@ -115,18 +192,33 @@ export default function MasteryEntryPage() {
     );
   }
 
+  const showReteach = suggestion !== null && suggestion.items.length > 0;
+
   return (
-    <MasteryEntryTemplate
-      defaultStudentsPresent={30}
-      rows={rows}
-      setRows={setRows}
-      studentsPresent={studentsPresent}
-      setStudentsPresent={setStudentsPresent}
-      onSubmit={handleSubmit}
-      busy={busy}
-      error={error}
-      successMessage={success}
-    />
+    <div className="space-y-6">
+      <MasteryEntryTemplate
+        defaultStudentsPresent={30}
+        rows={rows}
+        setRows={setRows}
+        studentsPresent={studentsPresent}
+        setStudentsPresent={setStudentsPresent}
+        onSubmit={handleSubmit}
+        busy={busy}
+        error={error}
+        successMessage={success}
+      />
+
+      {showReteach ? (
+        <ReteachPanel
+          threshold={suggestion.threshold}
+          items={suggestion.items}
+          states={reteachStates}
+          onSelectMode={handleSelectMode}
+          onConfirm={handleConfirmReteach}
+          onDecline={handleDecline}
+        />
+      ) : null}
+    </div>
   );
 }
 

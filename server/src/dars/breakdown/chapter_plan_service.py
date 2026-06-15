@@ -35,6 +35,49 @@ from dars.breakdown.projector import compute_teaching_days
 
 log = logging.getLogger("breakdown.chapter_plan")
 
+# dynamic-chapter-planner D-14: org-wide completion target when the column is
+# absent (e.g. an org row predating the migration on a stale read). Matches the
+# migration's literal DEFAULT 0.80.
+DEFAULT_COMPLETION_TARGET = 0.80
+
+
+# ---------------------------------------------------------------------------
+# Buffer-budgeted planning — pure math (dynamic-chapter-planner F-2.2, D-14/D-16)
+# ---------------------------------------------------------------------------
+
+
+def compute_buffer_budget(
+    teaching_days: int, completion_target: float
+) -> tuple[int, int]:
+    """
+    Split a chapter's teaching days into a MANDATORY budget + a FLEX buffer
+    (D-3/D-4/D-14/D-16). 1 slot = 1 teaching day, so the two sum to
+    `teaching_days`:
+
+        mandatory_budget = round(teaching_days * completion_target)
+        flex_count       = teaching_days - mandatory_budget
+
+    Guarantees (D-16):
+      - mandatory_budget is clamped to >= 1 (a chapter always teaches at least
+        one mandatory unit) and <= teaching_days (can't exceed the day count);
+      - a short chapter rounds flex to zero and leans on the shared end-of-term
+        pool (D-4): e.g. 1 day → (1, 0); 2 days @0.8 → round(1.6)=2 → (2, 0);
+        3 days @0.8 → round(2.4)=2 → (2, 1).
+
+    `completion_target` is the org's `default_completion_target` (D-14); the
+    leftover after per-chapter rounding is the natural slack that forms the thin
+    shared remainder pool (D-4) — it is not materialised here (break-it-down is
+    per-chapter), it is the tail slack the projector absorbs.
+
+    Pure function — no DB, unit-tested directly (F-2.4).
+    """
+    if teaching_days < 1:
+        return 0, 0
+    mandatory = round(teaching_days * completion_target)
+    mandatory = max(1, min(mandatory, teaching_days))
+    flex = teaching_days - mandatory
+    return mandatory, flex
+
 
 # ---------------------------------------------------------------------------
 # Teacher Chapter Plan — DB-facing (Phase 3, D-9/D-14/D-16)
@@ -150,6 +193,7 @@ async def build_plan_request(
     grade: int,
     period_count: int,
     curriculum: str = "ICT",
+    mandatory_budget: int | None = None,
 ) -> PlanRequest:
     """
     Assemble a `PlanRequest` for one chapter from the live DB, reusing the query
@@ -215,6 +259,7 @@ async def build_plan_request(
         grade=grade,
         curriculum=curriculum,
         period_count=period_count,
+        mandatory_budget=mandatory_budget,
         chapter={"title": chapter["title"], "topics": topics},
     )
 
@@ -226,6 +271,9 @@ class GeneratePlanResult:
     slot_count: int
     lesson_slot_count: int = 0
     assessment_slot_count: int = 0
+    # dynamic-chapter-planner F-2.3: how many of the lesson slots are droppable
+    # flex (revision) buffer slots. Subset of lesson_slot_count.
+    flex_slot_count: int = 0
     warnings: list[str] = field(default_factory=list)
     # Provenance of the plan. 'cpe' = the intelligent Chapter Planner Engine
     # (the ported CPE planner now wired into break-it-down, D-1).
@@ -333,6 +381,27 @@ async def generate_chapter_plan(
         if grade is None:
             raise ValueError(f"grade {ctx.grade_id} not found")
 
+        # Buffer-budgeted planning (F-2.2/F-2.3, D-14/D-16): read the org's
+        # completion target and split slot_count into a MANDATORY budget + a FLEX
+        # buffer. The planner is asked to plan mandatory content into the budget
+        # and interleave flex revision slots to reach slot_count (period_count).
+        target = await conn.fetchval(
+            "SELECT default_completion_target FROM organizations WHERE id = $1",
+            org_id,
+        )
+        completion_target = (
+            float(target) if target is not None else DEFAULT_COMPLETION_TARGET
+        )
+        mandatory_budget, flex_target = compute_buffer_budget(
+            slot_count, completion_target
+        )
+        log.info(
+            "generate_chapter_plan: budget cst=%s chapter=%s slot_count=%d "
+            "target=%.2f mandatory=%d flex=%d",
+            cst_id, book_chapter_id, slot_count, completion_target,
+            mandatory_budget, flex_target,
+        )
+
         # Build the planner input from the live connection (F2.1) and run the
         # intelligent planner (no fallback, D-5).
         request = await build_plan_request(
@@ -342,6 +411,7 @@ async def generate_chapter_plan(
             grade=int(grade),
             curriculum="ICT",
             period_count=slot_count,
+            mandatory_budget=mandatory_budget,
         )
         plan = await make_chapter_plan(request, llm or AgentSdkPlannerLLM())
 
@@ -390,17 +460,21 @@ async def generate_chapter_plan(
 
                 # lesson → class_lesson_slots (+ class_lesson_slot_topics). The
                 # join table records the full topic grouping; topic_id is the
-                # lead topic for back-compat.
+                # lead topic for back-compat. A flex unit (F-2.1/F-2.3, D-15) is
+                # persisted with flex=true; every break-it-down slot is seeded so
+                # origin='breakdown' (D-1).
                 lead_topic_id = UUID(unit.topic_ids[0])
                 slot_id = await conn.fetchval(
                     """
                     INSERT INTO class_lesson_slots
                       (org_id, cst_id, position, slot_type, lp_type, topic_id,
-                       book_chapter_id, status)
-                    VALUES ($1, $2, $3, 'lesson', $4, $5, $6, 'planned')
+                       book_chapter_id, status, origin, flex)
+                    VALUES ($1, $2, $3, 'lesson', $4, $5, $6, 'planned',
+                            'breakdown', $7)
                     RETURNING id
                     """,
-                    org_id, cst_id, pos, unit.lp_type, lead_topic_id, book_chapter_id,
+                    org_id, cst_id, pos, unit.lp_type, lead_topic_id,
+                    book_chapter_id, unit.flex,
                 )
                 for member_pos, t_id in enumerate(unit.topic_ids, start=1):
                     await conn.execute(
@@ -412,11 +486,14 @@ async def generate_chapter_plan(
                         slot_id, UUID(t_id), member_pos,
                     )
                 result.lesson_slot_count += 1
+                if unit.flex:
+                    result.flex_slot_count += 1
 
         log.info(
-            "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d assessments=%d source=%s",
+            "generate_chapter_plan: exit cst=%s chapter=%s lessons=%d "
+            "(flex=%d) assessments=%d source=%s",
             cst_id, book_chapter_id, result.lesson_slot_count,
-            result.assessment_slot_count, result.source,
+            result.flex_slot_count, result.assessment_slot_count, result.source,
         )
         return result
     except Exception:

@@ -50,3 +50,13 @@ Future docs may only use terms defined here. Add new terms as they emerge.
 
 - **consume-flex** — repurpose the nearest downstream flex slot in place for a reteach
   (no position shift) instead of inserting a new slot.
+
+- **Overflow consequence** — the year-end impact of a reteach INSERT (D-17): which tail slots
+  newly **overflow** because the inserted slot shifted them past the academic year's last
+  teaching day. Computed as a projector dry-run delta (the overflow set before vs after the
+  insert). `consume-flex` and the lightweight path shift nothing, so their consequence is
+  always empty.
+
+- **Completion target** (concrete home, D-14) — the org column
+  `organizations.default_completion_target NUMERIC DEFAULT 0.80`: the fraction of a chapter's
+  teaching days reserved for mandatory content. Org default only — no per-CST override.

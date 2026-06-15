@@ -137,12 +137,23 @@ def _build_unit(ru: dict, request: PlanRequest) -> PlanUnit:
     carries NO lp_type (D-7): even if the model echoes one, we drop it so the
     PlanUnit model validator is satisfied and the persisted slot is a clean FA.
     A lesson keeps whatever lp_type the model returned (validated downstream).
+
+    `flex` (dynamic-chapter-planner D-15): a droppable revision/consolidation
+    lesson. A flex unit is always a lesson with lp_type='revision' — if the model
+    sets `flex: true` we coerce both (overriding any divergent slot_type/lp_type
+    it echoed) so the persisted slot is a clean flex revision slot the buffer
+    planner (F-2.3) and reteach (Phase 3) rely on. A non-flex unit is unchanged.
     """
-    slot_type = str(ru.get("slot_type", "lesson"))
-    raw_lp = ru.get("lp_type")
-    lp_type = None if slot_type == "formative_assessment" else (
-        str(raw_lp) if raw_lp is not None else None
-    )
+    flex = bool(ru.get("flex", False))
+    if flex:
+        slot_type = "lesson"
+        lp_type: str | None = "revision"
+    else:
+        slot_type = str(ru.get("slot_type", "lesson"))
+        raw_lp = ru.get("lp_type")
+        lp_type = None if slot_type == "formative_assessment" else (
+            str(raw_lp) if raw_lp is not None else None
+        )
     topic_ids = list(ru.get("topic_ids", []))
     return PlanUnit(
         sequence=int(ru["sequence"]),
@@ -152,6 +163,7 @@ def _build_unit(ru: dict, request: PlanRequest) -> PlanUnit:
         slo_ids=list(ru.get("slo_ids", [])),
         topic_text=_resolve_topic_text(topic_ids, request),
         rationale=str(ru.get("rationale", "")),
+        flex=flex,
     )
 
 
@@ -186,16 +198,22 @@ async def make_chapter_plan(request: PlanRequest, llm: PlannerLLM) -> ChapterPla
         units=units,
     )
     # Distribution by lp_type for lessons; FAs are counted separately (D-7: an
-    # FA has no lp_type, so it never appears in lp_dist).
+    # FA has no lp_type, so it never appears in lp_dist). flex revision lessons
+    # are also tallied separately (dynamic-chapter-planner F-2.3) so the buffer
+    # split is visible in the log.
     lp_dist: dict[str, int] = {}
     fa_count = 0
+    flex_count = 0
     for u in units:
         if u.slot_type == "formative_assessment":
             fa_count += 1
             continue
+        if u.flex:
+            flex_count += 1
         lp_dist[u.lp_type] = lp_dist.get(u.lp_type, 0) + 1
     logger.info(
-        "[PLANNER] exit — units=%d lessons=%d formative_assessments=%d lp_type_dist=%s",
-        len(units), len(units) - fa_count, fa_count, lp_dist,
+        "[PLANNER] exit — units=%d lessons=%d formative_assessments=%d flex=%d "
+        "lp_type_dist=%s",
+        len(units), len(units) - fa_count, fa_count, flex_count, lp_dist,
     )
     return plan

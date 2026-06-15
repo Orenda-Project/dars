@@ -177,6 +177,13 @@ TimelineItem = Annotated[
 class CstTimelineResponse(BaseModel):
     cst_id: UUID
     items: list[TimelineItem]
+    # F-1.4 (dynamic-chapter-planner): count of tail slots the projector could
+    # not land on a teaching day (ProjectedSlot.is_overflow). 0 when the plan
+    # fits the academic year; > 0 means the class is genuinely behind and a
+    # human alert should fire. Surfaced here so Case-1 (holidays push slots past
+    # year-end) is visible before reteach exists. No new projection logic — the
+    # projector already sets the flag per item.
+    overflow_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -220,4 +227,57 @@ class GenerateChapterPlanResponse(BaseModel):
     slot_count: int
     lesson_slot_count: int
     assessment_slot_count: int
+    # dynamic-chapter-planner F-2.3: how many lesson slots are droppable flex
+    # (revision) buffer (subset of lesson_slot_count). 0 for short chapters.
+    flex_slot_count: int = 0
     warnings: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Reteach trigger (dynamic-chapter-planner Phase 3, F-3.1/F-3.2/F-3.3)
+#
+# A graded formative-assessment slot whose per-sub-SLO mastery is below
+# RETEACH_MASTERY_THRESHOLD surfaces a suggestion (read); the teacher then
+# confirms an explicit lightweight|heavy action (D-9 — never auto-applied).
+# ---------------------------------------------------------------------------
+
+
+class ReteachSuggestionItem(BaseModel):
+    sub_slo_id: UUID
+    sub_slo_code: str
+    statement: str
+    mastery_percent: float  # below the threshold
+
+
+class ReteachSuggestionResponse(BaseModel):
+    class_assessment_slot_id: UUID
+    threshold: float
+    # Empty when nothing is below threshold (no badge shown).
+    items: list[ReteachSuggestionItem]
+
+
+class ReteachActionBody(BaseModel):
+    sub_slo_id: UUID
+    # Explicit teacher choice (D-9). 'lightweight' (default) flips coverage to
+    # needs-rework; 'heavy' consumes a flex slot (no shift) or inserts one.
+    mode: Literal["lightweight", "heavy"] = "lightweight"
+
+
+class OverflowConsequencePayload(BaseModel):
+    """Year-end consequence of an insert (D-17). Present only when the heavy
+    path had to INSERT (no downstream flex); null otherwise."""
+    overflow_before: int
+    overflow_after: int
+    newly_overflowed_positions: list[int]
+    first_overflow_position: int | None
+
+
+class ReteachActionResponse(BaseModel):
+    class_assessment_slot_id: UUID
+    sub_slo_id: UUID
+    # 'lightweight' | 'consume_flex' | 'insert'
+    path: str
+    # The reteach lesson slot for the heavy paths; null for lightweight.
+    reteach_slot_id: UUID | None = None
+    # Populated only for the 'insert' path (the only one that can overflow).
+    consequence: OverflowConsequencePayload | None = None

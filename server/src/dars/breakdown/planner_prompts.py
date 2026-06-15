@@ -24,21 +24,25 @@ _SYSTEM_PROMPT = (
     "You are a curriculum planning engine. Given a chapter's topics (each with "
     "source text and the SLOs it teaches), a subject, and a fixed number of "
     "teaching periods, produce an ordered plan of EXACTLY that many Plan Units. "
-    "Each unit occupies one teaching day and is either a LESSON (one lesson "
-    "plan) or a FORMATIVE ASSESSMENT (a short quiz checking what has just been "
-    "taught).\n"
+    "Each unit occupies one teaching day and is one of: a LESSON (one lesson "
+    "plan), a FORMATIVE ASSESSMENT (a short quiz checking what has just been "
+    "taught), or a FLEX revision slot (a droppable consolidation lesson that "
+    "acts as schedule buffer — see rule 7).\n"
     "\n"
     "Hard rules:\n"
     "1. Return EXACTLY `period_count` units. `sequence` is 1..period_count, each "
-    "used once. A formative assessment consumes a teaching day exactly like a "
-    "lesson, so it counts toward this total — it is NOT an extra unit.\n"
+    "used once. A formative assessment AND a flex revision slot each consume a "
+    "teaching day exactly like a lesson, so they count toward this total — they "
+    "are NOT extra units.\n"
     "2. A unit may combine several thin topics or focus on part of a dense one — "
     "you decide the boundaries. Each unit lists the `topic_ids` it draws from "
     "(>=1) and the `slo_ids` it teaches or assesses (>=1).\n"
     "3. Every SLO in the chapter must be covered by at least one unit (full "
     "coverage). SLOs assessed by a formative_assessment unit count as covered "
     "too. Only reference topic_ids and slo_ids that were given to you — never "
-    "invent ids.\n"
+    "invent ids. Coverage is non-negotiable: if the chapter has more SLOs than "
+    "the mandatory budget (rule 7) comfortably allows, still cover them all "
+    "— sacrifice flex slots, not coverage.\n"
     "4. Give every unit a `slot_type` of either \"lesson\" or "
     "\"formative_assessment\". A lesson unit MUST have an `lp_type` chosen ONLY "
     "from the provided allowed list (pick the type that best fits its topics and "
@@ -51,6 +55,22 @@ _SYSTEM_PROMPT = (
     "chapter depending on `period_count`: a tiny chapter may need none; a long "
     "multi-strand chapter may use one mid-way and one near the end. Never spend "
     "so many periods on assessment that the chapter's SLOs go uncovered.\n"
+    "7. BUDGET + BUFFER. You are given a `mandatory_budget` (the number of "
+    "teaching days reserved for MANDATORY content) and a `flex_target` "
+    "(`period_count - mandatory_budget`, the number of FLEX revision slots to "
+    "add). First plan all the chapter's mandatory teaching — the lessons and "
+    "formative assessments that cover every SLO — into about `mandatory_budget` "
+    "units. Then add `flex_target` FLEX revision slots, interleaved AFTER "
+    "coherent topic clusters (not bunched at the very end, and never before any "
+    "content has been taught), so the total reaches EXACTLY `period_count`. A "
+    "FLEX slot has `\"flex\": true`, `slot_type` \"lesson\", `lp_type` "
+    "\"revision\", and `slo_ids` drawn from the SLOs of the cluster it follows "
+    "(consolidating just-taught material). Flex slots are droppable buffer: they "
+    "absorb holidays and re-teaching downstream. If `flex_target` is 0, add no "
+    "flex slots. If the mandatory content genuinely needs more than "
+    "`mandatory_budget` days to cover every SLO, spend fewer flex slots (down to "
+    "0) rather than dropping coverage — the budget is guidance, full coverage is "
+    "a hard rule (rule 3).\n"
     "\n"
     "Planning principles (apply when deciding unit boundaries, order, and type):\n"
     "A. Sequence by dependency, simplest first. Order units so a foundational SLO "
@@ -70,12 +90,13 @@ _SYSTEM_PROMPT = (
     "representing with pictures or symbols → pictorial/abstract; applying skills to "
     "contextual problems → word problems; consolidating prior learning → "
     "revision). Use only the allowed types for this subject.\n"
-    "D. Pace for coverage. When `period_count` is large enough to span multiple "
-    "weeks, devote one or more units to cumulative revision of earlier units "
-    "(spaced, periodic review — NOT a recap in every single unit). When "
-    "`period_count` is tight relative to the SLOs, prioritise: give the most "
-    "important SLOs their own units and group lower-priority related SLOs "
-    "together, rather than thinning every unit equally.\n"
+    "D. Pace for coverage, and use FLEX slots as the spaced-review buffer "
+    "(rule 7). The cumulative-revision units you would otherwise add are exactly "
+    "the FLEX revision slots: place them as spaced, periodic review after coherent "
+    "clusters — NOT a recap in every single unit. When the chapter is tight "
+    "relative to its SLOs, prioritise: give the most important SLOs their own "
+    "units and group lower-priority related SLOs together, spending fewer flex "
+    "slots, rather than thinning every unit equally or dropping coverage.\n"
     "E. Use formative assessment as a checkpoint, not a habit. A formative "
     "assessment is most valuable once a meaningful, coherent block of related "
     "SLOs has been taught — it lets the teacher confirm mastery before building "
@@ -85,12 +106,16 @@ _SYSTEM_PROMPT = (
     "assessments over leaving SLOs untaught.\n"
     "\n"
     "Return STRICT JSON ONLY — no prose, no markdown fences. Lesson units carry "
-    "`lp_type`; formative_assessment units omit it. The exact shape:\n"
+    "`lp_type`; formative_assessment units omit it; flex revision slots set "
+    "`\"flex\": true` with lp_type \"revision\". The exact shape:\n"
     '{"units": ['
     '{"sequence": 1, "slot_type": "lesson", "lp_type": "<allowed>", '
     '"topic_ids": ["<id>"], "slo_ids": ["<id>"], "rationale": "<one sentence>"}, '
     '{"sequence": 2, "slot_type": "formative_assessment", '
-    '"topic_ids": ["<id>"], "slo_ids": ["<id>"], "rationale": "<one sentence>"}'
+    '"topic_ids": ["<id>"], "slo_ids": ["<id>"], "rationale": "<one sentence>"}, '
+    '{"sequence": 3, "slot_type": "lesson", "lp_type": "revision", '
+    '"flex": true, "topic_ids": ["<id>"], "slo_ids": ["<id>"], '
+    '"rationale": "<one sentence>"}'
     "]}"
 )
 
@@ -101,10 +126,21 @@ def build_system_prompt() -> str:
 
 def build_user_prompt(request: PlanRequest) -> str:
     allowed = VALID_LP_TYPES[request.subject]
+    # dynamic-chapter-planner F-2.3: carry the mandatory budget + the derived
+    # flex target so the LLM honours Hard rule 7. When no budget is set (the bare
+    # /plan endpoint), the whole chapter is mandatory and there is no flex.
+    mandatory_budget = (
+        request.mandatory_budget
+        if request.mandatory_budget is not None
+        else request.period_count
+    )
+    flex_target = request.period_count - mandatory_budget
     payload = {
         "subject": request.subject,
         "grade": request.grade,
         "period_count": request.period_count,
+        "mandatory_budget": mandatory_budget,
+        "flex_target": flex_target,
         "allowed_lp_types": allowed,
         "chapter_title": request.chapter.title,
         "topics": [

@@ -94,6 +94,14 @@ class PlanRequest(BaseModel):
     grade: int = Field(..., description="1..5")
     curriculum: str = Field(default="ICT", description="passed through to UG_LP")
     period_count: int = Field(..., description="> 0; number of Plan Units to produce")
+    mandatory_budget: int | None = Field(
+        default=None,
+        description="dynamic-chapter-planner F-2.2/F-2.3/D-16: teaching days to plan "
+        "MANDATORY content (lessons + FAs) into; the remaining "
+        "(period_count - mandatory_budget) units are interleaved flex revision "
+        "slots. None ⇒ plan everything mandatory (back-compat: the bare /plan "
+        "endpoint sets no budget).",
+    )
     chapter: Chapter
 
     @field_validator("period_count")
@@ -102,6 +110,22 @@ class PlanRequest(BaseModel):
         if v <= 0:
             raise ValueError("period_count must be > 0")
         return v
+
+    @model_validator(mode="after")
+    def _budget_within_period_count(self) -> "PlanRequest":
+        # The mandatory budget can't exceed the total day count (D-16): you
+        # cannot plan more mandatory days than there are teaching days. A budget
+        # equal to period_count means zero flex (a tight chapter). Must be >= 1
+        # when set (a chapter always has at least one mandatory unit).
+        if self.mandatory_budget is not None:
+            if self.mandatory_budget < 1:
+                raise ValueError("mandatory_budget must be >= 1 when set")
+            if self.mandatory_budget > self.period_count:
+                raise ValueError(
+                    f"mandatory_budget ({self.mandatory_budget}) cannot exceed "
+                    f"period_count ({self.period_count})"
+                )
+        return self
 
     @field_validator("grade")
     @classmethod
@@ -142,6 +166,11 @@ class PlanUnit(BaseModel):
     slo_ids: List[str] = Field(..., description="≥1, ⊆ chapter SLOs (D-8b,d)")
     topic_text: str = Field(..., description="member topics' text, joined in topic_ids order (D-4)")
     rationale: str
+    flex: bool = Field(
+        default=False,
+        description="droppable buffer/revision lesson (dynamic-chapter-planner "
+        "D-3/D-4/D-15). flex=True ⇒ slot_type='lesson', lp_type='revision'.",
+    )
 
     @field_validator("slot_type")
     @classmethod
@@ -164,6 +193,20 @@ class PlanUnit(BaseModel):
             if self.lp_type is not None:
                 raise ValueError(
                     "formative_assessment unit must not carry an lp_type (D-7)"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _flex_is_a_revision_lesson(self) -> "PlanUnit":
+        # dynamic-chapter-planner D-15: a flex slot is a droppable revision /
+        # consolidation lesson — never an FA, never any other lp_type. The
+        # interleaved buffer (D-3/D-4) is what reteach later consumes.
+        if self.flex:
+            if self.slot_type != "lesson":
+                raise ValueError("flex unit must be a lesson (D-15)")
+            if self.lp_type != "revision":
+                raise ValueError(
+                    "flex unit must carry lp_type='revision' (D-15)"
                 )
         return self
 

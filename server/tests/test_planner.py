@@ -480,3 +480,165 @@ async def test_endpoint_in_openapi(client, auth_override):
     r = await client.get("/openapi.json")
     assert r.status_code == 200
     assert "/api/v2/plan" in r.json()["paths"]
+
+
+# --------------------------------------------------------------------------
+# Dynamic Chapter Planner Phase 2 — flex units + budget math (F-2.1, F-2.4)
+# --------------------------------------------------------------------------
+from dars.breakdown.chapter_plan_service import compute_buffer_budget  # noqa: E402
+
+
+# --- F-2.1: flex unit parse + validate (D-15) ----------------------------
+
+def test_planunit_flex_revision_lesson_ok():
+    # A flex unit is a lesson with lp_type='revision'.
+    u = PlanUnit(sequence=1, slot_type="lesson", lp_type="revision",
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x",
+                 rationale="consolidate", flex=True)
+    assert u.flex is True
+    assert u.slot_type == "lesson"
+    assert u.lp_type == "revision"
+
+
+def test_planunit_flex_defaults_false():
+    u = PlanUnit(sequence=1, slot_type="lesson", lp_type="reading",
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x", rationale="y")
+    assert u.flex is False
+
+
+def test_planunit_flex_non_revision_lp_type_rejected():
+    # D-15: flex MUST be lp_type='revision'.
+    with pytest.raises(ValidationError):
+        PlanUnit(sequence=1, slot_type="lesson", lp_type="reading",
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x",
+                 rationale="y", flex=True)
+
+
+def test_planunit_flex_fa_rejected():
+    # D-15: a flex unit can never be a formative_assessment.
+    with pytest.raises(ValidationError):
+        PlanUnit(sequence=1, slot_type="formative_assessment", lp_type=None,
+                 topic_ids=["t1"], slo_ids=["s1"], topic_text="x",
+                 rationale="y", flex=True)
+
+
+def test_build_unit_coerces_flex_to_revision_lesson():
+    # F-2.3: even if the model marks flex but echoes a different slot_type /
+    # lp_type, _build_unit coerces it to a clean flex revision lesson.
+    from dars.breakdown.planner import _build_unit
+    req = sample_request(2)
+    u = _build_unit(
+        {"sequence": 1, "slot_type": "formative_assessment", "lp_type": "grammar",
+         "flex": True, "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "r"},
+        req,
+    )
+    assert u.flex is True
+    assert u.slot_type == "lesson"
+    assert u.lp_type == "revision"
+
+
+@pytest.mark.asyncio
+async def test_make_chapter_plan_with_flex_unit():
+    # F-2.1/F-2.3: a mandatory lesson + an interleaved flex revision slot flows
+    # through make_chapter_plan; the flex unit is preserved.
+    req = sample_request(2)
+    raw = json.dumps({"units": [
+        {"sequence": 1, "slot_type": "lesson", "lp_type": "reading",
+         "topic_ids": ["t1", "t2"], "slo_ids": ["s1", "s2"], "rationale": "teach"},
+        {"sequence": 2, "slot_type": "lesson", "lp_type": "revision", "flex": True,
+         "topic_ids": ["t1"], "slo_ids": ["s1"], "rationale": "consolidate"},
+    ]})
+    plan = await make_chapter_plan(req, FakePlannerLLM(raw))
+    assert [u.flex for u in plan.units] == [False, True]
+    assert plan.units[1].lp_type == "revision"
+
+
+# --- F-2.4: budget math splits across representative chapter sizes --------
+
+def test_budget_split_default_target_typical():
+    # 10 teaching days @ 0.80 → 8 mandatory + 2 flex.
+    assert compute_buffer_budget(10, 0.80) == (8, 2)
+
+
+def test_budget_split_lower_target_more_buffer():
+    # Lower target = more buffer. 10 @ 0.70 → 7 + 3.
+    assert compute_buffer_budget(10, 0.70) == (7, 3)
+
+
+def test_budget_split_rounds_to_nearest():
+    # 3 days @ 0.80 → round(2.4)=2 mandatory + 1 flex.
+    assert compute_buffer_budget(3, 0.80) == (2, 1)
+    # 7 days @ 0.80 → round(5.6)=6 mandatory + 1 flex.
+    assert compute_buffer_budget(7, 0.80) == (6, 1)
+
+
+def test_budget_short_chapter_rounds_flex_to_zero():
+    # A short chapter leans on the shared pool: flex rounds to 0 (D-4).
+    assert compute_buffer_budget(1, 0.80) == (1, 0)   # 1 day → all mandatory
+    assert compute_buffer_budget(2, 0.80) == (2, 0)   # round(1.6)=2 → 0 flex
+    # @0.70 a 2-day chapter rounds mandatory to round(1.4)=1, 1 flex.
+    assert compute_buffer_budget(2, 0.70) == (1, 1)
+
+
+def test_budget_mandatory_clamped_to_at_least_one():
+    # A pathological tiny target never zeroes mandatory (a chapter always
+    # teaches at least one mandatory unit, D-16).
+    assert compute_buffer_budget(5, 0.0) == (1, 4)
+
+
+def test_budget_full_target_no_flex():
+    # target 1.0 → everything mandatory, no buffer.
+    assert compute_buffer_budget(10, 1.0) == (10, 0)
+
+
+def test_budget_zero_days_yields_zero():
+    assert compute_buffer_budget(0, 0.80) == (0, 0)
+
+
+def test_budget_sum_equals_teaching_days():
+    # Invariant: mandatory + flex == teaching_days for every size (1 slot=1 day).
+    for days in range(1, 60):
+        m, f = compute_buffer_budget(days, 0.80)
+        assert m + f == days
+        assert m >= 1
+
+
+# --- F-2.4: PlanRequest carries + validates the budget --------------------
+
+def test_plan_request_budget_within_period_count_ok():
+    req = PlanRequest(subject="Eng", grade=1, period_count=10,
+                      mandatory_budget=8,
+                      chapter={"title": "X", "topics": [
+                          {"id": "t1", "topic_text": "x",
+                           "slos": [{"id": "s1", "statement": "y"}]}]})
+    assert req.mandatory_budget == 8
+
+
+def test_plan_request_budget_exceeding_period_count_rejected():
+    with pytest.raises(ValidationError):
+        PlanRequest(subject="Eng", grade=1, period_count=5,
+                    mandatory_budget=6,
+                    chapter={"title": "X", "topics": [
+                        {"id": "t1", "topic_text": "x",
+                         "slos": [{"id": "s1", "statement": "y"}]}]})
+
+
+def test_user_prompt_carries_budget_and_flex_target():
+    from dars.breakdown.planner_prompts import build_user_prompt
+    req = PlanRequest(subject="Eng", grade=1, period_count=10,
+                      mandatory_budget=8,
+                      chapter={"title": "X", "topics": [
+                          {"id": "t1", "topic_text": "x",
+                           "slos": [{"id": "s1", "statement": "y"}]}]})
+    payload = json.loads(build_user_prompt(req))
+    assert payload["mandatory_budget"] == 8
+    assert payload["flex_target"] == 2
+
+
+def test_user_prompt_no_budget_means_all_mandatory():
+    # The bare /plan endpoint sets no budget → everything mandatory, no flex.
+    from dars.breakdown.planner_prompts import build_user_prompt
+    req = sample_request(3)
+    payload = json.loads(build_user_prompt(req))
+    assert payload["mandatory_budget"] == 3
+    assert payload["flex_target"] == 0

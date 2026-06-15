@@ -49,13 +49,23 @@ If two docs disagree, this order wins. Code is lowest authority. Surface conflic
 
 | Phase | Status | PR(s) | Notes |
 |-------|--------|-------|-------|
-| 1 — Slot-mutation foundation | 🟡 in flight | — | migration + `slot_mutation_service` + taught-lock + sqlite tests + overflow read |
-| 2 — Buffer-budgeted planner | ⬜ not started | — | flex/mandatory tagging, completion-target knob |
-| 3 — Reteach trigger | ⬜ not started | — | mastery threshold → suggestion → confirm → consume-flex/insert → LP |
+| 1 — Slot-mutation foundation | ✅ shipped | #143 | Migration `20260612000000_dynamic_planner_slot_origin.sql` (origin/reteach_for_sub_slo_id/flex); `slot_mutation_service.py` (insert/remove/consume-flex, two-step large-offset renumber per D-12); `_assert_mutable` taught-lock (D-7); overflow read via `CstTimelineResponse.overflow_count` (D-13); `tests/test_slot_mutation_service.py` 13 sqlite tests. |
+| 2 — Buffer-budgeted planner | ✅ shipped | #143 | `PlanUnit.flex: bool` (D-15); migration `20260613000000_org_completion_target.sql` (`organizations.default_completion_target NUMERIC DEFAULT 0.80`, D-14); `compute_buffer_budget`; planner reads org target, interleaves flex revision slots, persists `flex=true origin='breakdown'`; budget advisory, coverage hard (D-16). |
+| 3 — Reteach trigger | ✅ shipped (backend #143 · UI #145) | #143, #145 | `RETEACH_MASTERY_THRESHOLD=60.0` + `suggest_reteach` + `GET …/reteach-suggestion`; `reteach(mode='lightweight'|'heavy')` — lightweight flips `cst_sub_slo_coverage`, heavy `consume_flex_slot` else `insert_lesson_slot` + overflow consequence (D-17), reteach LP via `get_or_generate_lp` (D-10); `POST …/reteach` explicit mode, never auto-applies (D-9); `tests/test_reteach_service.py` 9 sqlite tests. **Teacher-app UI shipped** (D-18, #145): presentational `webapp/components/molecules/reteach-panel.tsx` (badge + per-sub-SLO confirm, lightweight default vs heavy, plain-language overflow consequence) wired into the mastery-entry/results page (fetch after `submitExamResults` + on load when `status==completed`; `slots.confirmReteach` per item). tsc + eslint + `next build` clean. |
 
-**Next thing to do:** Phase 1, feature F-1.1 (migration) → F-1.2/F-1.3 (service + taught-lock)
-→ F-1.5 (sqlite tests) → F-1.4 (overflow read). Branch from staging. Bead
-`feat-dynamic-chapter-planner-phase-1`.
+**✅ FEATURE COMPLETE — shipped end-to-end 2026-06-15.** Backend + planner via PR #143
+(`5273fee`); teacher-app reteach UI via PR #145 (`a8af9b7`). Deploys: #143 → both `dars` +
+`truthful-renewal` SUCCESS; #145 → `truthful-renewal` SUCCESS, `dars` SKIPPED (webapp-only
+change, path-filtered — healthy per CLAUDE.md rule 14). Backend suite 300 passed / 60 skipped;
+webapp tsc/eslint/build clean. All beads closed.
+
+**Remaining (only-if-needed, not planned):** a per-CST completion-target override (D-14 left it
+deferrable); an optional badge mirror on the FA timeline card deep-linking to the results page.
+
+New decisions logged: D-14 (completion-target = org column only), D-15 (flex = bool),
+D-16 (budget is advisory, coverage is hard), D-17 (overflow consequence = projector dry-run delta),
+D-18 (teacher-app reteach UI placement on the results page + plain-language overflow phrasing).
+Suite after Phases 2+3: 300 passed / 60 skipped.
 
 Upstream dependency (FAs + breakdown holidays + exam periods on `syllabus_breakdowns`) is
 **MERGED** (#136–#141). On-demand LP generation (`get_or_generate_lp`) is **MERGED** (#133).

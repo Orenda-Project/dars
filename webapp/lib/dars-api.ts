@@ -406,6 +406,12 @@ export type CstTimelineItem = TimelineLessonItem | TimelineAssessmentItem;
 export interface CstTimelineResponse {
   cst_id: UUID;
   items: CstTimelineItem[];
+  /**
+   * dynamic-chapter-planner F-1.4: count of tail slots the projector could not
+   * land on a teaching day (overflow). 0 ⇒ the plan fits the academic year;
+   * > 0 ⇒ the class is genuinely behind (surface a human alert).
+   */
+  overflow_count?: number;
 }
 
 /** Returned by `GET /api/v1/class-assessment-slots/{id}` (F4.13). */
@@ -429,6 +435,53 @@ export interface ClassAssessmentSlotDetail {
   exam_error_message: string | null;
   topic_ids: UUID[];
   topic_titles: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Reteach trigger (dynamic-chapter-planner Phase 3, F-3.1/F-3.2/F-3.3).
+//
+// A graded formative-assessment slot whose per-sub-SLO mastery is below the
+// threshold surfaces a suggestion (GET); the teacher then confirms an explicit
+// lightweight | heavy action (POST). Reteach is NEVER auto-applied (D-9). The
+// teacher-app badge/confirm UI is not yet built — these typed bindings are the
+// ready contract the FE wires onto the FA slot card.
+// ---------------------------------------------------------------------------
+
+/** One below-threshold sub-SLO surfaced against a graded FA slot (F-3.1). */
+export interface ReteachSuggestionItem {
+  sub_slo_id: UUID;
+  sub_slo_code: string;
+  statement: string;
+  mastery_percent: number;
+}
+
+/** `GET /api/v2/class-assessment-slots/{id}/reteach-suggestion`. Empty
+ * `items` ⇒ no badge. */
+export interface ReteachSuggestionResponse {
+  class_assessment_slot_id: UUID;
+  threshold: number;
+  items: ReteachSuggestionItem[];
+}
+
+/** Year-end consequence of a reteach INSERT (D-17). Present only when the
+ * heavy path had to insert (no downstream flex); null otherwise. */
+export interface OverflowConsequence {
+  overflow_before: number;
+  overflow_after: number;
+  newly_overflowed_positions: number[];
+  first_overflow_position: number | null;
+}
+
+/** `POST /api/v2/class-assessment-slots/{id}/reteach` response. */
+export interface ReteachActionResponse {
+  class_assessment_slot_id: UUID;
+  sub_slo_id: UUID;
+  /** 'lightweight' | 'consume_flex' | 'insert' */
+  path: "lightweight" | "consume_flex" | "insert";
+  /** The reteach lesson slot for the heavy paths; null for lightweight. */
+  reteach_slot_id: UUID | null;
+  /** Populated only for the 'insert' path. */
+  consequence: OverflowConsequence | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,6 +1208,35 @@ export const slots = {
     request<GenerateExamResponse>(
       `/api/v1/class-assessment-slots/${slot_id}/generate-exam`,
       { method: "POST" },
+    ),
+
+  /**
+   * dynamic-chapter-planner F-3.1 — the below-threshold sub-SLOs for a graded
+   * FA slot (the teacher-app reteach-badge payload). Read only; empty `items`
+   * ⇒ no badge. Acting on a suggestion requires the explicit confirmReteach
+   * POST below — reteach NEVER auto-applies (D-9).
+   */
+  getReteachSuggestion: (slot_id: UUID) =>
+    request<ReteachSuggestionResponse>(
+      `/api/v2/class-assessment-slots/${slot_id}/reteach-suggestion`,
+    ),
+
+  /**
+   * dynamic-chapter-planner F-3.2/F-3.3 — apply a teacher-confirmed reteach for
+   * one sub-SLO. `mode` is the explicit teacher choice (no auto-apply, D-9):
+   *   'lightweight' (default) — flip coverage to needs-rework; no slot, no shift.
+   *   'heavy' — consume the nearest downstream flex slot (no shift), else insert
+   *     a new lesson slot (shifts the tail) and return the overflow consequence
+   *     (which tail slot, if any, is pushed past year-end — D-17). The reteach
+   *     slot gets a revision LP on the on-demand path (D-10).
+   */
+  confirmReteach: (
+    slot_id: UUID,
+    body: { sub_slo_id: UUID; mode?: "lightweight" | "heavy" },
+  ) =>
+    request<ReteachActionResponse>(
+      `/api/v2/class-assessment-slots/${slot_id}/reteach`,
+      { method: "POST", body },
     ),
 
   /** F4.6 — all lesson slots for a CST, joined with breakdown chapter + LP status. */
