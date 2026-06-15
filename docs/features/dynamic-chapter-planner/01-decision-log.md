@@ -90,3 +90,47 @@ per-item `is_overflow`; adding a count there is the thinnest seam and avoids a s
 default 0) tallies `is_overflow` over the already-computed items; no new projection logic.
 A CST whose slots exceed its teaching days reports `overflow_count > 0`; one that fits reports
 0. *Decided:* 2026-06-12.
+
+**D-14: `completion_target` lives as `organizations.default_completion_target NUMERIC NOT NULL
+DEFAULT 0.80` — ORG DEFAULT ONLY, no per-CST override.** *Rationale:* simplest schema, one
+place for org-wide policy; a per-CST override can be added later if a real need appears
+(deferrable). Supersedes the `02-data-model.md` Phase 2 placeholder ("org default + optional
+per-CST override, confirmed at phase start"). *Apply:* migration
+`20260613000000_org_completion_target.sql` adds the column; `chapter_plan_service.build_plan_request`
+reads the CST's org value and computes per-chapter `mandatory_budget = round(teaching_days *
+target)`, passing it (alongside `period_count`) to the planner. Portable column: literal default,
+no PG-only syntax, applies on sqlite. *Decided:* 2026-06-12 (frozen by user).
+
+**D-15: Flex is a `flex: bool` on `PlanUnit`, NOT a new `slot_type` enum value.** *Rationale:*
+adding `'flex'` to `VALID_SLOT_TYPES` would ripple through every `slot_type` validator and the
+persistence branch in `chapter_plan_service`; a boolean leaves `slot_type='lesson'` untouched and
+adds one cheap invariant. The phase-2 doc (F-2.1) already leaned this way. *Apply:* `PlanUnit.flex`
+(default `False`); a model validator enforces `flex=True ⇒ slot_type='lesson' AND lp_type='revision'`
+(a flex slot is always a revision/consolidation lesson — D-3/D-4). `_build_unit` reads `flex` from
+the LLM dict; `generate_chapter_plan` persists it to `class_lesson_slots.flex` with
+`origin='breakdown'`. Flex counts toward `period_count` (1 slot = 1 day). *Decided:* 2026-06-12.
+
+**D-16: The mandatory budget is advisory steering for the planner, not a hard post-validate
+invariant.** *Rationale:* the planner must still satisfy the frozen D-8 invariants (exactly
+`period_count` units, full SLO coverage, valid permutation) — those are non-negotiable and
+validator-checked. The flex/mandatory split is *guidance* the prompt asks the LLM to honour
+("plan mandatory content into ~`mandatory_budget` days, then fill the remainder with flex revision
+slots to reach `period_count`"); we do NOT reject a plan for landing a slot or two off the budget,
+because a chapter with more SLOs than the budget allows must still cover them all (coverage wins
+over buffer). The deterministic budget math (per-chapter `round(days*target)`, flex proportional to
+length, short chapters → zero flex leaning on the shared end-of-term pool) lives in
+`build_plan_request` (`compute_buffer_budget`) and is unit-tested directly; it is what we *ask*
+for, and the persisted `flex` flags reflect what the planner returned. *Decided:* 2026-06-12.
+
+**D-17: The reteach overflow consequence is computed by a dry-run projector delta around the
+heavy mutation.** *Rationale:* F-3.2 requires the response to say whether inserting a reteach slot
+pushes a tail slot out of the year-end and which one. The projector (`project_cst_schedule`)
+already owns `is_overflow` per slot; rather than re-derive year-end arithmetic we read the
+projection BEFORE the mutation (baseline overflow set), apply the mutation, read it AFTER, and
+report the delta: `overflow_count` before/after, the positions that newly overflow, and the first
+newly-overflowing position. `consume_flex` shifts nothing, so its consequence is always `None`;
+only `insert` (shift) can push the tail. Computed within the same connection the action runs in so
+the "after" projection sees the inserted slot. *Apply:* `reteach_service` returns a `ReteachResult`
+with `path` (`'lightweight'|'consume_flex'|'insert'`), `slot_id`, and `consequence` (None for
+lightweight/consume; `{overflow_before, overflow_after, newly_overflowed_positions,
+first_overflow_position}` for insert). *Decided:* 2026-06-12.

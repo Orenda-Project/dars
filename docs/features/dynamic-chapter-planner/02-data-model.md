@@ -54,14 +54,34 @@ pattern); the FK stays inline. No `gen_random_uuid()` here, so no dialect split 
 Verified clean against an in-memory sqlite DB (existing rows default to `origin='breakdown'`,
 `flex=false`; the CHECK rejects bad origins).
 
-### Phase 2 — completion target knob
+### Phase 2 migration — `20260613000000_org_completion_target.sql`
 
-`completion_target` lives as an **org default** (config/setting) with an optional **per-CST
-override**. Exact home (column vs settings row) confirmed at Phase 2 start; not a migration
-in Phase 1. Recorded here so the planner change has a single source.
+**D-14 (frozen 2026-06-12):** `completion_target` is an **org default only** — no per-CST
+override (deferrable later). One place for org-wide policy; simplest schema. This supersedes
+the earlier "org default + optional per-CST override, confirmed at phase start" placeholder.
+
+```sql
+ALTER TABLE organizations
+  ADD COLUMN default_completion_target NUMERIC NOT NULL DEFAULT 0.80;
+```
+
+- `default_completion_target` — the fraction of a chapter's teaching days planned into
+  MANDATORY content (D-3). `0.80` = plan to 80%, keep 20% as interleaved flex buffer (D-4).
+  `chapter_plan_service.build_plan_request` reads the CST's org value at break-it-down and
+  computes the per-chapter `mandatory_budget = round(teaching_days * target)`
+  (`compute_buffer_budget`); the remainder `period_count - mandatory_budget` is the flex count
+  the planner interleaves (F-2.2/F-2.3). Lower = more buffer.
+
+**sqlite note (D-11):** single `ADD COLUMN` with a literal NUMERIC default — no PG-only
+syntax, applies on both Postgres (Railway) and sqlite (planner/budget tests run against an
+in-memory DB; NUMERIC affinity round-trips a float). One column, so the D-12 one-per-ALTER
+split is not needed.
 
 ### Phase 3 — no schema change
 
-Reteach reuses `sub_slo_mastery` (read), `cst_sub_slo_coverage` (needs-rework flip via the
-lightweight path), and the slot columns above. Threshold is a code constant
-(`RETEACH_MASTERY_THRESHOLD`), not a column.
+Reteach reuses `sub_slo_mastery` (read — `mastery_percent` below `RETEACH_MASTERY_THRESHOLD`
+surfaces the suggestion, F-3.1), `cst_sub_slo_coverage` (needs-rework flip via the lightweight
+path: `status='not_taught'`), and the Phase-1 slot columns above (`origin='reteach'`,
+`reteach_for_sub_slo_id`, `flex` for consume). The threshold is a code constant
+(`RETEACH_MASTERY_THRESHOLD = 60.0`), not a column. The overflow consequence (D-17) is a
+read-time projector delta, not stored.
