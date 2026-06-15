@@ -26,6 +26,11 @@ from dars.breakdown.mark_taught_service import (
 )
 from dars.breakdown.onboarding_service import onboard_cst
 from dars.breakdown.projector import project_cst_schedule
+from dars.breakdown.reteach_service import (
+    RETEACH_MASTERY_THRESHOLD,
+    reteach,
+    suggest_reteach,
+)
 from dars.v2_api.deps import OrgContext, get_current_org, get_db_conn
 from dars.v2_api.schemas_class_actions import (
     ClassAssessmentSlotListItem,
@@ -40,6 +45,11 @@ from dars.v2_api.schemas_class_actions import (
     MarkTaughtBody,
     OnboardBody,
     OnboardResponse,
+    OverflowConsequencePayload,
+    ReteachActionBody,
+    ReteachActionResponse,
+    ReteachSuggestionItem,
+    ReteachSuggestionResponse,
     SkipBody,
     SubSLOCoverageEntry,
     SubSLOCoverageResponse,
@@ -531,13 +541,18 @@ async def get_cst_timeline(
         # Global teaching order is the spine (D-1).
         items.sort(key=lambda i: i.position)
 
+        # F-1.4 (dynamic-chapter-planner): surface the projector's existing
+        # overflow flag as a count. No new projection — just tally the items.
+        overflow_count = sum(1 for i in items if i.is_overflow)
+
         log.info(
             "get_cst_timeline: exit cst=%s items=%d overflow=%d conflicts=%d",
-            cst_id, len(items),
-            sum(1 for i in items if i.is_overflow),
+            cst_id, len(items), overflow_count,
             sum(1 for i in items if i.is_conflict),
         )
-        return CstTimelineResponse(cst_id=cst_id, items=items)
+        return CstTimelineResponse(
+            cst_id=cst_id, items=items, overflow_count=overflow_count
+        )
     except HTTPException:
         raise
     except Exception:
@@ -642,5 +657,124 @@ async def break_down_chapter(
         slot_count=result.slot_count,
         lesson_slot_count=result.lesson_slot_count,
         assessment_slot_count=result.assessment_slot_count,
+        flex_slot_count=result.flex_slot_count,
         warnings=result.warnings,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reteach trigger (dynamic-chapter-planner Phase 3, F-3.1/F-3.2/F-3.3, D-9)
+#
+# A graded FA slot whose per-sub-SLO mastery is below the threshold surfaces a
+# suggestion (GET, read-only); the teacher then confirms an explicit
+# lightweight|heavy action (POST). Reteach is NEVER auto-applied (D-9).
+# ---------------------------------------------------------------------------
+
+
+async def _ensure_assessment_slot_cst_in_org(
+    conn: asyncpg.Connection, class_assessment_slot_id: UUID, org_id: UUID
+) -> None:
+    """404 unless the FA slot exists and belongs to the calling org (no 403 leak
+    of cross-org slot ids — mirrors the other tenancy guards)."""
+    row = await conn.fetchrow(
+        "SELECT org_id FROM class_assessment_slots WHERE id = $1",
+        class_assessment_slot_id,
+    )
+    if row is None or row["org_id"] != org_id:
+        raise HTTPException(status_code=404, detail="assessment slot not found")
+
+
+@router.get(
+    "/class-assessment-slots/{class_assessment_slot_id}/reteach-suggestion",
+    response_model=ReteachSuggestionResponse,
+)
+async def get_reteach_suggestion(
+    class_assessment_slot_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> ReteachSuggestionResponse:
+    """F-3.1: the below-threshold sub-SLOs for a graded FA slot — the teacher-app
+    badge payload. Read only; empty list ⇒ no badge. Reteach never auto-applies
+    (D-9): acting on a suggestion requires the explicit POST below."""
+    log.info(
+        "get_reteach_suggestion: entry slot=%s", class_assessment_slot_id
+    )
+    await _ensure_assessment_slot_cst_in_org(conn, class_assessment_slot_id, org.id)
+    try:
+        suggestions = await suggest_reteach(conn, class_assessment_slot_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    log.info(
+        "get_reteach_suggestion: exit slot=%s below_threshold=%d",
+        class_assessment_slot_id, len(suggestions),
+    )
+    return ReteachSuggestionResponse(
+        class_assessment_slot_id=class_assessment_slot_id,
+        threshold=RETEACH_MASTERY_THRESHOLD,
+        items=[
+            ReteachSuggestionItem(
+                sub_slo_id=s.sub_slo_id,
+                sub_slo_code=s.sub_slo_code,
+                statement=s.statement,
+                mastery_percent=s.mastery_percent,
+            )
+            for s in suggestions
+        ],
+    )
+
+
+@router.post(
+    "/class-assessment-slots/{class_assessment_slot_id}/reteach",
+    response_model=ReteachActionResponse,
+)
+async def confirm_reteach(
+    class_assessment_slot_id: UUID,
+    body: ReteachActionBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> ReteachActionResponse:
+    """F-3.2/F-3.3: apply a teacher-confirmed reteach for one sub-SLO. The
+    teacher's explicit `mode` decides the path — there is NO auto-apply (D-9):
+
+      lightweight (default): flip coverage to needs-rework; no slot, no shift.
+      heavy: consume the nearest downstream flex slot (no shift), else insert a
+             new lesson slot (shifts the tail) and report the overflow
+             consequence (D-17). The reteach slot rides the on-demand LP path
+             (lp_type='revision', origin='reteach') — D-10.
+    """
+    log.info(
+        "confirm_reteach: entry slot=%s sub_slo=%s mode=%s",
+        class_assessment_slot_id, body.sub_slo_id, body.mode,
+    )
+    await _ensure_assessment_slot_cst_in_org(conn, class_assessment_slot_id, org.id)
+    try:
+        result = await reteach(
+            conn,
+            class_assessment_slot_id=class_assessment_slot_id,
+            sub_slo_id=body.sub_slo_id,
+            mode=body.mode,
+        )
+    except ValueError as e:
+        # Bad mode, non-FA slot, unresolvable reteach topic, or a taught-lock
+        # refusal from the mutation primitives → caller-fixable, 422.
+        raise HTTPException(status_code=422, detail=str(e))
+
+    consequence = None
+    if result.consequence is not None:
+        consequence = OverflowConsequencePayload(
+            overflow_before=result.consequence.overflow_before,
+            overflow_after=result.consequence.overflow_after,
+            newly_overflowed_positions=result.consequence.newly_overflowed_positions,
+            first_overflow_position=result.consequence.first_overflow_position,
+        )
+    log.info(
+        "confirm_reteach: exit slot=%s sub_slo=%s path=%s reteach_slot=%s",
+        class_assessment_slot_id, body.sub_slo_id, result.path, result.slot_id,
+    )
+    return ReteachActionResponse(
+        class_assessment_slot_id=class_assessment_slot_id,
+        sub_slo_id=body.sub_slo_id,
+        path=result.path,
+        reteach_slot_id=result.slot_id,
+        consequence=consequence,
     )
