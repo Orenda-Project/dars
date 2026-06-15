@@ -1,5 +1,6 @@
 /**
- * teacher-adjustable-syllabus (Phase 3 Revival, F3.4) — Syllabus tab template.
+ * Syllabus tab template — teacher-adjustable-syllabus (Phase 3 Revival, F3.4)
+ * reconciled with lp-context-header Phase 3 (D-12).
  *
  * The class teaching path is auto-seeded from the org's published breakdown
  * (D-10) and shown as a settled plan by default (VIEW mode: dates as plain
@@ -7,24 +8,30 @@
  * path for THIS class only (D-1/D-9): re-date, reorder upcoming chapters,
  * remove yet-to-start un-generated chapters, and add a chapter.
  *
- * Each chapter row stays EXPANDABLE in BOTH modes: clicking it reveals that
- * chapter's lessons + assessments in place (view/generate LP + exam,
- * mark-taught, skip). The per-chapter "Generate chapter plan" button stays in
- * the right rail for chapters that haven't been broken down yet. Edit mode only
- * ADDS the path-mutation affordances — it never hides the slot rows.
+ * VIEW vs EDIT interaction (lp-context-header D-12):
+ *   - VIEW  → each chapter row is a navigation Link to the dedicated Chapter
+ *             Page (`/teacher-app/classes/{cstId}/chapters/{position}`), which
+ *             shows that chapter's lessons + assessments. No inline accordion.
+ *   - EDIT  → the row reveals path-mutation affordances (reorder ▲▼, date
+ *             inputs, remove ✕) and does NOT navigate; "Add a chapter" shows.
+ *   The per-chapter "Generate chapter plan" button stays in the right rail for
+ *   chapters that haven't been broken down yet, in both modes.
  *
  * - Empty path → calm message (D-7) when there is no recommendation; when a
- *   recommendation exists (no auto-seed because no published breakdown), the
- *   add-a-chapter prompt lets the teacher start the path.
+ *   recommendation exists, the add-a-chapter prompt lets the teacher start.
  * - Non-empty  → the ordered path: chapter number + title, position, date range
- *   (plain text in view; inputs in edit), slot count, status badge; reorder ▲▼
- *   + remove ✕ in edit; expanding lists its lesson/assessment rows.
+ *   (plain text in view; inputs in edit), slot count, status badge.
  *
  * Pure template — data + callbacks as props, no fetching (webapp/CLAUDE.md).
  * The `editing` boolean is owned by the page (D-13) and passed in with
  * `onToggleEdit`; the template never holds it.
+ *
+ * `ChapterContents`, `formatDate`, and `ChapterStatusBadge` are exported so the
+ * dedicated Chapter Page reuses one renderer (lp-context-header D-11).
  */
 "use client";
+
+import Link from "next/link";
 
 import type {
   ClassPathChapter,
@@ -46,6 +53,8 @@ export interface BookChapterOption {
 
 interface SyllabusTabProps {
   data: SyllabusForCstResponse;
+  /** The CST whose syllabus this is — used to build chapter-page links. */
+  cstId: string;
   /** Action 2: break a chapter down into slots. */
   onBreakDown: (book_chapter_id: string) => void;
   /** Set while a single chapter's break-down is in flight. */
@@ -71,24 +80,6 @@ interface SyllabusTabProps {
   bookChapters: BookChapterOption[] | null;
   /** True while any path mutation (pick/date/reorder/remove) is in flight. */
   pathBusy: boolean;
-
-  /* ---- Expandable chapter contents (lessons + assessments) ---- */
-  /** Unified timeline items for this CST; null while still loading. */
-  timeline: CstTimelineItem[] | null;
-  /** The single "you are here" slot id, if any. */
-  currentSlotId: string | null;
-  /** Which chapter is expanded (by book_chapter_id), or null. */
-  expandedChapterId: string | null;
-  /** Toggle a chapter open/closed. */
-  onToggleChapter: (book_chapter_id: string) => void;
-  /** Row callbacks (view/generate LP + exam, mark-taught, skip). */
-  rowCallbacks: TimelineRowCallbacks;
-  /** Slot whose LP is currently being generated/polled. */
-  generatingSlotId: string | null;
-  /** Assessment slot whose exam is currently being generated/polled. */
-  generatingExamSlotId: string | null;
-  /** Slot with an in-flight mark-taught/skip/complete. */
-  busySlotId: string | null;
 }
 
 const STATUS_LABEL: Record<ClassPathChapterStatus, string> = {
@@ -104,7 +95,7 @@ const STATUS_CLASS: Record<ClassPathChapterStatus, string> = {
 };
 
 /** ISO date (YYYY-MM-DD) → "12 Mar 2026" plain text, or "—" when unset. */
-function formatDate(iso: string | null): string {
+export function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
@@ -118,6 +109,7 @@ function formatDate(iso: string | null): string {
 export function ClassSyllabusTab(props: SyllabusTabProps) {
   const {
     data,
+    cstId,
     onBreakDown,
     busyChapterId,
     editing,
@@ -128,30 +120,12 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
     onRemove,
     bookChapters,
     pathBusy,
-    timeline,
-    currentSlotId,
-    expandedChapterId,
-    onToggleChapter,
-    rowCallbacks,
-    generatingSlotId,
-    generatingExamSlotId,
-    busySlotId,
   } = props;
 
   // Path is server-ordered by `position`; keep that order explicitly.
   const path = [...data.chapters].sort((a, b) => a.position - b.position);
   const isEmpty = path.length === 0;
   const recommended = data.recommended_next;
-
-  // The syllabus chapter is keyed by book_chapter_id; the timeline items carry
-  // breakdown_chapter_position. Both derive from the same ordered class path,
-  // so chapter `position` is the stable join key between the two.
-  const itemsByPosition = new Map<number, CstTimelineItem[]>();
-  for (const item of timeline ?? []) {
-    const list = itemsByPosition.get(item.breakdown_chapter_position);
-    if (list) list.push(item);
-    else itemsByPosition.set(item.breakdown_chapter_position, [item]);
-  }
 
   // Move a chapter one step up/down within the path and submit the new order
   // (D-6 lock is enforced server-side; the UI only offers handles on
@@ -199,7 +173,7 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
         <p className="text-xs text-dars-muted">
           {editing
             ? "Editing this class's syllabus — adjust dates, reorder upcoming chapters, or add/remove. Changes apply to this class only."
-            : "Your school sets this syllabus. Click a chapter to see its lessons and assessments, or generate a plan from any chapter below."}
+            : "Your school sets this syllabus. Open a chapter to see its lessons and assessments, or generate a plan from any chapter below."}
         </p>
       </div>
 
@@ -213,6 +187,7 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
                 <PathRow
                   key={ch.book_chapter_id}
                   ch={ch}
+                  cstId={cstId}
                   onBreakDown={onBreakDown}
                   breakingDown={busyChapterId === ch.book_chapter_id}
                   editing={editing}
@@ -223,15 +198,6 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
                   canMoveUp={idx > 0}
                   canMoveDown={idx < path.length - 1}
                   pathBusy={pathBusy}
-                  expanded={expandedChapterId === ch.book_chapter_id}
-                  onToggle={() => onToggleChapter(ch.book_chapter_id)}
-                  items={itemsByPosition.get(ch.position) ?? []}
-                  timelineLoading={timeline === null}
-                  currentSlotId={currentSlotId}
-                  rowCallbacks={rowCallbacks}
-                  generatingSlotId={generatingSlotId}
-                  generatingExamSlotId={generatingExamSlotId}
-                  busySlotId={busySlotId}
                 />
               ))}
             </ol>
@@ -345,11 +311,14 @@ function EmptyPathMessage() {
 }
 
 /* ------------------------------------------------------------------ */
-/* F2.2 — an expandable chapter row in the path                        */
+/* A chapter row in the path.                                          */
+/*   VIEW → navigation Link to the Chapter Page (D-8/D-12).            */
+/*   EDIT → re-date / reorder / remove controls; no navigation.        */
 /* ------------------------------------------------------------------ */
 
 function PathRow({
   ch,
+  cstId,
   onBreakDown,
   breakingDown,
   editing,
@@ -360,17 +329,9 @@ function PathRow({
   canMoveUp,
   canMoveDown,
   pathBusy,
-  expanded,
-  onToggle,
-  items,
-  timelineLoading,
-  currentSlotId,
-  rowCallbacks,
-  generatingSlotId,
-  generatingExamSlotId,
-  busySlotId,
 }: {
   ch: ClassPathChapter;
+  cstId: string;
   onBreakDown: (book_chapter_id: string) => void;
   breakingDown: boolean;
   editing: boolean;
@@ -384,15 +345,6 @@ function PathRow({
   canMoveUp: boolean;
   canMoveDown: boolean;
   pathBusy: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  items: CstTimelineItem[];
-  timelineLoading: boolean;
-  currentSlotId: string | null;
-  rowCallbacks: TimelineRowCallbacks;
-  generatingSlotId: string | null;
-  generatingExamSlotId: string | null;
-  busySlotId: string | null;
 }) {
   const isCurrent = ch.status === "in_progress";
   // "Broken down" = the chapter actually has generated slots — NOT slot_count,
@@ -412,15 +364,47 @@ function PathRow({
     ? "relative border-dars-terra ring-1 ring-dars-terra/40"
     : "border-dars-rule-light";
 
+  const chapterHref = `/teacher-app/classes/${cstId}/chapters/${ch.position}`;
+
+  // The title region: identical content in both modes, but in VIEW it's a
+  // Link to the chapter page (D-12) and in EDIT it's plain (no navigation, so
+  // the date inputs / controls below stay the focus).
+  const titleInner = (
+    <>
+      <span className="pt-0.5 text-xs font-mono text-dars-muted-light tabular-nums">
+        {ch.position}.
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span className="text-sm font-semibold text-dars-ink truncate">
+            Ch {ch.chapter_number} · {ch.title}
+          </span>
+          <ChapterStatusBadge status={ch.status} />
+          {ch.slot_count > 0 ? (
+            <span className="text-xs text-dars-muted">
+              {ch.slot_count} period{ch.slot_count === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </span>
+
+        {/* View-mode date range — plain text. */}
+        {!editing ? (
+          <span className="flex items-center gap-1 text-xs text-dars-ink-soft">
+            <span className="font-mono">{formatDate(ch.start_date)}</span>
+            <span className="text-dars-muted-light">→</span>
+            <span className="font-mono">{formatDate(ch.end_date)}</span>
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+
   return (
     <li className={"rounded-md border bg-dars-parchment " + accent}>
       {isCurrent ? (
         <span className="absolute -left-px top-3 bottom-3 w-0.5 rounded bg-dars-terra" />
       ) : null}
 
-      {/* Header. In view mode the whole strip toggles the row; in edit mode
-          the toggle is the title region only, so the date inputs + controls
-          stay interactive (no nested <button>). */}
       <div className="p-3 flex items-start gap-3">
         {/* Reorder ▲▼ — edit mode, yet_to_start only (D-6). */}
         {editing ? (
@@ -458,50 +442,32 @@ function PathRow({
           </div>
         ) : null}
 
-        {/* Title region — the disclosure toggle (works in both modes). */}
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          className="flex-1 min-w-0 text-left flex items-start gap-3"
-        >
-          <span
-            className={
-              "pt-0.5 text-dars-muted-light transition-transform " +
-              (expanded ? "rotate-90" : "")
-            }
-            aria-hidden
-          >
-            ▸
-          </span>
-          <span className="pt-0.5 text-xs font-mono text-dars-muted-light tabular-nums">
-            {ch.position}.
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span className="text-sm font-semibold text-dars-ink truncate">
-                Ch {ch.chapter_number} · {ch.title}
-              </span>
-              <StatusBadge status={ch.status} />
-              {ch.slot_count > 0 ? (
-                <span className="text-xs text-dars-muted">
-                  {ch.slot_count} period{ch.slot_count === 1 ? "" : "s"}
-                </span>
-              ) : null}
+        {/* Title region. VIEW → Link to the chapter page (chevron points right,
+            "open"); EDIT → plain, non-navigating. */}
+        {editing ? (
+          <div className="flex-1 min-w-0 flex items-start gap-3">
+            <span className="pt-0.5 text-dars-muted-light text-xs" aria-hidden>
+              ▸
             </span>
+            {titleInner}
+          </div>
+        ) : (
+          <Link
+            href={chapterHref}
+            aria-label={`Open chapter ${ch.chapter_number}: ${ch.title}`}
+            className="flex-1 min-w-0 text-left flex items-start gap-3 group"
+          >
+            <span
+              className="pt-0.5 text-dars-muted-light text-xs group-hover:text-dars-terra"
+              aria-hidden
+            >
+              ›
+            </span>
+            {titleInner}
+          </Link>
+        )}
 
-            {/* View-mode date range — plain text. */}
-            {!editing ? (
-              <span className="flex items-center gap-1 text-xs text-dars-ink-soft">
-                <span className="font-mono">{formatDate(ch.start_date)}</span>
-                <span className="text-dars-muted-light">→</span>
-                <span className="font-mono">{formatDate(ch.end_date)}</span>
-              </span>
-            ) : null}
-          </span>
-        </button>
-
-        {/* Right rail. Stop propagation on every control so nothing toggles. */}
+        {/* Right rail. */}
         <div className="shrink-0 flex flex-col items-end gap-2">
           {brokenDown ? (
             <span className="text-xs font-medium text-dars-muted">Broken down ✓</span>
@@ -515,10 +481,7 @@ function PathRow({
           ) : (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onBreakDown(ch.book_chapter_id);
-              }}
+              onClick={() => onBreakDown(ch.book_chapter_id)}
               disabled={breakingDown}
               className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90 disabled:opacity-50"
             >
@@ -532,10 +495,7 @@ function PathRow({
             removable ? (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemove(ch.book_chapter_id);
-                }}
+                onClick={() => onRemove(ch.book_chapter_id)}
                 disabled={pathBusy}
                 className="text-xs text-dars-terra hover:underline disabled:opacity-50"
               >
@@ -557,9 +517,9 @@ function PathRow({
         </div>
       </div>
 
-      {/* Edit-mode date inputs — a full-width strip under the header so they
-          never nest inside the toggle button (D-13). onBlur persists only a
-          changed bound; COALESCE on the server keeps the other one. */}
+      {/* Edit-mode date inputs — a full-width strip under the header. onBlur
+          persists only a changed bound; COALESCE on the server keeps the
+          other one. */}
       {editing ? (
         <div className="px-3 pb-3 -mt-1 flex items-center gap-2 text-xs text-dars-ink-soft">
           <label className="flex items-center gap-1">
@@ -568,7 +528,6 @@ function PathRow({
               type="date"
               defaultValue={ch.start_date ?? ""}
               disabled={pathBusy}
-              onClick={(e) => e.stopPropagation()}
               onBlur={(e) => {
                 const v = e.target.value || undefined;
                 if ((ch.start_date ?? undefined) !== v && v) {
@@ -585,7 +544,6 @@ function PathRow({
               type="date"
               defaultValue={ch.end_date ?? ""}
               disabled={pathBusy}
-              onClick={(e) => e.stopPropagation()}
               onBlur={(e) => {
                 const v = e.target.value || undefined;
                 if ((ch.end_date ?? undefined) !== v && v) {
@@ -597,28 +555,13 @@ function PathRow({
           </label>
         </div>
       ) : null}
-
-      {/* Expanded body — this chapter's lessons + assessments. */}
-      {expanded ? (
-        <div className="border-t border-dars-rule-light px-3 pb-3 pt-3">
-          <ChapterContents
-            brokenDown={brokenDown}
-            items={items}
-            timelineLoading={timelineLoading}
-            currentSlotId={currentSlotId}
-            rowCallbacks={rowCallbacks}
-            generatingSlotId={generatingSlotId}
-            generatingExamSlotId={generatingExamSlotId}
-            busySlotId={busySlotId}
-          />
-        </div>
-      ) : null}
     </li>
   );
 }
 
-/** The expanded contents of a chapter: its lesson + assessment rows. */
-function ChapterContents({
+/** The contents of a chapter: its lesson + assessment rows. Rendered on the
+ * dedicated Chapter Page (lp-context-header D-11). */
+export function ChapterContents({
   brokenDown,
   items,
   timelineLoading,
@@ -648,7 +591,7 @@ function ChapterContents({
 
   if (items.length === 0) {
     // No slots for this chapter. If it hasn't been broken down, nudge toward
-    // the "Generate chapter plan" action in the header's right rail.
+    // the "Generate chapter plan" action.
     return (
       <p className="text-xs text-dars-muted">
         {brokenDown
@@ -684,7 +627,7 @@ function ChapterContents({
   );
 }
 
-function StatusBadge({ status }: { status: ClassPathChapterStatus }) {
+export function ChapterStatusBadge({ status }: { status: ClassPathChapterStatus }) {
   return (
     <span
       className={

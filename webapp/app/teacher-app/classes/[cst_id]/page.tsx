@@ -26,7 +26,6 @@ import {
   TabLoading,
   type ClassDetailTab,
 } from "@/components/templates/class-detail-template";
-import type { TimelineRowCallbacks } from "@/components/templates/class-timeline-tab";
 import {
   ClassSLOProgressTab,
   type SLOProgressGroup,
@@ -149,8 +148,9 @@ export default function ClassDetailPage() {
   const [timelineError, setTimelineError] = useState<string | null>(null);
   // Syllabus tab: the class teaching path. Auto-seeded server-side from the org
   // breakdown (D-10); the teacher edits it on top in Edit mode (D-9/D-13) —
-  // re-date, reorder, remove, add — and can expand a chapter to view its
-  // lessons + assessments / break it down in BOTH modes.
+  // re-date, reorder, remove, add. Viewing a chapter's lessons + assessments
+  // now happens on the dedicated Chapter Page (lp-context-header D-8/D-12), not
+  // an inline accordion.
   const [syllabus, setSyllabus] = useState<SyllabusForCstResponse | null>(null);
   const [syllabusError, setSyllabusError] = useState<string | null>(null);
   const [busyChapterId, setBusyChapterId] = useState<string | null>(null);
@@ -162,8 +162,6 @@ export default function ClassDetailPage() {
   const [pickerChapters, setPickerChapters] = useState<BookChapterOption[] | null>(
     null,
   );
-  // Which syllabus chapter is expanded (by book_chapter_id), or null.
-  const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [selectedBookChapterId, setSelectedBookChapterId] = useState<string | null>(null);
@@ -615,76 +613,6 @@ export default function ClassDetailPage() {
 
   const onMarkTaught = (slot: ClassLessonSlotListItem) => markTaughtById(slot.id);
 
-  // ---- Timeline handlers (operate on CstTimelineItem) ----
-  // Memoized so the `rowCallbacks` object the Syllabus tab consumes stays
-  // referentially stable across renders.
-  const onTimelineViewLP = useCallback(
-    (item: Extract<CstTimelineItem, { kind: "lesson" }>) => openLP(item),
-    [],
-  );
-
-  const onTimelineViewExam = useCallback(
-    (item: Extract<CstTimelineItem, { kind: "assessment" }>) => {
-      setDrawer({
-        kind: "exam",
-        slotId: item.id,
-        title:
-          item.assessment_type === "formative"
-            ? "Formative assessment"
-            : "Summative assessment",
-        subtitle: `Day ${item.position} · ${item.topic_titles.length} topic${item.topic_titles.length === 1 ? "" : "s"}`,
-      });
-    },
-    [],
-  );
-
-  const onTimelineMarkTaught = useCallback(
-    async (item: CstTimelineItem) => {
-      if (item.kind === "lesson") {
-        await markTaughtById(item.id);
-        return;
-      }
-      // Assessment "mark done" → complete.
-      setBusySlotId(item.id);
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        await slotsApi.completeAssessment(item.id, { taught_on: today });
-        await Promise.all([
-          loadTimeline(),
-          todayLoaded ? loadLessons() : Promise.resolve(),
-        ]);
-      } catch (err) {
-        setTimelineError(formatErr(err));
-      } finally {
-        setBusySlotId(null);
-      }
-    },
-    [markTaughtById, loadTimeline, loadLessons, todayLoaded],
-  );
-
-  const onTimelineSkip = useCallback(
-    async (item: CstTimelineItem) => {
-      setBusySlotId(item.id);
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        if (item.kind === "lesson") {
-          await slotsApi.skipLesson(item.id, { occurred_on: today });
-        } else {
-          await slotsApi.skipAssessment(item.id, { occurred_on: today });
-        }
-        await Promise.all([
-          loadTimeline(),
-          todayLoaded ? loadLessons() : Promise.resolve(),
-        ]);
-      } catch (err) {
-        setTimelineError(formatErr(err));
-      } finally {
-        setBusySlotId(null);
-      }
-    },
-    [loadTimeline, loadLessons, todayLoaded],
-  );
-
   // On-demand LP generation for a lesson slot (Generate / Retry).
   // Dispatch, then poll the slot detail until the LP is READY/ERROR,
   // running `refetch` each tick so the relevant tab's status pills update
@@ -714,18 +642,6 @@ export default function ClassDetailPage() {
       }
     },
     [],
-  );
-
-  const onTimelineGenerateLP = useCallback(
-    async (item: Extract<CstTimelineItem, { kind: "lesson" }>) => {
-      setTimelineError(null);
-      try {
-        await generateLPAndPoll(item.id, loadTimeline);
-      } catch (err) {
-        setTimelineError(formatErr(err));
-      }
-    },
-    [generateLPAndPoll, loadTimeline],
   );
 
   // On-demand FA exam generation for an assessment slot (Generate / Retry).
@@ -758,64 +674,6 @@ export default function ClassDetailPage() {
     },
     [],
   );
-
-  const onTimelineGenerateExam = useCallback(
-    async (item: Extract<CstTimelineItem, { kind: "assessment" }>) => {
-      setTimelineError(null);
-      try {
-        await generateExamAndPoll(item.id, loadTimeline);
-      } catch (err) {
-        setTimelineError(formatErr(err));
-      }
-    },
-    [generateExamAndPoll, loadTimeline],
-  );
-
-  // Toggle a syllabus chapter open/closed. Accordion-style: opening one closes
-  // the previously-open chapter.
-  const onToggleChapter = useCallback((book_chapter_id: string) => {
-    setExpandedChapterId((prev) =>
-      prev === book_chapter_id ? null : book_chapter_id,
-    );
-  }, []);
-
-  // Row callbacks the expanded chapter contents thread straight through to each
-  // lesson/assessment row.
-  const rowCallbacks = useMemo<TimelineRowCallbacks>(
-    () => ({
-      onViewLP: onTimelineViewLP,
-      onViewExam: onTimelineViewExam,
-      onMarkTaught: onTimelineMarkTaught,
-      onSkip: onTimelineSkip,
-      onGenerateLP: onTimelineGenerateLP,
-      onGenerateExam: onTimelineGenerateExam,
-    }),
-    [
-      onTimelineViewLP,
-      onTimelineViewExam,
-      onTimelineMarkTaught,
-      onTimelineSkip,
-      onTimelineGenerateLP,
-      onTimelineGenerateExam,
-    ],
-  );
-
-  // "You are here" (D-7): today's slot if scheduled, else the first
-  // not-yet-done item in teaching order.
-  const currentSlotId = useMemo<string | null>(() => {
-    if (!timeline) return null;
-    const todaySlotId =
-      todayEntry?.lesson_slot?.slot_id ??
-      todayEntry?.assessment_slot?.slot_id ??
-      null;
-    if (todaySlotId && timeline.some((t) => t.id === todaySlotId)) {
-      return todaySlotId;
-    }
-    const pending = timeline.find(
-      (t) => t.status === "planned" || t.status === "scheduled",
-    );
-    return pending?.id ?? null;
-  }, [timeline, todayEntry]);
 
   // Today dashboard derived state — needs the lessons list for covered/now/next
   // and topic titles, plus the today entry to identify today's slot.
@@ -1015,6 +873,7 @@ export default function ClassDetailPage() {
               ) : null}
               <ClassSyllabusTab
                 data={syllabus}
+                cstId={cstId}
                 onBreakDown={handleBreakDown}
                 busyChapterId={busyChapterId}
                 editing={editingSyllabus}
@@ -1025,14 +884,6 @@ export default function ClassDetailPage() {
                 onRemove={handleRemove}
                 bookChapters={pickerChapters}
                 pathBusy={pathBusy}
-                timeline={timeline}
-                currentSlotId={currentSlotId}
-                expandedChapterId={expandedChapterId}
-                onToggleChapter={onToggleChapter}
-                rowCallbacks={rowCallbacks}
-                generatingSlotId={generatingSlotId}
-                generatingExamSlotId={generatingExamSlotId}
-                busySlotId={busySlotId}
               />
             </>
           )

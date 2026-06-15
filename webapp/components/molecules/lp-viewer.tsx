@@ -18,6 +18,7 @@ import {
   DarsApiError,
 } from "@/lib/dars-api";
 import { STUB_LP_HTML } from "@/lib/lp-stub";
+import { LpContextHeader } from "@/components/molecules/lp-context-header";
 
 interface LPViewerProps {
   slotId: string;
@@ -70,6 +71,12 @@ export function LPViewer({ slotId }: LPViewerProps) {
   // real data when present.
   return (
     <div className="space-y-4">
+      <LpContextHeader
+        chapterNumber={detail.chapter_number}
+        chapterTitle={detail.chapter_title}
+        topicTitle={detail.topic_text}
+        lpType={detail.lp_type}
+      />
       <CoveredSLOs
         subSloIds={detail.lp_covered_sub_slo_ids}
         taggingStatus={detail.lp_tagging_status}
