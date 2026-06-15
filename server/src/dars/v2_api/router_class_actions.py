@@ -18,7 +18,12 @@ from dars.breakdown.chapter_plan_service import (
 from dars.breakdown.planner_llm import PlannerLLMError
 from dars.breakdown.class_chapter_service import (
     list_class_path,
+    pick_chapter,
+    recommended_next_chapter,
+    remove_chapter,
+    reorder_path,
     seed_class_chapters_from_breakdown,
+    set_chapter_dates,
 )
 from dars.breakdown.mark_taught_service import (
     mark_assessment_slot,
@@ -46,10 +51,14 @@ from dars.v2_api.schemas_class_actions import (
     OnboardBody,
     OnboardResponse,
     OverflowConsequencePayload,
+    PickChapterBody,
+    RecommendedNextChapter,
+    ReorderChaptersBody,
     ReteachActionBody,
     ReteachActionResponse,
     ReteachSuggestionItem,
     ReteachSuggestionResponse,
+    SetChapterDatesBody,
     SkipBody,
     SubSLOCoverageEntry,
     SubSLOCoverageResponse,
@@ -255,18 +264,23 @@ async def get_sub_slo_coverage(
     joined_at = state["joined_at_position"] if state else 1
 
     # Build the universe + map each sub-SLO to its earliest lesson position.
+    # Carry the parent SLO (slo_id/slo_code) so the frontend can roll sub-SLO
+    # coverage up to full-SLO coverage (today-screen-focus D-4).
     rows = await conn.fetch(
         """
         SELECT
             ss.id AS sub_slo_id,
             ss.code AS sub_slo_code,
+            sl.id AS slo_id,
+            sl.code AS slo_code,
             MIN(cls.position) AS first_position
         FROM class_lesson_slots cls
         JOIN topic_sub_slos tss ON tss.topic_id = cls.topic_id
         JOIN sub_slos ss ON ss.id = tss.sub_slo_id
+        JOIN slos sl ON sl.id = ss.slo_id
         WHERE cls.cst_id = $1
-        GROUP BY ss.id, ss.code
-        ORDER BY ss.code
+        GROUP BY ss.id, ss.code, sl.id, sl.code
+        ORDER BY sl.code, ss.code
         """,
         cst_id,
     )
@@ -288,6 +302,8 @@ async def get_sub_slo_coverage(
             SubSLOCoverageEntry(
                 sub_slo_id=r["sub_slo_id"],
                 sub_slo_code=r["sub_slo_code"],
+                slo_id=r["slo_id"],
+                slo_code=r["slo_code"],
                 status=status_,
             )
         )
@@ -582,16 +598,19 @@ def _path_chapter(row: dict) -> ClassPathChapter:
 async def _build_syllabus_response(
     conn: asyncpg.Connection, cst_id: UUID
 ) -> SyllabusForCstResponse:
-    """Shared assembly: the read-only class path (mirrored from the org
-    breakdown) + periods/week."""
+    """Shared assembly: the class path (auto-seeded from the org breakdown,
+    teacher-editable on top) + recommended-next + periods/week. Used by the GET
+    and by the edit endpoints that echo the updated path (F3.2)."""
     ctx = await resolve_cst_syllabus_context(conn, cst_id)
     weekdays = await _cst_weekday_set(conn, cst_id)
     path = await list_class_path(conn, cst_id)
+    rec = await recommended_next_chapter(conn, cst_id)
     return SyllabusForCstResponse(
         cst_id=cst_id,
         syllabus_breakdown_id=ctx.syllabus_breakdown_id,
         periods_per_week=len(weekdays),
         chapters=[_path_chapter(r) for r in path],
+        recommended_next=RecommendedNextChapter(**rec) if rec else None,
     )
 
 
@@ -601,10 +620,11 @@ async def get_cst_syllabus(
     org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
 ) -> SyllabusForCstResponse:
-    """The class's read-only teaching path (`class_chapters`), auto-seeded from
-    the org's published Syllabus Breakdown on first read (D-2). Each chapter
-    carries the org-decided dates, slot count and derived status (D-4), plus the
-    class's periods/week. No published breakdown → empty path (D-7)."""
+    """The class's teaching path (`class_chapters`), auto-seeded from the org's
+    published Syllabus Breakdown on first read (D-10) and editable by the teacher
+    on top (D-9). Each chapter carries its dates, slot count and derived status
+    (D-4), plus the class's periods/week and the global's recommended-next
+    chapter (D-3). No published breakdown → empty path (D-7)."""
     log.info("get_cst_syllabus: entry cst=%s", cst_id)
     await _ensure_cst_in_org(conn, cst_id, org.id)
     # First read materialises the path from the org breakdown (idempotent).
@@ -614,6 +634,124 @@ async def get_cst_syllabus(
         "get_cst_syllabus: exit cst=%s chapters=%d periods/wk=%d",
         cst_id, len(resp.chapters), resp.periods_per_week,
     )
+    return resp
+
+
+# ---------------------------------------------------------------------------
+# Class-path edits (Phase 3 Revival, F3.2 / D-9): pick / set-dates / reorder /
+# remove. Each enforces tenancy via _ensure_cst_in_org (404 cross-org), maps
+# ValueError → 422, and echoes the full updated SyllabusForCstResponse so the
+# client re-renders from one payload. The teacher edits this class only (D-1).
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/csts/{cst_id}/chapters",
+    response_model=SyllabusForCstResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def pick_class_chapter(
+    cst_id: UUID,
+    payload: PickChapterBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F3.2 — pick a chapter into the class path (Action 1, D-2). Records the
+    choice undated; does not generate slots. Returns the updated path."""
+    log.info("pick_class_chapter: entry cst=%s chapter=%s", cst_id, payload.book_chapter_id)
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await pick_chapter(conn, cst_id, org.id, payload.book_chapter_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("pick_class_chapter: exit cst=%s chapters=%d", cst_id, len(resp.chapters))
+    return resp
+
+
+@router.patch(
+    "/csts/{cst_id}/chapters/{book_chapter_id}",
+    response_model=SyllabusForCstResponse,
+)
+async def set_class_chapter_dates(
+    cst_id: UUID,
+    book_chapter_id: UUID,
+    payload: SetChapterDatesBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F3.2 — set a path chapter's date range (D-7). Returns the updated path."""
+    log.info(
+        "set_class_chapter_dates: entry cst=%s chapter=%s start=%s end=%s",
+        cst_id, book_chapter_id, payload.start_date, payload.end_date,
+    )
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await set_chapter_dates(
+            conn, cst_id, book_chapter_id, payload.start_date, payload.end_date
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("set_class_chapter_dates: exit cst=%s chapter=%s", cst_id, book_chapter_id)
+    return resp
+
+
+@router.put(
+    "/csts/{cst_id}/chapters/order",
+    response_model=SyllabusForCstResponse,
+)
+async def reorder_class_chapters(
+    cst_id: UUID,
+    payload: ReorderChaptersBody,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F3.2 — reorder the upcoming chapters (D-6). Started chapters are locked
+    to the front in their current order. Returns the updated path."""
+    log.info(
+        "reorder_class_chapters: entry cst=%s submitted=%d",
+        cst_id, len(payload.book_chapter_ids),
+    )
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await reorder_path(conn, cst_id, payload.book_chapter_ids)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("reorder_class_chapters: exit cst=%s chapters=%d", cst_id, len(resp.chapters))
+    return resp
+
+
+@router.delete(
+    "/csts/{cst_id}/chapters/{book_chapter_id}",
+    response_model=SyllabusForCstResponse,
+)
+async def remove_class_chapter(
+    cst_id: UUID,
+    book_chapter_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> SyllabusForCstResponse:
+    """F3.2 — remove a chapter from the path (D-2). Rejected if the chapter has
+    started (D-6) or has any generated slots (D-11). Does not touch generated
+    class slots. Returns the updated path."""
+    log.info("remove_class_chapter: entry cst=%s chapter=%s", cst_id, book_chapter_id)
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+    try:
+        await remove_chapter(conn, cst_id, book_chapter_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+    resp = await _build_syllabus_response(conn, cst_id)
+    log.info("remove_class_chapter: exit cst=%s chapters=%d", cst_id, len(resp.chapters))
     return resp
 
 

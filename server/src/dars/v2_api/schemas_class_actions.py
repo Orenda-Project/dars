@@ -60,6 +60,11 @@ class OnboardResponse(BaseModel):
 class SubSLOCoverageEntry(BaseModel):
     sub_slo_id: UUID
     sub_slo_code: str
+    # Parent SLO of this sub-SLO — lets the frontend roll sub-SLO coverage up
+    # to full-SLO coverage (today-screen-focus D-4). Additive; existing
+    # consumers ignore these fields.
+    slo_id: UUID
+    slo_code: str
     status: str  # 'taught' | 'not_taught' | 'unknown'
 
 
@@ -214,11 +219,39 @@ class ClassPathChapter(BaseModel):
     status: str  # 'yet_to_start' | 'in_progress' | 'done'
 
 
+class RecommendedNextChapter(BaseModel):
+    # D-3: the global default's next-suggested chapter, not yet in the class
+    # path. Populated for the "add a chapter" affordance in edit mode (D-13).
+    book_chapter_id: UUID
+    chapter_number: int
+    title: str
+
+
 class SyllabusForCstResponse(BaseModel):
     cst_id: UUID
     syllabus_breakdown_id: UUID | None  # the org breakdown the path mirrors; None if none published
     periods_per_week: int
-    chapters: list[ClassPathChapter]  # the read-only class path, ordered by position
+    chapters: list[ClassPathChapter]  # the class path, ordered by position
+    # D-3 suggestion — the global's next-recommended chapter not in the path.
+    # Mainly drives the edit-mode "Suggested next" affordance (F3.4); None when
+    # the path covers the global or there's no published breakdown.
+    recommended_next: RecommendedNextChapter | None = None
+
+
+# --- Request bodies for the class-path edit endpoints (Phase 3 Revival, F3.2) ---
+
+
+class PickChapterBody(BaseModel):
+    book_chapter_id: UUID
+
+
+class SetChapterDatesBody(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class ReorderChaptersBody(BaseModel):
+    book_chapter_ids: list[UUID]
 
 
 class GenerateChapterPlanResponse(BaseModel):

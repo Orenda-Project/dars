@@ -12,10 +12,13 @@ import { SlideOver } from "@/components/molecules/slide-over";
 import { TodayTemplate } from "@/components/templates/today-template";
 import {
   DarsApiError,
+  progress as progressApi,
+  rollupSloCoverage,
   slots as slotsApi,
   today as todayApi,
   type AssessmentSlotEntry,
   type LessonSlotEntry,
+  type SloCoverageRollup,
   type TodayEntry,
   type TodayResponse,
 } from "@/lib/dars-api";
@@ -31,12 +34,34 @@ export default function TodayPage() {
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [busySlotId, setBusySlotId] = useState<string | null>(null);
+  // Full-SLO coverage per CST (today-screen-focus D-2/D-5). Fetched per-class in
+  // parallel after /today resolves; a failed/empty class is simply omitted.
+  const [coverageByCst, setCoverageByCst] = useState<
+    Map<string, SloCoverageRollup>
+  >(new Map());
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setToday(await todayApi.get());
+      const res = await todayApi.get();
+      setToday(res);
+      // Coverage is non-blocking: today's lesson cards are already set above.
+      // Fetch each class's coverage in parallel and roll up to full-SLO; a
+      // per-class failure must not break the page or the other bars.
+      const pairs = await Promise.all(
+        res.items.map(async (entry) => {
+          try {
+            const rollup = rollupSloCoverage(
+              await progressApi.getSubSLOCoverage(entry.cst_id),
+            );
+            return rollup ? ([entry.cst_id, rollup] as const) : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setCoverageByCst(new Map(pairs.filter((p): p is NonNullable<typeof p> => p !== null)));
     } catch (err) {
       setError(
         err instanceof DarsApiError
@@ -101,6 +126,7 @@ export default function TodayPage() {
         onMarkTaught={onMarkTaught}
         onViewExam={onViewExam}
         busySlotId={busySlotId}
+        coverageByCst={coverageByCst}
       />
 
       <SlideOver
