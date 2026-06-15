@@ -44,3 +44,41 @@ consequence reporting flags overflow when the insert pushes past year-end.
 
 Depends on Phase 1 (mutation primitives + `reteach_for_sub_slo_id`) and Phase 2 (flex slots to
 consume). Reuses shipped `get_or_generate_lp` (#133) and `mastery_service` / `sub_slo_mastery`.
+
+## Notes from execution
+
+**F-3.1 / F-3.2 (backend)** shipped in PR #143. **F-3.3 (teacher-app surface)** built
+2026-06-15 (bead `feat-dynamic-planner-reteach-ui`, branch `feat/dynamic-planner-reteach-ui-wt`,
+awaiting PR merge):
+
+- **Where it lives (D-18):** on the mastery-entry/results page
+  (`webapp/app/teacher-app/classes/[cst_id]/assessments/[slot_id]/results/page.tsx`), not a
+  separate FA-timeline badge. The suggestion is only meaningful post-grading, and grading
+  happens here. The panel renders inline after a successful `submitExamResults`, and the page
+  also re-fetches the suggestion on load when the slot is already `completed` (so a returning
+  teacher still sees it). When there is no suggestion (or empty items), behaviour is unchanged
+  — it auto-navigates back to the assessments tab as before; when there *is* one, it stays so
+  the teacher can act.
+- **Component:** `webapp/components/molecules/reteach-panel.tsx` — a presentational molecule
+  (hook-free; the page owns the suggestion data + the per-sub-SLO state machine + the API
+  calls, mirroring `mastery-entry-template`). The "Reteach" badge + heading reads "Class
+  struggled with N sub-SLO(s) — reteach?" and lists each below-threshold sub-SLO with its
+  code, statement, and rounded mastery %.
+- **Confirm step (D-9, never auto-applies):** each sub-SLO offers two radio modes with
+  **lightweight pre-selected** ("Re-cover in your next class" — flips coverage, no slot/shift)
+  and **heavy** ("Add a reteach lesson" — consumes a spare revision day if available, else
+  inserts a new day). Confirm calls `slots.confirmReteach({ sub_slo_id, mode })`; "Not now"
+  dismisses and leaves the plan untouched. After acting, the row shows the outcome and disables
+  further action on that sub-SLO.
+- **Overflow consequence, made legible (D-18):** outcomes are phrased as calendar outcomes, not
+  raw `OverflowConsequence` integers. `path==='lightweight'` → flagged for rework, schedule
+  unchanged. `path==='consume_flex'` → "added using a spare revision day — your schedule is
+  unchanged." `path==='insert'` with `newly_overflowed_positions.length===0` → "added on a new
+  day — everything still fits." `path==='insert'` with overflow → "pushed N later lesson(s)
+  past the end of the school year, starting at lesson #`first_overflow_position`; drop a
+  revision day, move an exam, or trim coverage to fit it back in."
+- **Contract note:** the shipped client methods are `slots.getReteachSuggestion` /
+  `slots.confirmReteach` (the `slots` namespace in `webapp/lib/dars-api.ts`), not `mastery.*`.
+  The UI consumes the contract exactly as shipped — no `dars-api.ts` or backend change.
+- **Validation:** `npx tsc --noEmit` clean, `eslint` clean on both changed files,
+  `next build` clean (27 routes, the results route compiled).
