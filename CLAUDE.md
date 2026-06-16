@@ -42,7 +42,9 @@
 | `/feature <name>` | Start any new feature — research → plan (doc for review) → implement + e2e |
 | `/retrospect` | End of session — analyze what could have been done better, append suggestions to `.claude/improvements.md` |
 
-Use the Agent tool for any self-contained backend or frontend build that would otherwise pollute the main conversation context with implementation detail. Good signals: large rewrites, anything touching >4 files. Return a summary; don't narrate every file change inline. **Always spawn build/implementation sub-agents with `isolation: "worktree"`** (auto-cleaned if unchanged); read-only exploration agents don't need it. The main session keeps the normal branch checkout.
+Use the Agent tool for any self-contained backend or frontend build that would otherwise pollute the main conversation context with implementation detail. Good signals: large rewrites, anything touching >4 files. Return a summary; don't narrate every file change inline. **Always spawn build/implementation sub-agents with `isolation: "worktree"`** (auto-cleaned if unchanged); read-only exploration agents don't need it.
+
+**Always work in a worktree.** Any task that touches code — in the main session or a sub-agent — must run in its own git worktree, never on the main checkout directly. Create a worktree (`EnterWorktree`, or `git worktree add` for headless/agent runs) before making changes; the main checkout stays clean and on its branch. Read-only exploration is the only exception.
 
 ---
 
