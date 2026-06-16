@@ -278,8 +278,8 @@ async def _link_slot_to_lp(
     await conn.execute(
         """
         UPDATE class_lesson_slots
-        SET generated_lp_id = $1, updated_at = now()
-        WHERE id = $2 AND COALESCE(generated_lp_id::text, '') <> $1::text
+        SET generated_lp_id = $1::uuid, updated_at = now()
+        WHERE id = $2 AND generated_lp_id IS DISTINCT FROM $1::uuid
         """,
         generated_lp_id, lesson_slot_id,
     )
