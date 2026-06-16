@@ -270,6 +270,11 @@ function LessonCard({
   const chapter = entry.current_chapter;
   return (
     <div className="rounded-md border border-dars-terra-light/50 bg-dars-parchment p-4">
+      {/* Kind tag — mirrors the AssessmentCard's colored tag so a lesson card is
+          just as obviously a lesson plan (it never said so before). */}
+      <p className="text-xs uppercase tracking-wide font-semibold text-dars-terra mb-2">
+        ◆ Lesson Plan
+      </p>
       <div className="flex items-start justify-between gap-3 mb-3">
         <LpContextHeader
           chapterNumber={chapter?.chapter_number}
@@ -317,13 +322,20 @@ function AssessmentCard({
   const accent = isFA
     ? "border-rose-300 bg-rose-50"
     : "border-violet-300 bg-violet-50";
-  const tag = isFA ? "Formative assessment" : "Summative assessment";
+  const tag = isFA ? "Formative Assessment" : "Summative Assessment";
+  // Color the kind tag to match the card accent so it reads as a distinct kind
+  // at a glance (rose = FA, violet = SA), parallel to the Lesson Plan tag.
+  const tagColor = isFA ? "text-rose-700" : "text-violet-700";
   return (
     <div className={"rounded-md border p-4 " + accent}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <p className="text-xs uppercase tracking-wide font-semibold text-dars-ink">
-            {tag}
+          <p
+            className={
+              "text-xs uppercase tracking-wide font-semibold " + tagColor
+            }
+          >
+            ◆ {tag}
           </p>
           <p className="text-sm text-dars-ink mt-1 font-mono">
             slot #{slot.position} · {slot.topic_ids.length} topic

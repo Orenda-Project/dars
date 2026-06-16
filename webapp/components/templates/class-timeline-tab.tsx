@@ -348,21 +348,26 @@ function DateLabel({ item }: { item: CstTimelineItem }) {
 
 function KindTag({ item }: { item: CstTimelineItem }) {
   if (item.kind === "lesson") {
-    if (item.slot_type === "revision") {
-      return (
-        <span className="text-[10px] font-semibold text-dars-terra uppercase tracking-wide">
-          Revision
+    // Every lesson row announces itself as a lesson plan — the same way an
+    // assessment row announces "FA"/"SA". Revision is the one lesson variant
+    // that reads better by its own name; otherwise it's "Lesson Plan", with
+    // the LP type (Reading, Grammar…) as an optional secondary pill. Without
+    // this, a lesson with no `lp_type` showed no kind label at all.
+    const isRevision = item.slot_type === "revision";
+    const kindLabel = isRevision ? "Revision" : "Lesson Plan";
+    const typeLabel = isRevision ? null : lpTypeLabel(item.lp_type);
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-dars-terra">
+          ◆ {kindLabel}
         </span>
-      );
-    }
-    // lp-context-header F-2.6 / D-3: the LP type is the readable badge, no
-    // longer a raw monospace enum.
-    const typeLabel = lpTypeLabel(item.lp_type);
-    return typeLabel ? (
-      <span className="inline-flex items-center rounded-full bg-dars-terra px-2 py-0.5 text-[10px] font-semibold text-dars-parchment">
-        {typeLabel}
+        {typeLabel ? (
+          <span className="inline-flex items-center rounded-full bg-dars-terra px-2 py-0.5 text-[10px] font-semibold text-dars-parchment">
+            {typeLabel}
+          </span>
+        ) : null}
       </span>
-    ) : null;
+    );
   }
   const isFA = item.assessment_type === "formative";
   return (
@@ -372,7 +377,7 @@ function KindTag({ item }: { item: CstTimelineItem }) {
         (isFA ? "text-rose-700" : "text-violet-700")
       }
     >
-      ◆ {isFA ? "FA" : "SA"}
+      ◆ {isFA ? "Formative Assessment" : "Summative Assessment"}
     </span>
   );
 }

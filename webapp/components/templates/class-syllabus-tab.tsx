@@ -580,11 +580,12 @@ export function ChapterContents({
   generatingExamSlotId: string | null;
   busySlotId: string | null;
 }) {
-  // Items win over the chapter's `is_generated` flag: the flag tracks whether
-  // LPs were generated, NOT whether slots exist, so a freshly broken-down
-  // chapter reads is_generated=false while already having a full set of
-  // lesson/assessment slots. Render whatever slots the timeline carries; only
-  // fall back to the hints when there's genuinely nothing to show.
+  // Render whatever slots the timeline carries; only fall back to the hints
+  // when there's genuinely nothing to show. `is_generated` and "has slots" are
+  // the same signal at the data level (is_generated = the chapter has class
+  // slots), but the timeline is the authoritative source of the rows here, so
+  // we key the body off `items` and use `brokenDown` only for the empty-state
+  // copy.
   if (timelineLoading && items.length === 0) {
     return <p className="text-xs text-dars-muted">Loading lessons…</p>;
   }
