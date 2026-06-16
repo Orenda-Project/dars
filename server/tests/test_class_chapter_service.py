@@ -25,6 +25,7 @@ from dars.breakdown.class_chapter_service import (
     STATUS_IN_PROGRESS,
     STATUS_YET_TO_START,
     derive_chapter_status,
+    list_class_path,
     remove_chapter,
     seed_class_chapters_from_breakdown,
     validate_reorder,
@@ -256,10 +257,10 @@ class TestSeedClassChaptersAgainstDB:
             await conn.execute(
                 """
                 INSERT INTO syllabus_breakdowns
-                  (id, curriculum_id, grade_id, subject_id, status)
-                VALUES ($1, $2, $3, $4, 'published')
+                  (id, curriculum_id, grade_id, subject_id, book_id, status)
+                VALUES ($1, $2, $3, $4, $5, 'published')
                 """,
-                bd_id, curriculum["id"], grade["id"], subject["id"],
+                bd_id, curriculum["id"], grade["id"], subject["id"], book_id,
             )
             ids["breakdown_id"] = bd_id
             base = date(2026, 6, 1)
@@ -276,6 +277,11 @@ class TestSeedClassChaptersAgainstDB:
 
         async def cleanup():
             await conn.execute("DELETE FROM organizations WHERE id=$1", org_id)
+            # syllabus_breakdowns.book_id FKs the book and isn't org-scoped, so
+            # it must go before the book it references.
+            await conn.execute(
+                "DELETE FROM syllabus_breakdowns WHERE book_id=$1", book_id
+            )
             await conn.execute("DELETE FROM books WHERE id=$1", book_id)
 
         return ids, cleanup
@@ -428,6 +434,126 @@ class TestSeedClassChaptersAgainstDB:
                     ids["cst_id"], target,
                 )
                 assert gone is None
+            finally:
+                await cleanup()
+        finally:
+            await conn.close()
+
+    # -----------------------------------------------------------------------
+    # is_generated / status regression (fix/is-generated-backend).
+    #
+    # A chapter that has been broken down (it owns lesson/assessment slots) must
+    # read back as is_generated=true even when none of those slots is terminal
+    # yet (status stays yet_to_start until something is taught). The bug:
+    # _chapter_terminal_map only saw slots with a non-null direct book_chapter_id
+    # and looked the result up across two asyncpg fetches, so a planned chapter —
+    # especially one whose slots link to it only through topics (the
+    # book_chapter_id column was added later, nullable) — wrongly read
+    # is_generated=false / yet_to_start. A genuinely empty chapter must STILL
+    # read false / yet_to_start.
+    # -----------------------------------------------------------------------
+
+    async def test_list_path_is_generated_true_for_planned_slots_direct_bcid(self):
+        # 23 planned lesson slots, each with the chapter's book_chapter_id set
+        # directly — exactly the staging reproduction. is_generated must be true
+        # though the chapter is still yet_to_start (nothing taught).
+        conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+        try:
+            ids, cleanup = await self._build_graph(conn, num_chapters=2)
+            try:
+                await seed_class_chapters_from_breakdown(conn, ids["cst_id"])
+                generated = ids["chapter_ids"][0]
+                empty = ids["chapter_ids"][1]
+                for pos in range(1, 24):
+                    await conn.execute(
+                        """
+                        INSERT INTO class_lesson_slots
+                          (org_id, cst_id, position, slot_type, book_chapter_id, status)
+                        VALUES ($1, $2, $3, 'lesson', $4, 'planned')
+                        """,
+                        ids["org_id"], ids["cst_id"], pos, generated,
+                    )
+
+                path = await list_class_path(conn, ids["cst_id"])
+                by_chapter = {p["book_chapter_id"]: p for p in path}
+
+                # Broken-down-but-untaught: generated yet still yet_to_start.
+                assert by_chapter[generated]["is_generated"] is True
+                assert by_chapter[generated]["status"] == STATUS_YET_TO_START
+                # Empty chapter: unchanged — not generated, yet_to_start.
+                assert by_chapter[empty]["is_generated"] is False
+                assert by_chapter[empty]["status"] == STATUS_YET_TO_START
+            finally:
+                await cleanup()
+        finally:
+            await conn.close()
+
+    async def test_list_path_is_generated_true_when_bcid_null_but_topic_links(self):
+        # Legacy/partial slots: book_chapter_id is NULL but the slot's topic_id
+        # belongs to the chapter. The chapter is still broken down, so
+        # is_generated must be true (resolved via the topic linkage).
+        conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+        try:
+            ids, cleanup = await self._build_graph(conn, num_chapters=2)
+            try:
+                await seed_class_chapters_from_breakdown(conn, ids["cst_id"])
+                generated = ids["chapter_ids"][0]
+                empty = ids["chapter_ids"][1]
+                # A topic under the generated chapter the slots will link to.
+                topic_id = await conn.fetchval(
+                    """
+                    INSERT INTO topics
+                      (book_chapter_id, topic_number, title, status)
+                    VALUES ($1, 1, 'Topic 1', 'published')
+                    RETURNING id
+                    """,
+                    generated,
+                )
+                for pos in range(1, 10):
+                    await conn.execute(
+                        """
+                        INSERT INTO class_lesson_slots
+                          (org_id, cst_id, position, slot_type, topic_id, status)
+                        VALUES ($1, $2, $3, 'lesson', $4, 'planned')
+                        """,
+                        ids["org_id"], ids["cst_id"], pos, topic_id,
+                    )
+
+                path = await list_class_path(conn, ids["cst_id"])
+                by_chapter = {p["book_chapter_id"]: p for p in path}
+
+                assert by_chapter[generated]["is_generated"] is True
+                assert by_chapter[generated]["status"] == STATUS_YET_TO_START
+                # Empty chapter stays not-generated.
+                assert by_chapter[empty]["is_generated"] is False
+                assert by_chapter[empty]["status"] == STATUS_YET_TO_START
+            finally:
+                await cleanup()
+        finally:
+            await conn.close()
+
+    async def test_list_path_status_in_progress_when_some_terminal(self):
+        # Control that status derivation still tracks real teaching: one taught
+        # lesson among planned ones is in_progress (and generated).
+        conn = await asyncpg.connect(_asyncpg_url(settings.database_url))
+        try:
+            ids, cleanup = await self._build_graph(conn, num_chapters=1)
+            try:
+                await seed_class_chapters_from_breakdown(conn, ids["cst_id"])
+                generated = ids["chapter_ids"][0]
+                for pos, st in enumerate(["taught", "planned", "planned"], start=1):
+                    await conn.execute(
+                        """
+                        INSERT INTO class_lesson_slots
+                          (org_id, cst_id, position, slot_type, book_chapter_id, status)
+                        VALUES ($1, $2, $3, 'lesson', $4, $5)
+                        """,
+                        ids["org_id"], ids["cst_id"], pos, generated, st,
+                    )
+                path = await list_class_path(conn, ids["cst_id"])
+                by_chapter = {p["book_chapter_id"]: p for p in path}
+                assert by_chapter[generated]["is_generated"] is True
+                assert by_chapter[generated]["status"] == STATUS_IN_PROGRESS
             finally:
                 await cleanup()
         finally:
