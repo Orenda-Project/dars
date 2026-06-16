@@ -195,8 +195,8 @@ function TodayWorkCard({
   if (work.kind === "assessment") {
     const label =
       work.assessmentType === "formative"
-        ? "Formative assessment"
-        : "Summative assessment";
+        ? "Formative Assessment"
+        : "Summative Assessment";
     return (
       <div className="rounded-lg border border-dars-terra/40 bg-dars-terra/5 p-5">
         <p className="text-[10px] uppercase tracking-wide text-dars-terra font-semibold">
@@ -228,11 +228,12 @@ function TodayWorkCard({
         <p className="text-[10px] uppercase tracking-wide text-dars-terra font-semibold">
           Today · Day {work.position}
         </p>
-        {isRevision ? (
-          <span className="text-[10px] font-semibold text-dars-terra uppercase tracking-wide">
-            Revision
-          </span>
-        ) : null}
+        {/* Explicit kind tag — the assessment card's headline already names its
+            kind; the lesson card's headline is the topic, so without this it
+            never said "Lesson Plan". */}
+        <span className="text-[10px] font-bold text-dars-terra uppercase tracking-wide">
+          ◆ {isRevision ? "Revision" : "Lesson Plan"}
+        </span>
         <SlotStatusBadge status={work.status} />
       </div>
       <h2 className="font-[var(--font-cormorant)] text-2xl font-bold text-dars-ink mt-1">

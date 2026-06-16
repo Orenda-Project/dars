@@ -833,15 +833,20 @@ export default function ClassDetailPage() {
               }}
               currentChapterToPlan={(() => {
                 // Only relevant when today has no generated slot. Surface the
-                // next path chapter the teacher should be teaching that isn't
-                // broken down yet (slot_count === 0 ⇒ yet_to_start). Require
-                // dates so the offered "break it down" won't 422.
+                // next path chapter the teacher should be teaching whose plan
+                // doesn't exist yet. "Plan exists" is `is_generated` (the
+                // chapter has class slots) — NOT slot_count, which is just the
+                // projected period capacity and is non-zero the moment dates
+                // are set. Require capacity (slot_count > 0) + dates so the
+                // offered "break it down" has something to size against and
+                // won't 422.
                 if (todayView.work !== null) return null;
                 const c = [...(syllabus?.chapters ?? [])]
                   .sort((a, b) => a.position - b.position)
                   .find(
                     (ch) =>
-                      ch.slot_count === 0 &&
+                      !ch.is_generated &&
+                      ch.slot_count > 0 &&
                       ch.start_date != null &&
                       ch.end_date != null,
                   );
