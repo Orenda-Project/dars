@@ -353,7 +353,7 @@ async def _dispatch_and_mark(
     *,
     generated_lp_id: UUID,
     curriculum_code: str,
-    grade_code: str,
+    grade_code: int | str,
     subject_code: str,
     topic_text: str,
     lp_type: str,
@@ -383,14 +383,17 @@ async def _dispatch_and_mark(
     return job_id
 
 
-def _parse_grade_int(grade_code: str) -> int:
-    """Map `grades.code` (e.g. 'G1', 'G5') to LP Assistant's int grade.
+def _parse_grade_int(grade_code: int | str) -> int:
+    """Map `grades.code` to LP Assistant's int grade.
 
-    The seed uses codes G1..G5. Anything else raises so we never silently
-    send a bogus grade.
+    `grades.code` is an INT column (1..5), so asyncpg hands us a plain int —
+    pass it through. A legacy 'G<n>' string is tolerated defensively. Anything
+    else raises so we never silently send a bogus grade.
     """
+    if isinstance(grade_code, int):
+        return grade_code
     if not grade_code or not grade_code.startswith("G"):
-        raise ValueError(f"grade_code={grade_code!r} doesn't match expected 'G<n>' pattern")
+        raise ValueError(f"grade_code={grade_code!r} doesn't match expected int or 'G<n>'")
     try:
         return int(grade_code[1:])
     except ValueError as e:
