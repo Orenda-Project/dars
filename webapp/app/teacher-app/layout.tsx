@@ -19,7 +19,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { TeacherAppShell } from "@/components/templates/teacher-app-shell";
 import { getAdminSession, getApiKey } from "@/lib/dars-api";
@@ -49,12 +49,24 @@ export default function TeacherAppLayout({ children }: { children: React.ReactNo
   // False on the server + first paint, then the real localStorage value.
   const authed = useAuthed();
 
-  // A user with neither credential is sent to setup (side effect → effect).
+  // `authed` is FORCED to false on the server snapshot + the first client
+  // (hydration) render, and only flips to the real localStorage value on the
+  // re-render useSyncExternalStore schedules afterwards. The redirect effect
+  // must NOT act on that placeholder false, or a hard refresh kicks an
+  // already-authed user to /setup before the real value lands. `hydrated`
+  // gates the effect to client renders that have read real localStorage.
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    if (!isSetup && !authed) {
+    setHydrated(true);
+  }, []);
+
+  // A user with neither credential is sent to setup (side effect → effect).
+  // Wait until hydrated so we never redirect off the SSR placeholder.
+  useEffect(() => {
+    if (hydrated && !isSetup && !authed) {
       router.replace("/teacher-app/setup");
     }
-  }, [isSetup, authed, router]);
+  }, [hydrated, isSetup, authed, router]);
 
   // Setup page renders bare (no shell) so the API-key prompt is the
   // first thing the user sees.
@@ -62,7 +74,9 @@ export default function TeacherAppLayout({ children }: { children: React.ReactNo
     return <>{children}</>;
   }
 
-  if (!authed) {
+  // Until we've hydrated AND confirmed no credential, show the loader rather
+  // than the shell — never flash setup at an authed user mid-refresh.
+  if (!hydrated || !authed) {
     return (
       <div className="min-h-screen bg-dars-parchment flex items-center justify-center">
         <span className="text-sm text-dars-muted">Loading…</span>
