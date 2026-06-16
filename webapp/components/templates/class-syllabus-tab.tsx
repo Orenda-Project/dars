@@ -59,6 +59,15 @@ interface SyllabusTabProps {
   onBreakDown: (book_chapter_id: string) => void;
   /** Set while a single chapter's break-down is in flight. */
   busyChapterId: string | null;
+  /**
+   * Chapter `position`s that already have lesson/assessment slots in the
+   * timeline. Authoritative "a plan exists" signal — used to hide the
+   * "Generate chapter plan" button even if the chapter's `is_generated` flag
+   * lags (it's derived from slots joined on `book_chapter_id`, which can read
+   * false while the timeline already carries the chapter's rows). Optional:
+   * when the timeline hasn't loaded yet we fall back to `is_generated` alone.
+   */
+  generatedPositions?: Set<number>;
 
   /* ---- Edit-syllabus mode (D-13) — owned by the page ---- */
   /** True when the tab is in edit mode (controls revealed). */
@@ -112,6 +121,7 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
     cstId,
     onBreakDown,
     busyChapterId,
+    generatedPositions,
     editing,
     onToggleEdit,
     onPick,
@@ -188,6 +198,7 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
                   key={ch.book_chapter_id}
                   ch={ch}
                   cstId={cstId}
+                  hasSlots={generatedPositions?.has(ch.position) ?? false}
                   onBreakDown={onBreakDown}
                   breakingDown={busyChapterId === ch.book_chapter_id}
                   editing={editing}
@@ -319,6 +330,7 @@ function EmptyPathMessage() {
 function PathRow({
   ch,
   cstId,
+  hasSlots,
   onBreakDown,
   breakingDown,
   editing,
@@ -332,6 +344,8 @@ function PathRow({
 }: {
   ch: ClassPathChapter;
   cstId: string;
+  /** True when the timeline already carries slots for this chapter's position. */
+  hasSlots: boolean;
   onBreakDown: (book_chapter_id: string) => void;
   breakingDown: boolean;
   editing: boolean;
@@ -349,8 +363,11 @@ function PathRow({
   const isCurrent = ch.status === "in_progress";
   // "Broken down" = the chapter actually has generated slots — NOT slot_count,
   // which is just the projected period count and is non-zero the moment dates
-  // are set.
-  const brokenDown = ch.is_generated;
+  // are set. `hasSlots` (timeline rows exist for this chapter) is the
+  // authoritative signal and wins over `is_generated`, which can lag false
+  // when slots exist but aren't joined on `book_chapter_id`. Either being true
+  // means a plan exists → no "Generate chapter plan" button.
+  const brokenDown = ch.is_generated || hasSlots;
   // slot_count is 0 when the chapter has no dated period capacity — generation
   // has nothing to size against, so the action is disabled with a reason.
   const noCapacity = ch.slot_count === 0;
