@@ -45,12 +45,14 @@ def test_cache_key_class_includes_cst():
     assert key != _build_cache_key_global(cur, topic, "grammar")
 
 
-@pytest.mark.parametrize("code,expected", [("G1", 1), ("G2", 2), ("G5", 5)])
+# grades.code is an INT column (1..5); asyncpg returns a plain int.
+# A legacy 'G<n>' string is still tolerated defensively.
+@pytest.mark.parametrize("code,expected", [(1, 1), (5, 5), ("G1", 1), ("G2", 2), ("G5", 5)])
 def test_parse_grade_int(code, expected):
     assert _parse_grade_int(code) == expected
 
 
-@pytest.mark.parametrize("bad", ["", "Grade1", "1", "X1", None])
+@pytest.mark.parametrize("bad", ["", "Grade1", "X1", None])
 def test_parse_grade_int_bad(bad):
     with pytest.raises(ValueError):
         _parse_grade_int(bad)
