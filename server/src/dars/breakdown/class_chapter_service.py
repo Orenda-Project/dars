@@ -120,6 +120,23 @@ def validate_reorder(
 # ---------------------------------------------------------------------------
 
 
+def _norm_uuid(value) -> UUID | None:
+    """
+    Canonicalise a DB-returned UUID to a stdlib ``uuid.UUID``.
+
+    asyncpg returns UUID columns as ``asyncpg.pgproto.pgproto.UUID``. Those
+    compare and hash equal to ``uuid.UUID`` today, but the map in
+    ``_chapter_terminal_map`` is keyed by one query's rows and looked up against
+    another's — so we pin both sides to a single canonical type to keep the
+    ``dict`` lookup type-stable regardless of the active asyncpg codec
+    (CLAUDE.md: prefer a type-stable comparison over relying on cross-type hash
+    equality). ``None`` passes through unchanged.
+    """
+    if value is None:
+        return None
+    return UUID(str(value))
+
+
 async def _chapter_terminal_map(
     conn: asyncpg.Connection, cst_id: UUID
 ) -> dict[UUID, list[str]]:
@@ -127,22 +144,57 @@ async def _chapter_terminal_map(
     Map each book_chapter_id in the CST's slots to the list of its slot
     statuses (lessons ∪ assessments). Drives status derivation in one query
     each table, avoiding an N+1 over chapters.
+
+    A slot's owning chapter is resolved by COALESCE(slot.book_chapter_id,
+    <chapter the slot's topics belong to>). The direct ``book_chapter_id``
+    column was added later (migration 20260605, nullable) and back-filled by the
+    break-it-down generator; slots created before that — or by any path that
+    didn't stamp it — carry a NULL ``book_chapter_id`` yet still link to their
+    chapter through topics (lesson slots via ``topic_id`` → ``topics``;
+    assessment slots via ``class_assessment_slot_topics``). Relying on the direct
+    column alone made those slots invisible here, so a fully-planned chapter read
+    back as ``is_generated=false`` / ``yet_to_start`` (the bug this fixes). The
+    COALESCE recovers the linkage; a chapter with genuinely no slots still yields
+    no rows and stays ungenerated.
+
+    Keys are canonicalised with ``_norm_uuid`` so the map is type-stable for the
+    Python lookup in ``list_class_path`` regardless of asyncpg's UUID codec.
     """
     rows = await conn.fetch(
         """
-        SELECT book_chapter_id, status
-          FROM class_lesson_slots
-         WHERE cst_id = $1 AND book_chapter_id IS NOT NULL
+        SELECT COALESCE(cls.book_chapter_id, lt.book_chapter_id) AS book_chapter_id,
+               cls.status
+          FROM class_lesson_slots cls
+          LEFT JOIN topics lt ON lt.id = cls.topic_id
+         WHERE cls.cst_id = $1
+           AND COALESCE(cls.book_chapter_id, lt.book_chapter_id) IS NOT NULL
         UNION ALL
-        SELECT book_chapter_id, status
-          FROM class_assessment_slots
-         WHERE cst_id = $1 AND book_chapter_id IS NOT NULL
+        SELECT COALESCE(cas.book_chapter_id, at.book_chapter_id) AS book_chapter_id,
+               cas.status
+          FROM class_assessment_slots cas
+          LEFT JOIN LATERAL (
+              SELECT t.book_chapter_id
+                FROM class_assessment_slot_topics ast_t
+                JOIN topics t ON t.id = ast_t.topic_id
+               WHERE ast_t.class_assessment_slot_id = cas.id
+               ORDER BY ast_t.position
+               LIMIT 1
+          ) at ON TRUE
+         WHERE cas.cst_id = $1
+           AND COALESCE(cas.book_chapter_id, at.book_chapter_id) IS NOT NULL
         """,
         cst_id,
     )
     out: dict[UUID, list[str]] = {}
     for r in rows:
-        out.setdefault(r["book_chapter_id"], []).append(r["status"])
+        key = _norm_uuid(r["book_chapter_id"])
+        if key is None:
+            continue
+        out.setdefault(key, []).append(r["status"])
+    log.info(
+        "_chapter_terminal_map: cst=%s chapters_with_slots=%d slot_rows=%d",
+        cst_id, len(out), len(rows),
+    )
     return out
 
 
@@ -172,6 +224,8 @@ async def list_class_path(conn: asyncpg.Connection, cst_id: UUID) -> list[dict]:
 
     path: list[dict] = []
     for r in rows:
+        # Look up by the same canonical key type the map is keyed on.
+        chapter_statuses = status_map.get(_norm_uuid(r["book_chapter_id"]), [])
         path.append(
             {
                 "book_chapter_id": r["book_chapter_id"],
@@ -190,10 +244,8 @@ async def list_class_path(conn: asyncpg.Connection, cst_id: UUID) -> list[dict]:
                 # (it's been broken down). Distinct from slot_count, which is
                 # non-zero the moment dates are set. Drives the "Broken down ✓"
                 # state + whether the Generate button shows.
-                "is_generated": bool(status_map.get(r["book_chapter_id"])),
-                "status": derive_chapter_status(
-                    status_map.get(r["book_chapter_id"], [])
-                ),
+                "is_generated": bool(chapter_statuses),
+                "status": derive_chapter_status(chapter_statuses),
             }
         )
     log.info("list_class_path: exit cst=%s chapters=%d", cst_id, len(path))
@@ -423,7 +475,7 @@ async def remove_chapter(
         raise ValueError("chapter not in the class path")
 
     status_map = await _chapter_terminal_map(conn, cst_id)
-    chapter_slot_statuses = status_map.get(book_chapter_id, [])
+    chapter_slot_statuses = status_map.get(_norm_uuid(book_chapter_id), [])
 
     # D-11: reject any chapter that has been broken down — even if no slot is
     # terminal yet — so we never orphan dynamic-planner slots.
@@ -473,7 +525,7 @@ async def reorder_path(
     current_order = [r["book_chapter_id"] for r in rows]
     status_map = await _chapter_terminal_map(conn, cst_id)
     current_statuses = {
-        bc_id: derive_chapter_status(status_map.get(bc_id, []))
+        bc_id: derive_chapter_status(status_map.get(_norm_uuid(bc_id), []))
         for bc_id in current_order
     }
 
