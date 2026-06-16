@@ -572,6 +572,17 @@ export default function ClassDetailPage() {
     if (slot && slot.kind === "lesson") openLP(slot);
   }, [slotFocus, timeline]);
 
+  // Chapter positions that already have timeline slots → a plan exists. This is
+  // the authoritative "broken down" signal for the Syllabus tab's per-chapter
+  // "Generate chapter plan" button, which would otherwise rely on the syllabus
+  // payload's `is_generated` flag and keep offering the button for a chapter
+  // that already has lessons + assessments. `undefined` until the timeline
+  // loads, so the tab falls back to `is_generated` in the meantime.
+  const generatedPositions = useMemo<Set<number> | undefined>(() => {
+    if (timeline === null) return undefined;
+    return new Set(timeline.map((t) => t.breakdown_chapter_position));
+  }, [timeline]);
+
   function openLP(slot: Extract<CstTimelineItem, { kind: "lesson" }>) {
     setDrawer({
       kind: "lp",
@@ -881,6 +892,7 @@ export default function ClassDetailPage() {
                 cstId={cstId}
                 onBreakDown={handleBreakDown}
                 busyChapterId={busyChapterId}
+                generatedPositions={generatedPositions}
                 editing={editingSyllabus}
                 onToggleEdit={onToggleEditSyllabus}
                 onPick={handlePick}
