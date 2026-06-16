@@ -13,6 +13,7 @@
 "use client";
 
 import type { CstTimelineItem } from "@/lib/dars-api";
+import { formatIsoWeekdayDMY } from "@/lib/date";
 import { lpTypeLabel } from "@/lib/lp-type-label";
 
 /** Callbacks + flags a single {@link TimelineRow} needs. The Syllabus tab
@@ -338,14 +339,8 @@ function DateLabel({ item }: { item: CstTimelineItem }) {
   if (!item.projected_date) {
     return <span className="text-xs font-semibold text-dars-muted-light">—</span>;
   }
-  // Parse as local date (date-only ISO) to avoid TZ drift.
-  const [y, m, d] = item.projected_date.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  const label = dt.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  // Numeric DMY (e.g. "Mon, 20/10/1999"); parses date-only ISO as local to avoid TZ drift.
+  const label = formatIsoWeekdayDMY(item.projected_date);
   return (
     <span className="text-xs font-semibold text-dars-ink">{label}</span>
   );
