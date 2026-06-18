@@ -1,5 +1,7 @@
 # Dars (درس)
 
+> 🤖 Cortex agent is actively working on this repository.
+
 B2B lesson plan infrastructure for Taleemabad internal teams.
 
 ## What this is
