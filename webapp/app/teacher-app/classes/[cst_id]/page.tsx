@@ -535,6 +535,10 @@ export default function ClassDetailPage() {
       // timeline that backs them. Today entry pins the "Now" marker.
       if (timeline === null) loadTimeline();
       if (!todayLoaded) loadToday();
+      // F1.1 (D-3): the planner shows effective holidays inline + uses them for
+      // the holiday-in-range hint. Reuse the same cheap, cached getCSTHolidays
+      // fetch the Timetable tab uses — no new data, no new endpoint.
+      if (holidaysData === null) loadHolidays();
     }
     if (activeTab === "timetable" && holidaysData === null) loadHolidays();
     if (activeTab === "book" && bookChapters === null && header) loadBook();
@@ -590,6 +594,14 @@ export default function ClassDetailPage() {
     if (timeline === null) return undefined;
     return new Set(timeline.map((t) => t.breakdown_chapter_position));
   }, [timeline]);
+
+  // F1.1 (D-3): effective non-teaching dates as a Set for O(1) membership when
+  // the Syllabus tab counts holidays inside a chapter's range. Empty set while
+  // holidays are still loading / absent, so the template never null-crashes.
+  const effectiveHolidays = useMemo<Set<string>>(
+    () => new Set(holidaysData?.effective_dates ?? []),
+    [holidaysData],
+  );
 
   function openLP(slot: Extract<CstTimelineItem, { kind: "lesson" }>) {
     setDrawer({
@@ -909,6 +921,8 @@ export default function ClassDetailPage() {
                 onRemove={handleRemove}
                 bookChapters={pickerChapters}
                 pathBusy={pathBusy}
+                effectiveHolidays={effectiveHolidays}
+                holidayItems={holidaysData?.items ?? []}
               />
             </>
           )

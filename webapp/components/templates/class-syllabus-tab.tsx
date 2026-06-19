@@ -37,8 +37,13 @@ import type {
   ClassPathChapter,
   ClassPathChapterStatus,
   CstTimelineItem,
+  Holiday,
   SyllabusForCstResponse,
 } from "@/lib/dars-api";
+import {
+  computePlannerWarnings,
+  type PlannerWarning,
+} from "@/lib/planner-warnings";
 import {
   TimelineRow,
   type TimelineRowCallbacks,
@@ -89,6 +94,12 @@ interface SyllabusTabProps {
   bookChapters: BookChapterOption[] | null;
   /** True while any path mutation (pick/date/reorder/remove) is in flight. */
   pathBusy: boolean;
+
+  /* ---- F1.1/F1.2 (D-3) — effective holidays for the inline range hint ---- */
+  /** Effective non-teaching dates (ISO) for this CST. Empty when none/loading. */
+  effectiveHolidays: Set<string>;
+  /** Itemised holidays (names/sources) for the per-row tooltip. */
+  holidayItems: Holiday[];
 }
 
 const STATUS_LABEL: Record<ClassPathChapterStatus, string> = {
@@ -130,12 +141,21 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
     onRemove,
     bookChapters,
     pathBusy,
+    effectiveHolidays,
+    holidayItems,
   } = props;
 
   // Path is server-ordered by `position`; keep that order explicitly.
   const path = [...data.chapters].sort((a, b) => a.position - b.position);
   const isEmpty = path.length === 0;
   const recommended = data.recommended_next;
+
+  // F1.3 (D-4): advisory client-side warnings, recomputed from props on every
+  // render so fixing dates clears them live (no stored state). Mirrors the
+  // server's compute_range_warnings (overlap + zero-teaching); never blocks a
+  // save. The per-row marker uses `warnedChapterIds` to flag offending rows.
+  const warnings = computePlannerWarnings(data.chapters);
+  const warnedChapterIds = new Set(warnings.flatMap((w) => w.chapterIds));
 
   // Move a chapter one step up/down within the path and submit the new order
   // (D-6 lock is enforced server-side; the UI only offers handles on
@@ -191,6 +211,10 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
         <EmptyPathMessage />
       ) : (
         <>
+          {/* F1.3 (D-4): advisory, non-blocking warning banner — soft Dars
+              tokens, never red-error. Appears/updates as dates change. */}
+          {warnings.length > 0 ? <PlannerWarningBanner warnings={warnings} /> : null}
+
           {!isEmpty ? (
             <ol className="space-y-2">
               {path.map((ch, idx) => (
@@ -209,6 +233,9 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
                   canMoveUp={idx > 0}
                   canMoveDown={idx < path.length - 1}
                   pathBusy={pathBusy}
+                  effectiveHolidays={effectiveHolidays}
+                  holidayItems={holidayItems}
+                  warned={warnedChapterIds.has(ch.book_chapter_id)}
                 />
               ))}
             </ol>
@@ -227,6 +254,36 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
           ) : null}
         </>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* F1.3 (D-4) — advisory client-side warning banner (non-blocking).    */
+/*   Soft Dars terra treatment — never hard red error styling. The      */
+/*   message is tailored to which warning kinds are present.            */
+/* ------------------------------------------------------------------ */
+
+function PlannerWarningBanner({ warnings }: { warnings: PlannerWarning[] }) {
+  const hasOverlap = warnings.some((w) => w.type === "overlap");
+  const hasZero = warnings.some((w) => w.type === "zero_teaching_days");
+
+  const parts: string[] = [];
+  if (hasOverlap) parts.push("some chapters overlap — adjust the dates or reorder");
+  if (hasZero)
+    parts.push("a chapter's date range has no teaching periods — widen it or move past holidays");
+  // Sentence-case the first clause, join the rest with "; also".
+  const message = parts
+    .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p))
+    .join("; also ");
+
+  return (
+    <div
+      role="status"
+      className="rounded-md border border-dars-terra/30 bg-dars-terra/10 px-3 py-2 text-xs text-dars-terra"
+    >
+      <span aria-hidden>⚠ </span>
+      {message}.
     </div>
   );
 }
@@ -341,6 +398,9 @@ function PathRow({
   canMoveUp,
   canMoveDown,
   pathBusy,
+  effectiveHolidays,
+  holidayItems,
+  warned,
 }: {
   ch: ClassPathChapter;
   cstId: string;
@@ -359,6 +419,12 @@ function PathRow({
   canMoveUp: boolean;
   canMoveDown: boolean;
   pathBusy: boolean;
+  /** F1.2 (D-3): effective non-teaching dates for the in-range holiday hint. */
+  effectiveHolidays: Set<string>;
+  /** F1.2 (D-3): itemised holidays for the hover/focus tooltip. */
+  holidayItems: Holiday[];
+  /** F1.3 (D-4): true when this row is named in an advisory warning. */
+  warned: boolean;
 }) {
   const isCurrent = ch.status === "in_progress";
   // "Broken down" = the chapter actually has generated slots — NOT slot_count,
@@ -377,9 +443,33 @@ function PathRow({
   const reorderable = ch.status === "yet_to_start";
   const removable = ch.status === "yet_to_start" && !ch.is_generated;
 
+  // F1.2 (D-3): effective holidays whose ISO date falls inside this chapter's
+  // [start_date, end_date] (inclusive). String compare is valid for YYYY-MM-DD.
+  // The hint explains the gap between the calendar span and the teaching span.
+  const inRangeHolidays =
+    ch.start_date && ch.end_date
+      ? holidayItems
+          .filter(
+            (h) =>
+              effectiveHolidays.has(h.date) &&
+              h.date >= ch.start_date! &&
+              h.date <= ch.end_date!,
+          )
+          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      : [];
+  const holidayCount = inRangeHolidays.length;
+  // Tooltip: each in-range holiday's name (fall back to its date) + the date.
+  const holidayTooltip = inRangeHolidays
+    .map((h) => `${h.name ?? formatDate(h.date)} (${formatDate(h.date)})`)
+    .join("\n");
+
   const accent = isCurrent
     ? "relative border-dars-terra ring-1 ring-dars-terra/40"
-    : "border-dars-rule-light";
+    : warned
+      ? // F1.3 (D-4): subtle marker so the teacher finds the flagged row. Soft
+        // terra ring, never a hard red error border.
+        "relative border-dars-terra/40 ring-1 ring-dars-terra/30"
+      : "border-dars-rule-light";
 
   const chapterHref = `/teacher-app/classes/${cstId}/chapters/${ch.position}`;
 
@@ -400,6 +490,17 @@ function PathRow({
           {ch.slot_count > 0 ? (
             <span className="text-xs text-dars-muted">
               {ch.slot_count} period{ch.slot_count === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          {/* F1.2 (D-3): inline holiday-in-range hint, both VIEW and EDIT.
+              Native title tooltip lists each in-range holiday + date. */}
+          {holidayCount > 0 ? (
+            <span
+              className="text-xs text-dars-terra cursor-help"
+              title={holidayTooltip}
+              tabIndex={0}
+            >
+              🏖 {holidayCount} holiday{holidayCount === 1 ? "" : "s"} in range
             </span>
           ) : null}
         </span>
