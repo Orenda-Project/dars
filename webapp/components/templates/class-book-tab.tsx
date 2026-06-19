@@ -39,6 +39,8 @@ interface BookTabProps {
   onToggleTopic: (topic_id: string) => void;
   /** Cache keyed by topic_id. Missing key = not yet expanded. */
   topicSubSLOs: Record<string, TopicSubSLOState>;
+  /** Book-level PDF URL, if the linked book has one. */
+  pdfUrl?: string | null;
 }
 
 export function ClassBookTab({
@@ -48,6 +50,7 @@ export function ClassBookTab({
   expandedTopicId,
   onToggleTopic,
   topicSubSLOs,
+  pdfUrl,
 }: BookTabProps) {
   if (chapters.length === 0) {
     return (
@@ -64,7 +67,19 @@ export function ClassBookTab({
     chapters.find((c) => c.chapter.id === selectedChapterId) ?? chapters[0];
 
   return (
-    <div className="grid sm:grid-cols-[180px_1fr] gap-4">
+    <div className="space-y-4">
+      {pdfUrl ? (
+        <a
+          href={pdfUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded border border-dars-terra/40 bg-dars-terra/10 px-3 py-1.5 text-xs font-medium text-dars-ink hover:bg-dars-terra/20 transition-colors break-all"
+        >
+          <span aria-hidden>📄</span> Open book PDF ↗
+        </a>
+      ) : null}
+
+      <div className="grid sm:grid-cols-[180px_1fr] gap-4">
       <aside className="space-y-1">
         {chapters.map((c) => (
           <button
@@ -104,6 +119,7 @@ export function ClassBookTab({
           )}
         </ul>
       </section>
+      </div>
     </div>
   );
 }
