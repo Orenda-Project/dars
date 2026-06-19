@@ -48,9 +48,11 @@ import {
   holidays as holidaysApi,
   progress as progressApi,
   slots as slotsApi,
+  syllabusBreakdowns as breakdownsApi,
   tenancy as tenancyApi,
   today as todayApi,
   type BookChapter,
+  type ClassPathChapter,
   type ClassLessonSlotListItem,
   type CstTimelineItem,
   type Holiday,
@@ -60,6 +62,11 @@ import {
   type TodayEntry,
   type Topic,
 } from "@/lib/dars-api";
+import {
+  autoPack,
+  reflowFrom,
+  type PackInput,
+} from "@/lib/planner-pack";
 
 const TAB_NAMES: ClassDetailTab[] = [
   "today",
@@ -158,6 +165,13 @@ export default function ClassDetailPage() {
   const [editingSyllabus, setEditingSyllabus] = useState(false);
   // Set while any path mutation (pick/set-dates/reorder/remove) is in flight.
   const [pathBusy, setPathBusy] = useState(false);
+  // F2.1/D-9: org-breakdown teaching-day spans, keyed by book_chapter_id, used
+  // to size UNDATED chapters during auto-pack. Lazily fetched once (on first
+  // auto-pack) via the syllabus's syllabus_breakdown_id; null until then. A null
+  // map value means "the org has no span for this chapter" → 5-period default.
+  const [orgDays, setOrgDays] = useState<Map<string, number | null> | null>(
+    null,
+  );
   // Flat book-chapter list for the add-a-chapter picker (lazy, edit-mode only).
   const [pickerChapters, setPickerChapters] = useState<BookChapterOption[] | null>(
     null,
@@ -174,6 +188,15 @@ export default function ClassDetailPage() {
     items: Holiday[];
     effective_dates: string[];
   } | null>(null);
+  // F1.1 (D-3): effective non-teaching dates as a Set for O(1) membership. Used
+  // both by the Syllabus tab's holiday-in-range hint and by Phase-2 packing math
+  // (skip weekends + effective holidays). Declared here — before the auto-pack /
+  // re-flow handlers that depend on it — so it's in scope for their closures.
+  // Empty set while holidays are loading / absent, so callers never null-crash.
+  const effectiveHolidays = useMemo<Set<string>>(
+    () => new Set(holidaysData?.effective_dates ?? []),
+    [holidaysData],
+  );
   const [holidaysError, setHolidaysError] = useState<string | null>(null);
   const [holidayBusy, setHolidayBusy] = useState(false);
   const [sloGroups, setSloGroups] = useState<SLOProgressGroup[] | null>(null);
@@ -292,27 +315,270 @@ export default function ClassDetailPage() {
     [timeline, loadTimeline, todayLoaded, loadToday, loadSyllabus],
   );
 
+  // ---- F2.4: sequential repack runner (Phase 2 auto-pack / re-flow) --------
+  // Auto-pack and re-flow compute a LIST of per-chapter date patches client-
+  // side, then persist them by issuing N `setChapterDates` PATCHes. Each PATCH
+  // returns the full updated syllabus, but firing them in parallel races on the
+  // server's position/slot_count recompute (D-7) — so we await them strictly IN
+  // ORDER, hold `pathBusy` for the whole batch, and render once at the end.
+  // Pure client orchestration over the existing PATCH endpoint — no schema or
+  // endpoint change (D-2).
+  const runPathRepack = useCallback(
+    async (
+      patches: { book_chapter_id: string; start_date: string; end_date: string }[],
+    ) => {
+      // Nothing to do (e.g. an all-locked path, or a re-flow with no tail).
+      if (patches.length === 0) return;
+      setSyllabusError(null);
+      setPathBusy(true);
+      try {
+        // Sequential, not Promise.all (D-7): each PATCH must see the prior
+        // one's persisted result so position/slot_count stay coherent. Keep the
+        // final response so we set state once after the last call.
+        let last: SyllabusForCstResponse | null = null;
+        for (const p of patches) {
+          last = await slotsApi.setChapterDates(cstId, p.book_chapter_id, {
+            start_date: p.start_date,
+            end_date: p.end_date,
+          });
+        }
+        if (last) setSyllabus(last);
+        // Timeline / Today reflect path dates — refresh whichever is loaded
+        // (mirrors runPathMutation). One refresh after the whole batch.
+        await Promise.all([
+          timeline !== null ? loadTimeline() : Promise.resolve(),
+          todayLoaded ? loadToday() : Promise.resolve(),
+        ]);
+      } catch (err) {
+        // Mid-batch failure (D-7): stop, surface the error, and re-sync from the
+        // server's ACTUAL state — never leave the UI on a half-applied client
+        // guess (some PATCHes landed, the failing one didn't).
+        setSyllabusError(formatErr(err));
+        await loadSyllabus();
+      } finally {
+        setPathBusy(false);
+      }
+    },
+    [cstId, timeline, loadTimeline, todayLoaded, loadToday, loadSyllabus],
+  );
+
+  // F2.1/D-9: lazily fetch the org breakdown once and build the
+  // book_chapter_id → derived_teaching_days map that sizes undated chapters
+  // during packing. Returns the map directly (so the first auto-pack can use it
+  // immediately without waiting a render for state to settle). No breakdown
+  // (unseeded class) → an empty map; every undated chapter then takes the
+  // 5-period default. Pure read of the existing breakdown endpoint (D-2).
+  const ensureOrgDays = useCallback(
+    async (
+      breakdownId: string | null,
+    ): Promise<Map<string, number | null>> => {
+      if (orgDays) return orgDays;
+      const built = new Map<string, number | null>();
+      if (breakdownId) {
+        try {
+          const detail = await breakdownsApi.getBreakdown(breakdownId);
+          for (const c of detail.chapters) {
+            built.set(c.book_chapter_id, c.derived_teaching_days);
+          }
+        } catch {
+          // Non-fatal: a failed breakdown read just means every undated chapter
+          // falls back to the 5-period default (D-9). Cache the empty map so we
+          // don't re-fetch on every pack.
+        }
+      }
+      setOrgDays(built);
+      return built;
+    },
+    [orgDays],
+  );
+
+  // Build the packer's view of the path (subset of ClassPathChapter).
+  const toPackInputs = useCallback(
+    (chapters: ClassPathChapter[]): PackInput[] =>
+      chapters.map((c) => ({
+        book_chapter_id: c.book_chapter_id,
+        position: c.position,
+        status: c.status,
+        start_date: c.start_date,
+        end_date: c.end_date,
+        slot_count: c.slot_count,
+      })),
+    [],
+  );
+
+  // F2.1: auto-pack every yet-to-start chapter back-to-back from the anchor.
+  // Compute the date ranges client-side (autoPack — holiday-aware, D-6 lock
+  // respected, D-9 sizing) then persist via the F2.4 sequential runner.
+  const handleAutoPack = useCallback(
+    async (anchor: string) => {
+      if (!syllabus) return;
+      const map = await ensureOrgDays(syllabus.syllabus_breakdown_id);
+      const patches = autoPack(
+        toPackInputs(syllabus.chapters),
+        anchor,
+        effectiveHolidays,
+        map,
+      );
+      await runPathRepack(patches);
+    },
+    [syllabus, ensureOrgDays, toPackInputs, effectiveHolidays, runPathRepack],
+  );
+
   const handlePick = useCallback(
     (book_chapter_id: string) =>
       runPathMutation(() => slotsApi.pickChapter(cstId, book_chapter_id)),
     [cstId, runPathMutation],
   );
 
+  // F2.3: manual per-chapter date override (the escape hatch) + downstream
+  // re-flow. The teacher pins chapter K's date by hand; we persist that single
+  // bound (COALESCE on the server keeps the other), then re-flow every
+  // yet-to-start chapter AFTER K so the path stays consecutive (D-5: downstream
+  // only — chapters before K are untouched). A manual edit that overlaps an
+  // EARLIER chapter is NOT auto-resolved: Phase 1's overlap warning surfaces it
+  // (D-4/D-5). The whole thing is ONE busy cycle (D-7): the K-PATCH and the
+  // tail re-flow PATCHes run sequentially behind a single pathBusy, one final
+  // render.
   const handleSetDates = useCallback(
-    (
+    async (
       book_chapter_id: string,
       dates: { start_date?: string; end_date?: string },
-    ) =>
-      runPathMutation(() =>
-        slotsApi.setChapterDates(cstId, book_chapter_id, dates),
-      ),
-    [cstId, runPathMutation],
+    ) => {
+      if (!syllabus) return;
+      setSyllabusError(null);
+      setPathBusy(true);
+      try {
+        // 1) Persist the manual bound. The response carries K's new dates +
+        //    server-recomputed slot_count for the whole path.
+        const afterPatch = await slotsApi.setChapterDates(
+          cstId,
+          book_chapter_id,
+          dates,
+        );
+        // 2) Re-flow the yet-to-start tail strictly AFTER K, seeding the cursor
+        //    from K's (now-persisted) end_date (D-5). reflowFrom needs the tail
+        //    starting at the chapter after K — so we call it on the chapter
+        //    right after K in position order; if K is the last chapter there's
+        //    no tail and we skip.
+        const map = await ensureOrgDays(afterPatch.syllabus_breakdown_id);
+        const ordered = [...afterPatch.chapters].sort(
+          (a, b) => a.position - b.position,
+        );
+        const kIdx = ordered.findIndex(
+          (c) => c.book_chapter_id === book_chapter_id,
+        );
+        const next = kIdx >= 0 ? ordered[kIdx + 1] : undefined;
+        const patches =
+          next && next.status === "yet_to_start"
+            ? reflowFrom(
+                toPackInputs(ordered),
+                next.book_chapter_id,
+                effectiveHolidays,
+                map,
+              )
+            : [];
+
+        // 3) Apply the downstream patches sequentially (D-7); if none, the
+        //    afterPatch response is already the final state.
+        let last: SyllabusForCstResponse = afterPatch;
+        for (const p of patches) {
+          last = await slotsApi.setChapterDates(cstId, p.book_chapter_id, {
+            start_date: p.start_date,
+            end_date: p.end_date,
+          });
+        }
+        setSyllabus(last);
+        await Promise.all([
+          timeline !== null ? loadTimeline() : Promise.resolve(),
+          todayLoaded ? loadToday() : Promise.resolve(),
+        ]);
+      } catch (err) {
+        setSyllabusError(formatErr(err));
+        await loadSyllabus();
+      } finally {
+        setPathBusy(false);
+      }
+    },
+    [
+      cstId,
+      syllabus,
+      ensureOrgDays,
+      toPackInputs,
+      effectiveHolidays,
+      timeline,
+      loadTimeline,
+      todayLoaded,
+      loadToday,
+      loadSyllabus,
+    ],
   );
 
   const handleReorder = useCallback(
     (book_chapter_ids: string[]) =>
       runPathMutation(() => slotsApi.reorderChapters(cstId, book_chapter_ids)),
     [cstId, runPathMutation],
+  );
+
+  // F2.2: drag-to-reorder commits the new order + re-flows the yet-to-start
+  // tail's dates. The template computes the new ordered book_chapter_id[] on
+  // drop and emits it here; orchestration lives in the page (layering). Two
+  // steps, one busy cycle:
+  //   1) reorderChapters (PUT) — the server enforces the D-6 lock (422 if it
+  //      moves a started chapter) and returns the updated path with new
+  //      positions.
+  //   2) re-flow: re-pack every yet-to-start chapter from the anchor so the new
+  //      order gets consecutive dates (reorder alone only changes position —
+  //      D-5 keeps dates consistent with the order). The anchor mirrors F2.1:
+  //      day after the last locked chapter, else earliest existing start, else
+  //      today; autoPack itself re-seeds after locked chapters (D-6).
+  const handleReorderAndReflow = useCallback(
+    async (book_chapter_ids: string[]) => {
+      setSyllabusError(null);
+      setPathBusy(true);
+      try {
+        // 1) Persist the new order. On a 422 (illegal move past a lock) the
+        //    catch re-syncs from the server (mirrors runPathMutation).
+        const reordered = await slotsApi.reorderChapters(cstId, book_chapter_ids);
+        // 2) Re-flow the tail in the NEW order. autoPack handles the D-6 lock
+        //    seeding internally; the anchor is only used when nothing is locked.
+        const map = await ensureOrgDays(reordered.syllabus_breakdown_id);
+        const anchor = computeAnchor(reordered.chapters);
+        const patches = autoPack(
+          toPackInputs(reordered.chapters),
+          anchor,
+          effectiveHolidays,
+          map,
+        );
+        let last: SyllabusForCstResponse = reordered;
+        for (const p of patches) {
+          last = await slotsApi.setChapterDates(cstId, p.book_chapter_id, {
+            start_date: p.start_date,
+            end_date: p.end_date,
+          });
+        }
+        setSyllabus(last);
+        await Promise.all([
+          timeline !== null ? loadTimeline() : Promise.resolve(),
+          todayLoaded ? loadToday() : Promise.resolve(),
+        ]);
+      } catch (err) {
+        setSyllabusError(formatErr(err));
+        await loadSyllabus();
+      } finally {
+        setPathBusy(false);
+      }
+    },
+    [
+      cstId,
+      ensureOrgDays,
+      toPackInputs,
+      effectiveHolidays,
+      timeline,
+      loadTimeline,
+      todayLoaded,
+      loadToday,
+      loadSyllabus,
+    ],
   );
 
   const handleRemove = useCallback(
@@ -535,6 +801,10 @@ export default function ClassDetailPage() {
       // timeline that backs them. Today entry pins the "Now" marker.
       if (timeline === null) loadTimeline();
       if (!todayLoaded) loadToday();
+      // F1.1 (D-3): the planner shows effective holidays inline + uses them for
+      // the holiday-in-range hint. Reuse the same cheap, cached getCSTHolidays
+      // fetch the Timetable tab uses — no new data, no new endpoint.
+      if (holidaysData === null) loadHolidays();
     }
     if (activeTab === "timetable" && holidaysData === null) loadHolidays();
     if (activeTab === "book" && bookChapters === null && header) loadBook();
@@ -909,6 +1179,15 @@ export default function ClassDetailPage() {
                 onRemove={handleRemove}
                 bookChapters={pickerChapters}
                 pathBusy={pathBusy}
+                effectiveHolidays={effectiveHolidays}
+                holidayItems={holidaysData?.items ?? []}
+                /* F2.1: default anchor (day after last locked chapter, else
+                   earliest start, else today) + the auto-pack action. */
+                defaultAnchor={computeAnchor(syllabus.chapters)}
+                onAutoPack={handleAutoPack}
+                /* F2.2: drag-reorder commits the new order then re-flows the
+                   yet-to-start tail's dates (orchestrated in the page). */
+                onReorderAndReflow={handleReorderAndReflow}
               />
             </>
           )
@@ -998,4 +1277,46 @@ function formatErr(err: unknown): string {
   }
   if (err instanceof Error) return err.message;
   return "Failed to load";
+}
+
+/**
+ * F2.1: the default anchor (`YYYY-MM-DD`) the planner packs from (D-1/D-6):
+ *   1) the day AFTER the last locked chapter's end_date, if any chapter is
+ *      locked (packing resumes after the immutable past — D-6); else
+ *   2) the earliest existing start_date in the path (respect a plan already in
+ *      progress of being dated); else
+ *   3) today.
+ * Pure: takes the path + today and returns an ISO string. UTC throughout to
+ * avoid TZ drift (matches lib/planner-pack.ts).
+ */
+function computeAnchor(
+  chapters: ClassPathChapter[],
+  todayIso: string = new Date().toISOString().slice(0, 10),
+): string {
+  const addDayIso = (iso: string): string => {
+    const d = new Date(iso + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // 1) day after the last locked chapter's end_date.
+  const lockedEnds = chapters
+    .filter((c) => c.status !== "yet_to_start")
+    .map((c) => c.end_date)
+    .filter((e): e is string => !!e);
+  if (lockedEnds.length > 0) {
+    const lastEnd = lockedEnds.reduce((max, e) => (e > max ? e : max));
+    return addDayIso(lastEnd);
+  }
+
+  // 2) earliest existing start_date.
+  const starts = chapters
+    .map((c) => c.start_date)
+    .filter((s): s is string => !!s);
+  if (starts.length > 0) {
+    return starts.reduce((min, s) => (s < min ? s : min));
+  }
+
+  // 3) today.
+  return todayIso;
 }
