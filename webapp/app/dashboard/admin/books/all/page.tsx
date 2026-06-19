@@ -100,10 +100,15 @@ export default function AllBooksPage() {
                 </h2>
                 <ul className="space-y-1.5">
                   {group.books.map((b) => (
-                    <li key={b.id}>
+                    <li
+                      key={b.id}
+                      className="rounded border border-dars-rule-light bg-dars-parchment-mid hover:bg-dars-parchment-deep"
+                    >
+                      {/* Detail link and the PDF link are siblings: an <a>
+                          can't be nested inside a <Link>. */}
                       <Link
                         href={`/dashboard/curriculum/books/${b.id}`}
-                        className="block rounded border border-dars-rule-light bg-dars-parchment-mid p-3 hover:bg-dars-parchment-deep"
+                        className="block p-3"
                       >
                         <div className="flex items-center gap-2">
                           <span className="flex-1 text-sm font-medium text-dars-ink">{b.title}</span>
@@ -118,6 +123,18 @@ export default function AllBooksPage() {
                           {b.publisher ? <span>· {b.publisher}</span> : null}
                         </p>
                       </Link>
+                      {b.pdf_url ? (
+                        <div className="px-3 pb-3 -mt-1">
+                          <a
+                            href={b.pdf_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-dars-terra hover:underline break-all"
+                          >
+                            <span aria-hidden>📄</span> Open PDF ↗
+                          </a>
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

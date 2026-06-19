@@ -163,6 +163,7 @@ export default function ClassDetailPage() {
     null,
   );
   const [bookChapters, setBookChapters] = useState<BookTabChapter[] | null>(null);
+  const [bookPdfUrl, setBookPdfUrl] = useState<string | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [selectedBookChapterId, setSelectedBookChapterId] = useState<string | null>(null);
   // Lazy per-topic sub-SLO cache. Fetched only when a topic row is
@@ -382,9 +383,16 @@ export default function ClassDetailPage() {
     setBookError(null);
     if (!header?.bookId) {
       setBookChapters([]);
+      setBookPdfUrl(null);
       return;
     }
     try {
+      // Book-level metadata (pdf_url) alongside the chapter list. Non-fatal:
+      // a missing/failed book fetch just hides the PDF link, never blocks the tab.
+      booksApi
+        .getBook(header.bookId)
+        .then((book) => setBookPdfUrl(book.pdf_url ?? null))
+        .catch(() => setBookPdfUrl(null));
       const { items: chapters } = await booksApi.getBookChapters(header.bookId);
       const sorted = [...chapters].sort((a, b) => a.chapter_number - b.chapter_number);
       const fetched = await Promise.all(
@@ -944,6 +952,7 @@ export default function ClassDetailPage() {
               expandedTopicId={expandedTopicId}
               onToggleTopic={onToggleTopic}
               topicSubSLOs={topicSubSLOs}
+              pdfUrl={bookPdfUrl}
             />
           )
         ) : null}
