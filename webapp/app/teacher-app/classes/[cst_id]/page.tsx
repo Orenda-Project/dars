@@ -566,8 +566,6 @@ export default function ClassDetailPage() {
     subtitle: string;
   } | null>(null);
   const [busySlotId, setBusySlotId] = useState<string | null>(null);
-  // Slot whose LP is being generated + polled on-demand (Generate LP button).
-  const [generatingSlotId, setGeneratingSlotId] = useState<string | null>(null);
   // FA slot whose exam is being generated + polled (Generate exam button).
   const [generatingExamSlotId, setGeneratingExamSlotId] = useState<string | null>(
     null,
@@ -631,37 +629,6 @@ export default function ClassDetailPage() {
   );
 
   const onMarkTaught = (slot: ClassLessonSlotListItem) => markTaughtById(slot.id);
-
-  // On-demand LP generation for a lesson slot (Generate / Retry).
-  // Dispatch, then poll the slot detail until the LP is READY/ERROR,
-  // running `refetch` each tick so the relevant tab's status pills update
-  // live (and the Generate button swaps to View LP on success). The service
-  // is idempotent, so a cache hit returns a terminal status on the first
-  // response and we skip polling entirely.
-  const generateLPAndPoll = useCallback(
-    async (slotId: string, refetch: () => Promise<void>) => {
-      setGeneratingSlotId(slotId);
-      try {
-        const created = await slotsApi.generateLPForSlot(slotId);
-        await refetch(); // reflect the new in-flight (or ready) status now
-
-        let status: string = created.lp_status;
-        const POLL_MS = 3000;
-        const MAX_POLLS = 40; // ~2 min ceiling; webhook usually finishes sooner
-        let polls = 0;
-        while (status !== "READY" && status !== "ERROR" && polls < MAX_POLLS) {
-          await new Promise((r) => setTimeout(r, POLL_MS));
-          polls += 1;
-          const detail = await slotsApi.getLessonSlotDetail(slotId);
-          status = detail.lp_status;
-          await refetch(); // keep the status pill in sync as it advances
-        }
-      } finally {
-        setGeneratingSlotId(null);
-      }
-    },
-    [],
-  );
 
   // On-demand FA exam generation for an assessment slot (Generate / Retry).
   // The assessment-slot analogue of generateLPAndPoll: dispatch, then poll
@@ -753,21 +720,16 @@ export default function ClassDetailPage() {
     };
   }, [lessons, todayEntry]);
 
-  // Today tab: generate today's lesson LP on demand. The today card's lp
-  // status comes from the lessons list, so refetch that (+ the today entry)
-  // each poll tick. Defined after todayView so the slot id is resolvable.
-  const onTodayGenerateLP = useCallback(async () => {
+  // Today tab: generate today's lesson LP. Navigate to the dedicated LP view
+  // page (teacher-app-lp-view-polling F-1.6 / D-8), which auto-starts
+  // generation and polls every 5s — "open the lesson plan right then and
+  // there." Viewing an already-ready LP still uses the inline slide-over via
+  // onViewLP; only the fresh Generate action redirects.
+  const onTodayGenerateLP = useCallback(() => {
     const slotId = todayView.todayLessonSlot?.id;
     if (!slotId) return;
-    setTodayError(null);
-    try {
-      await generateLPAndPoll(slotId, async () => {
-        await Promise.all([loadLessons(), loadToday()]);
-      });
-    } catch (err) {
-      setTodayError(formatErr(err));
-    }
-  }, [generateLPAndPoll, loadLessons, loadToday, todayView.todayLessonSlot?.id]);
+    router.push(`/teacher-app/lp/${slotId}`);
+  }, [router, todayView.todayLessonSlot?.id]);
 
   // Today tab: generate today's FA exam on demand (the assessment analogue of
   // onTodayGenerateLP). Refetch the today entry each poll tick.
@@ -827,10 +789,7 @@ export default function ClassDetailPage() {
                 if (todayView.todayLessonSlot) onMarkTaught(todayView.todayLessonSlot);
               }}
               onGenerateLP={onTodayGenerateLP}
-              generatingLP={
-                todayView.todayLessonSlot != null &&
-                generatingSlotId === todayView.todayLessonSlot.id
-              }
+              generatingLP={false}
               onGenerateExam={onTodayGenerateExam}
               generatingExam={
                 todayView.work?.kind === "assessment" &&
