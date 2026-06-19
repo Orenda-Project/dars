@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { admin, DarsApiError, setApiKey, setAdminSession } from "@/lib/dars-api";
+import { admin, clearApiKey, DarsApiError, setApiKey, setAdminSession } from "@/lib/dars-api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,6 +22,12 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const res = await admin.login({ email, password });
+      // Clear any org key left by a previous account FIRST. request() prefers
+      // X-API-Key over X-Admin-Session, so a stale key from another org would
+      // make this dashboard authenticate as that org (cross-tenant leak). We
+      // re-stash a fresh key below; if rotation fails we stay cleared, never
+      // fall back to someone else's key.
+      clearApiKey();
       setAdminSession(res.session_token);
       // Login can't return the org API key (keys are hashed + shown-once), so
       // mint a fresh one now and stash it under dars_org_api_key. This is what
@@ -33,7 +39,7 @@ export default function LoginPage() {
         const rotated = await admin.rotateApiKey();
         setApiKey(rotated.api_key);
       } catch {
-        /* keep going — session fallback covers the teacher app */
+        /* keep going — session fallback covers the teacher app (key stays cleared) */
       }
       router.replace("/dashboard/overview");
     } catch (err) {
