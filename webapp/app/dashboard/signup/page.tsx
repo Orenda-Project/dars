@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 
 import {
   admin,
+  clearApiKey,
   curriculum as curriculumApi,
   DarsApiError,
   setAdminSession,
@@ -57,6 +58,13 @@ export default function SignupPage() {
         org_name: orgName,
         curriculum_code: curriculumCode,
       });
+      // Drop any org API key left in this browser by a previous account.
+      // request() prefers X-API-Key over X-Admin-Session, so a stale key
+      // from another org would make the new dashboard authenticate as that
+      // org and show its data — a cross-tenant leak. The new org's key is
+      // shown once below and not stored; the dashboard runs on the admin
+      // session fallback. (Logout clears both keys as a pair — signup must too.)
+      clearApiKey();
       setAdminSession(res.session_token);
       setCreated({ apiKey: res.api_key });
     } catch (err) {
