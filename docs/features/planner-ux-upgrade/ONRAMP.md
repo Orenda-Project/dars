@@ -50,13 +50,16 @@ feature's D-N labels are its own and renumber from D-1.
 |-------|--------|----|-------|
 | Plan (folder + decision log) | ✅ | — | Frozen 2026-06-19 |
 | **Phase 1 — Holidays on planner + client-side warnings** | 🟡 in flight | — | F1.1 ✅ F1.2 ✅ F1.3 ✅ built locally (tsc clean); 🟡 until PR merges |
-| Phase 2 — Anchor auto-pack + drag-to-reorder | ⬜ | — | `@dnd-kit` NOT yet a dep — add in Phase 2. O-1 (undated-chapter span) to resolve via AskUserQuestion at F2.1 |
+| **Phase 2 — Anchor auto-pack + drag-to-reorder** | 🟡 in flight | — | F2.1 ✅ F2.2 ✅ F2.3 ✅ F2.4 ✅ built locally (tsc 0 errors, lint clean on changed files); 🟡 until PR merges. `@dnd-kit` added (core ^6.3.1 / sortable ^10.0.0 / utilities ^3.2.2). O-1 resolved → D-9. |
 
-**Next thing to do:** Phase 1 built locally (F1.1 lift holiday fetch into
-Syllabus tab → F1.2 inline holiday-in-range hint per row → F1.3 client-side
-overlap/zero-teaching warning banner + per-row marker, mirroring the server's
-`compute_range_warnings`). Awaiting commit → PR (targets `staging`) → staging
-green, then Phase 2. New helper: `webapp/lib/planner-warnings.ts`.
+**Next thing to do:** Both phases built locally on
+`feat/planner-ux-upgrade-phase-1`; awaiting one PR → staging → `--admin` merge →
+deploy-watch. Phase 2 added: `webapp/lib/planner-pack.ts`
+(`autoPack`/`reflowFrom` — pure, holiday-aware teaching-day model, D-6 lock,
+D-9 sizing); page-level `runPathRepack` (F2.4 sequential PATCH runner, D-7),
+`handleAutoPack` (F2.1), downstream-only re-flow in `handleSetDates` (F2.3) and
+`handleReorderAndReflow` (F2.2); template anchor-date "Auto-pack chapters" panel
++ `@dnd-kit` sortable rows with drag handle (▲▼ kept as a11y fallback).
 
 **Environment facts gathered at build start (2026-06-19):**
 - webapp: Next 16.2.1, React 19.2.4. No `@dnd-kit`, no date lib, no test script.

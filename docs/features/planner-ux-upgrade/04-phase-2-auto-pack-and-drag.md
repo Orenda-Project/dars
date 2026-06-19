@@ -36,8 +36,10 @@ scheduler; Phase 1's holiday hints and warnings remain.
   - chapter K's `end_date` = the calendar date by which the chapter has
     accumulated its required teaching periods. **Period count source:** the
     chapter's current `slot_count` when it has dates; for an undated chapter, use
-    a sensible default span (see D-5 / open question O-1) — at minimum, give it a
-    non-zero range so `slot_count` recomputes server-side.
+    its org-breakdown `derived_teaching_days`, else a 5-period (one-week) default
+    (D-9, resolves O-1). Fetch the breakdown once via
+    `SyllabusForCstResponse.syllabus_breakdown_id` → `breakdowns.getBreakdown(id)`
+    → `chapters[].derived_teaching_days` keyed by `book_chapter_id`.
   - running cursor for chapter K+1 = the next teaching day after K's `end_date`
     (no gap, no overlap by construction).
 - Persist via F2.4's sequential-PATCH runner; refetch once.
@@ -134,15 +136,12 @@ hatch. When a teacher manually edits a chapter's start or end:
 
 ---
 
-## Open questions (resolve at execution via AskUserQuestion, one at a time)
+## Open questions
 
-- **O-1: Default span for an UNDATED chapter during auto-pack.** An undated
-  chapter has `slot_count == 0` (no range yet), so packing can't read a period
-  count from it. Options to settle when we get there: (a) seed undated chapters
-  from the org breakdown's original span if available; (b) a fixed default
-  (e.g. one teaching week) and let the teacher adjust; (c) skip undated chapters
-  in auto-pack and require a manual date first. Lean (a) → (b). Decide at build
-  time; log as D-9 when chosen.
+- **O-1: Default span for an UNDATED chapter during auto-pack.** ✅ RESOLVED
+  2026-06-19 → **D-9**: use the chapter's org-breakdown `derived_teaching_days`
+  when available (option a), else a 5-period one-week default (option b). See D-9
+  for the reachability path and F2.1's updated spec.
 
 ---
 

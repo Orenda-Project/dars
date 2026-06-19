@@ -31,7 +31,28 @@
  */
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import type {
   ClassPathChapter,
@@ -86,10 +107,29 @@ interface SyllabusTabProps {
     book_chapter_id: string,
     dates: { start_date?: string; end_date?: string },
   ) => void;
-  /** Reorder the path to this exact book_chapter_id order. */
+  /** Reorder the path to this exact book_chapter_id order (▲▼ a11y fallback). */
   onReorder: (book_chapter_ids: string[]) => void;
   /** Remove a yet-to-start, un-generated chapter from the path. */
   onRemove: (book_chapter_id: string) => void;
+
+  /* ---- F2.1 (D-1/D-9) — anchor-date auto-pack ---- */
+  /**
+   * Default anchor (`YYYY-MM-DD`) for the "Pack from" date input: day after the
+   * last locked chapter, else earliest existing start, else today (computed by
+   * the page — the template is prop-driven). The teacher may override it before
+   * packing.
+   */
+  defaultAnchor: string;
+  /** Auto-pack every yet-to-start chapter back-to-back from the chosen anchor. */
+  onAutoPack: (anchor: string) => void;
+
+  /* ---- F2.2 (D-8) — drag-to-reorder with downstream re-flow ---- */
+  /**
+   * Commit a drag-reorder: the new full book_chapter_id order. The page
+   * reorders (PUT) then re-flows the yet-to-start tail's dates (D-5). The
+   * template only computes the new order on drop and emits it here.
+   */
+  onReorderAndReflow: (book_chapter_ids: string[]) => void;
   /** Every book chapter (for the picker); null while still loading. */
   bookChapters: BookChapterOption[] | null;
   /** True while any path mutation (pick/date/reorder/remove) is in flight. */
@@ -143,6 +183,9 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
     pathBusy,
     effectiveHolidays,
     holidayItems,
+    defaultAnchor,
+    onAutoPack,
+    onReorderAndReflow,
   } = props;
 
   // Path is server-ordered by `position`; keep that order explicitly.
@@ -159,7 +202,8 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
 
   // Move a chapter one step up/down within the path and submit the new order
   // (D-6 lock is enforced server-side; the UI only offers handles on
-  // yet_to_start rows). No-op at the ends.
+  // yet_to_start rows). The ▲▼ buttons survive as the keyboard/a11y fallback
+  // alongside drag-to-reorder (D-8). No-op at the ends.
   const orderIds = path.map((c) => c.book_chapter_id);
   function move(idx: number, delta: number) {
     const target = idx + delta;
@@ -167,6 +211,62 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
     const next = [...orderIds];
     [next[idx], next[target]] = [next[target], next[idx]];
     onReorder(next);
+  }
+
+  /* ---- F2.2 (D-8): drag-to-reorder ---- */
+  // Locked chapters (in_progress/done) are a FIXED PREFIX — never draggable and
+  // never displaced (D-6). Only yet-to-start rows are sortable: their ids are
+  // the SortableContext items, and a drop can only rearrange within that tail.
+  // The locked prefix's positions are immutable, so the persisted order is
+  // [locked prefix in position order, ...reordered yet-to-start tail]. This
+  // makes an illegal "drop a yet-to-start row above a locked one" structurally
+  // impossible client-side; the server's D-6 reorder validation is the backstop
+  // (a 422 re-syncs via the page's catch).
+  const lockedIds = path
+    .filter((c) => c.status !== "yet_to_start")
+    .map((c) => c.book_chapter_id);
+  const yetToStartIds = path
+    .filter((c) => c.status === "yet_to_start")
+    .map((c) => c.book_chapter_id);
+
+  // Pointer (mouse/trackpad), touch (tablet — the planner's main surface), and
+  // keyboard (a11y) sensors. The 6px activation distance lets a click on the
+  // row's controls (date inputs, Generate button) through without starting a
+  // drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  // The row currently being dragged (for the DragOverlay preview). Null when no
+  // drag is in flight.
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const draggingChapter = draggingId
+    ? path.find((c) => c.book_chapter_id === draggingId) ?? null
+    : null;
+
+  function handleDragStart(e: DragStartEvent) {
+    setDraggingId(String(e.active.id));
+  }
+
+  // On drop: rearrange ONLY the yet-to-start tail, then emit the full new order
+  // (locked prefix unchanged) so the page reorders + re-flows downstream (D-5).
+  function handleDragEnd(e: DragEndEvent) {
+    setDraggingId(null);
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = yetToStartIds.indexOf(String(active.id));
+    const to = yetToStartIds.indexOf(String(over.id));
+    // Both endpoints must be yet-to-start (locked rows aren't sortable items).
+    if (from === -1 || to === -1) return;
+    const newTail = arrayMove(yetToStartIds, from, to);
+    // Persisted order: fixed locked prefix + reordered tail (D-6).
+    onReorderAndReflow([...lockedIds, ...newTail]);
   }
 
   return (
@@ -211,34 +311,68 @@ export function ClassSyllabusTab(props: SyllabusTabProps) {
         <EmptyPathMessage />
       ) : (
         <>
+          {/* F2.1 (D-1/D-9): anchor-date auto-pack — one date packs every
+              yet-to-start chapter back-to-back. Edit mode only; needs at least
+              one yet-to-start chapter to pack. */}
+          {editing && yetToStartIds.length > 0 ? (
+            <AnchorAutoPackPanel
+              defaultAnchor={defaultAnchor}
+              onAutoPack={onAutoPack}
+              pathBusy={pathBusy}
+            />
+          ) : null}
+
           {/* F1.3 (D-4): advisory, non-blocking warning banner — soft Dars
               tokens, never red-error. Appears/updates as dates change. */}
           {warnings.length > 0 ? <PlannerWarningBanner warnings={warnings} /> : null}
 
           {!isEmpty ? (
-            <ol className="space-y-2">
-              {path.map((ch, idx) => (
-                <PathRow
-                  key={ch.book_chapter_id}
-                  ch={ch}
-                  cstId={cstId}
-                  hasSlots={generatedPositions?.has(ch.position) ?? false}
-                  onBreakDown={onBreakDown}
-                  breakingDown={busyChapterId === ch.book_chapter_id}
-                  editing={editing}
-                  onSetDates={onSetDates}
-                  onRemove={onRemove}
-                  onMoveUp={() => move(idx, -1)}
-                  onMoveDown={() => move(idx, +1)}
-                  canMoveUp={idx > 0}
-                  canMoveDown={idx < path.length - 1}
-                  pathBusy={pathBusy}
-                  effectiveHolidays={effectiveHolidays}
-                  holidayItems={holidayItems}
-                  warned={warnedChapterIds.has(ch.book_chapter_id)}
-                />
-              ))}
-            </ol>
+            // F2.2 (D-8): the path is a sortable list. Locked rows render in
+            // place but aren't sortable items; only yet-to-start ids are in the
+            // SortableContext so a drop can only rearrange the tail.
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={() => setDraggingId(null)}
+            >
+              <SortableContext
+                items={yetToStartIds}
+                strategy={verticalListSortingStrategy}
+              >
+                <ol className="space-y-2">
+                  {path.map((ch, idx) => (
+                    <PathRow
+                      key={ch.book_chapter_id}
+                      ch={ch}
+                      cstId={cstId}
+                      hasSlots={generatedPositions?.has(ch.position) ?? false}
+                      onBreakDown={onBreakDown}
+                      breakingDown={busyChapterId === ch.book_chapter_id}
+                      editing={editing}
+                      onSetDates={onSetDates}
+                      onRemove={onRemove}
+                      onMoveUp={() => move(idx, -1)}
+                      onMoveDown={() => move(idx, +1)}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < path.length - 1}
+                      pathBusy={pathBusy}
+                      effectiveHolidays={effectiveHolidays}
+                      holidayItems={holidayItems}
+                      warned={warnedChapterIds.has(ch.book_chapter_id)}
+                    />
+                  ))}
+                </ol>
+              </SortableContext>
+              {/* Drag preview: a lightweight clone of the row being dragged.
+                  Committed only on drop (handleDragEnd). */}
+              <DragOverlay>
+                {draggingChapter ? (
+                  <DragRowPreview ch={draggingChapter} />
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           ) : null}
 
           {/* Add-a-chapter (D-13). Always shown in edit mode; on an empty path
@@ -284,6 +418,84 @@ function PlannerWarningBanner({ warnings }: { warnings: PlannerWarning[] }) {
     >
       <span aria-hidden>⚠ </span>
       {message}.
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* F2.1 (D-1/D-9) — anchor-date auto-pack panel (edit mode).           */
+/*   One date input + one button. The teacher sets the term/first-     */
+/*   chapter start and the planner flows every yet-to-start chapter     */
+/*   forward from there (holiday-aware, locked chapters skipped). Styled */
+/*   like the other edit-mode controls — soft Dars tokens, no new color.*/
+/* ------------------------------------------------------------------ */
+
+function AnchorAutoPackPanel({
+  defaultAnchor,
+  onAutoPack,
+  pathBusy,
+}: {
+  defaultAnchor: string;
+  onAutoPack: (anchor: string) => void;
+  pathBusy: boolean;
+}) {
+  // Local, uncontrolled-ish anchor state seeded from the page's computed
+  // default. The teacher may override before packing. Not lifted to the page:
+  // it's transient UI input, only read on the button click (layering — the
+  // page owns persisted state, the template owns ephemeral form state).
+  const [anchor, setAnchor] = useState(defaultAnchor);
+
+  return (
+    <div className="rounded-md border border-dars-rule-light bg-dars-parchment p-3 space-y-2">
+      <p className="text-xs font-semibold text-dars-ink">Auto-pack chapters</p>
+      <p className="text-xs text-dars-muted">
+        Set a start date; every upcoming chapter is dated back-to-back from
+        there, skipping weekends and holidays. Started chapters keep their dates.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1 text-xs text-dars-ink-soft">
+          <span>Pack from</span>
+          <input
+            type="date"
+            value={anchor}
+            disabled={pathBusy}
+            onChange={(e) => setAnchor(e.target.value)}
+            className="rounded border border-dars-rule-light bg-dars-parchment px-2 py-1 text-dars-ink disabled:opacity-50"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            if (anchor) onAutoPack(anchor);
+          }}
+          disabled={pathBusy || !anchor}
+          className="px-3 py-1.5 rounded bg-dars-terra text-dars-parchment text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+        >
+          {pathBusy ? "Packing…" : "Auto-pack chapters"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* F2.2 (D-8) — drag preview shown in the DragOverlay while dragging.  */
+/*   A minimal, non-interactive clone of the row's header so the teacher*/
+/*   sees what's moving; the real reorder commits only on drop.         */
+/* ------------------------------------------------------------------ */
+
+function DragRowPreview({ ch }: { ch: ClassPathChapter }) {
+  return (
+    <div className="rounded-md border border-dars-terra bg-dars-parchment shadow-lg ring-1 ring-dars-terra/40 p-3 flex items-center gap-3">
+      <span className="text-dars-terra text-xs" aria-hidden>
+        ⠿
+      </span>
+      <span className="text-xs font-mono text-dars-muted-light tabular-nums">
+        {ch.position}.
+      </span>
+      <span className="text-sm font-semibold text-dars-ink truncate">
+        Ch {ch.chapter_number} · {ch.title}
+      </span>
     </div>
   );
 }
@@ -443,6 +655,31 @@ function PathRow({
   const reorderable = ch.status === "yet_to_start";
   const removable = ch.status === "yet_to_start" && !ch.is_generated;
 
+  // F2.2 (D-8): wire this row into the sortable list. Hooks must run
+  // unconditionally, so every row calls useSortable; locked rows (or any row
+  // outside edit mode) pass `disabled` so they're inert and never draggable
+  // (D-6). Only the drag-handle button carries `listeners`, so the row's
+  // controls (date inputs, buttons) stay clickable. Destructured (not held as a
+  // single object) so React's refs lint rule sees the ref setter / listeners as
+  // direct hook returns rather than property access during render.
+  const {
+    setNodeRef,
+    attributes: dragAttributes,
+    listeners: dragListeners,
+    transform: dragTransform,
+    transition: dragTransition,
+    isDragging,
+  } = useSortable({
+    id: ch.book_chapter_id,
+    disabled: !editing || !reorderable,
+  });
+  const sortableStyle = {
+    transform: CSS.Transform.toString(dragTransform),
+    transition: dragTransition,
+    // Hide the original row while its clone rides in the DragOverlay.
+    opacity: isDragging ? 0.4 : undefined,
+  };
+
   // F1.2 (D-3): effective holidays whose ISO date falls inside this chapter's
   // [start_date, end_date] (inclusive). String compare is valid for YYYY-MM-DD.
   // The hint explains the gap between the calendar span and the teaching span.
@@ -518,17 +755,36 @@ function PathRow({
   );
 
   return (
-    <li className={"rounded-md border bg-dars-parchment " + accent}>
+    <li
+      ref={setNodeRef}
+      style={sortableStyle}
+      className={"rounded-md border bg-dars-parchment " + accent}
+    >
       {isCurrent ? (
         <span className="absolute -left-px top-3 bottom-3 w-0.5 rounded bg-dars-terra" />
       ) : null}
 
       <div className="p-3 flex items-start gap-3">
-        {/* Reorder ▲▼ — edit mode, yet_to_start only (D-6). */}
+        {/* Reorder column — edit mode only. Yet-to-start rows get a drag handle
+            (F2.2/D-8) PLUS the ▲▼ buttons (kept as the keyboard/a11y fallback).
+            Locked rows show 🔒 and are never draggable (D-6). */}
         {editing ? (
-          <div className="flex flex-col items-center pt-0.5">
+          <div className="flex flex-col items-center pt-0.5 gap-0.5">
             {reorderable ? (
               <>
+                {/* Drag handle — carries the dnd-kit listeners/attributes so a
+                    drag starts only from the grip, leaving the row's inputs and
+                    buttons fully clickable. */}
+                <button
+                  type="button"
+                  {...dragAttributes}
+                  {...dragListeners}
+                  disabled={pathBusy}
+                  aria-label="Drag to reorder chapter"
+                  className="cursor-grab active:cursor-grabbing touch-none text-dars-muted hover:text-dars-ink disabled:opacity-30 leading-none text-xs"
+                >
+                  ⠿
+                </button>
                 <button
                   type="button"
                   onClick={onMoveUp}
