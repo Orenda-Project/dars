@@ -1378,13 +1378,28 @@ export const slots = {
       { method: "DELETE" },
     ),
 
-  /** "Break it down" (Action 2): generate a path chapter's Chapter Plan into
-   * the class slots, sized by the teacher's timetable. 422 if no dates / not
-   * in path / already broken down. */
+  /**
+   * "Break it down" (Action 2): generate a path chapter's Chapter Plan into the
+   * class slots, sized by the teacher's timetable. async-chapter-plan: this is
+   * now async — it dispatches a background job and returns 202 with a PENDING
+   * dispatch body. Poll {@link getChapterPlanStatus} until READY/ERROR.
+   *   - 422 if no dates / not in path / already broken down.
+   *   - 409 if a plan for this chapter is already PENDING/GENERATING — the
+   *     caller should just start polling getChapterPlanStatus.
+   */
   breakDownChapter: (cst_id: UUID, book_chapter_id: UUID) =>
-    request<GenerateChapterPlanResponse>(
+    request<ChapterPlanDispatchResponse>(
       `/api/v2/csts/${cst_id}/chapters/${book_chapter_id}/plan`,
       { method: "POST" },
+    ),
+
+  /** async-chapter-plan: poll the break-it-down job status for a path chapter.
+   * Returns READY + slot counts once the background plan has landed, ERROR +
+   * error_message on planner failure, else PENDING/GENERATING. */
+  getChapterPlanStatus: (cst_id: UUID, book_chapter_id: UUID) =>
+    request<ChapterPlanStatusResponse>(
+      `/api/v2/csts/${cst_id}/chapters/${book_chapter_id}/plan-status`,
+      { method: "GET" },
     ),
 };
 
@@ -1441,6 +1456,35 @@ export interface GenerateChapterPlanResponse {
   lesson_slot_count: number;
   assessment_slot_count: number;
   warnings: string[];
+}
+
+/**
+ * async-chapter-plan: break-it-down is async. The POST returns this 202 dispatch
+ * body immediately (PENDING); poll {@link slots.getChapterPlanStatus} until the
+ * status is READY or ERROR. UPPERCASE statuses match the LP/exam convention.
+ */
+export type ChapterPlanStatus = "PENDING" | "GENERATING" | "READY" | "ERROR";
+
+export interface ChapterPlanDispatchResponse {
+  cst_id: UUID;
+  book_chapter_id: UUID;
+  status: ChapterPlanStatus;
+}
+
+/**
+ * Poll response for async break-it-down. Slot counts are populated only once
+ * `status === "READY"` (null while PENDING/GENERATING or after ERROR);
+ * `error_message` carries the failure reason when `status === "ERROR"`.
+ */
+export interface ChapterPlanStatusResponse {
+  cst_id: UUID;
+  book_chapter_id: UUID;
+  status: ChapterPlanStatus;
+  error_message: string | null;
+  slot_count: number | null;
+  lesson_slot_count: number | null;
+  assessment_slot_count: number | null;
+  flex_slot_count: number | null;
 }
 
 // ---------------------------------------------------------------------------

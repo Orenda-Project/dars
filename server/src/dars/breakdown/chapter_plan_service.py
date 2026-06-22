@@ -280,6 +280,67 @@ class GeneratePlanResult:
     source: str = "cpe"
 
 
+async def precheck_chapter_plan(
+    conn: asyncpg.Connection,
+    *,
+    cst_id: UUID,
+    book_chapter_id: UUID,
+) -> int:
+    """
+    async-chapter-plan: the CHEAP, synchronous half of break-it-down validation —
+    everything `generate_chapter_plan` checks BEFORE it touches the (slow) planner
+    LLM. Lets the dispatch endpoint reject obviously-invalid requests with a 422
+    in the request/response cycle instead of failing inside the background task.
+
+    Validates (raising ValueError on the first failure, message preserved so the
+    endpoint surfaces the same 422 it always has):
+      - the chapter is in this class's path (`class_chapters` row exists);
+      - the chapter's date range yields >= 1 teaching day;
+      - the chapter has no class slots yet (not already broken down).
+
+    Returns the computed `slot_count` so callers don't recompute it. Does NOT run
+    the planner and does NOT mutate anything. `generate_chapter_plan` reuses this
+    so the two paths can never drift.
+    """
+    chapter = await conn.fetchrow(
+        """
+        SELECT start_date, end_date
+        FROM class_chapters
+        WHERE cst_id = $1 AND book_chapter_id = $2
+        """,
+        cst_id, book_chapter_id,
+    )
+    if chapter is None:
+        raise ValueError(
+            "chapter not in this class's plan; add it to your plan first"
+        )
+
+    slot_count = await chapter_slot_count(
+        conn, cst_id, chapter["start_date"], chapter["end_date"]
+    )
+    if slot_count < 1:
+        raise ValueError(
+            "chapter has no teaching days in its date range "
+            "(set the chapter's dates on the syllabus first)"
+        )
+
+    existing = await conn.fetchval(
+        """
+        SELECT
+          (SELECT count(*) FROM class_lesson_slots
+             WHERE cst_id = $1 AND book_chapter_id = $2)
+        + (SELECT count(*) FROM class_assessment_slots
+             WHERE cst_id = $1 AND book_chapter_id = $2)
+        """,
+        cst_id, book_chapter_id,
+    )
+    if existing:
+        raise ValueError(
+            "chapter already broken down; clear it first to regenerate"
+        )
+    return slot_count
+
+
 async def generate_chapter_plan(
     conn: asyncpg.Connection,
     *,
@@ -330,45 +391,16 @@ async def generate_chapter_plan(
     try:
         ctx = await resolve_cst_syllabus_context(conn, cst_id)
 
-        # F1.6 (D-5): the chapter's dates come from the class's own teaching path
-        # (`class_chapters`), set by the teacher (D-7) — not from the advisory
-        # global `syllabus_chapters`. The chapter must be in the class path first.
-        chapter = await conn.fetchrow(
-            """
-            SELECT start_date, end_date
-            FROM class_chapters
-            WHERE cst_id = $1 AND book_chapter_id = $2
-            """,
-            cst_id, book_chapter_id,
+        # F1.6 (D-5): cheap validation — chapter is in the class path
+        # (`class_chapters`), has >= 1 teaching day in its teacher-set range, and
+        # is not already broken down. Shared with the async dispatch endpoint's
+        # precheck so the two paths can never drift (async-chapter-plan). The
+        # PENDING/GENERATING job status lives on `class_chapters`; the
+        # "already broken down" guard counts SLOTS (not status), so a freshly
+        # dispatched job — which has no slots yet — never false-trips it.
+        slot_count = await precheck_chapter_plan(
+            conn, cst_id=cst_id, book_chapter_id=book_chapter_id
         )
-        if chapter is None:
-            raise ValueError(
-                "chapter not in this class's plan; add it to your plan first"
-            )
-
-        slot_count = await chapter_slot_count(
-            conn, cst_id, chapter["start_date"], chapter["end_date"]
-        )
-        if slot_count < 1:
-            raise ValueError(
-                "chapter has no teaching days in its date range "
-                "(set the chapter's dates on the syllabus first)"
-            )
-
-        existing = await conn.fetchval(
-            """
-            SELECT
-              (SELECT count(*) FROM class_lesson_slots
-                 WHERE cst_id = $1 AND book_chapter_id = $2)
-            + (SELECT count(*) FROM class_assessment_slots
-                 WHERE cst_id = $1 AND book_chapter_id = $2)
-            """,
-            cst_id, book_chapter_id,
-        )
-        if existing:
-            raise ValueError(
-                "chapter already broken down; clear it first to regenerate"
-            )
 
         result = GeneratePlanResult(
             cst_id=cst_id, book_chapter_id=book_chapter_id, slot_count=slot_count
