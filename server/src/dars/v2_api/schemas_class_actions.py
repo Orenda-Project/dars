@@ -266,6 +266,38 @@ class GenerateChapterPlanResponse(BaseModel):
     warnings: list[str] = []
 
 
+# --- async break-it-down (async-chapter-plan): dispatch + poll ---
+
+
+# Lifecycle of a break-it-down job, tracked on the `class_chapters` row. UPPERCASE
+# to match the generated_lps / generated_exams status convention.
+ChapterPlanStatus = Literal["PENDING", "GENERATING", "READY", "ERROR"]
+
+
+class ChapterPlanDispatchResponse(BaseModel):
+    """202 ACCEPTED body for the async break-it-down POST. The plan is being
+    generated off the request path; poll `GET .../plan-status` until the status
+    is READY or ERROR."""
+    cst_id: UUID
+    book_chapter_id: UUID
+    status: ChapterPlanStatus = "PENDING"
+
+
+class ChapterPlanStatusResponse(BaseModel):
+    """Poll target for async break-it-down. `status` is the live job state; the
+    slot counts are populated only once `status == 'READY'` (None while a job is
+    PENDING/GENERATING or after an ERROR). `error_message` carries the failure
+    reason when `status == 'ERROR'`."""
+    cst_id: UUID
+    book_chapter_id: UUID
+    status: ChapterPlanStatus
+    error_message: str | None = None
+    slot_count: int | None = None
+    lesson_slot_count: int | None = None
+    assessment_slot_count: int | None = None
+    flex_slot_count: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Reteach trigger (dynamic-chapter-planner Phase 3, F-3.1/F-3.2/F-3.3)
 #

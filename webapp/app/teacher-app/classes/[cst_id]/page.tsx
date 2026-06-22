@@ -243,12 +243,57 @@ export default function ClassDetailPage() {
     }
   }, [cstId]);
 
+  // async-chapter-plan: break-it-down is async. Dispatch the POST (202 PENDING),
+  // then poll plan-status every 3s until READY/ERROR — `busyChapterId` keeps the
+  // "Breaking down…" button state live throughout. A 409 means a plan is already
+  // generating (e.g. a double-click or another tab), so we just start polling.
+  // On READY we refetch the path + timeline + today so the new slots render; on
+  // ERROR we surface the planner's error_message.
   const handleBreakDown = useCallback(
     async (book_chapter_id: string) => {
       setSyllabusError(null);
       setBusyChapterId(book_chapter_id);
       try {
-        await slotsApi.breakDownChapter(cstId, book_chapter_id);
+        try {
+          await slotsApi.breakDownChapter(cstId, book_chapter_id);
+        } catch (err) {
+          // 409 → a plan is already in flight; fall through to polling. Any
+          // other error (422 no-dates / not-in-path / already-broken-down) is a
+          // real failure to surface.
+          if (!(err instanceof DarsApiError && err.status === 409)) {
+            throw err;
+          }
+        }
+
+        // Poll until the background job lands (mirrors the LP/exam poll loop).
+        const POLL_MS = 3000;
+        const MAX_POLLS = 60;
+        let polls = 0;
+        let status: string = "PENDING";
+        let errorMessage: string | null = null;
+        while (status !== "READY" && status !== "ERROR" && polls < MAX_POLLS) {
+          await new Promise((r) => setTimeout(r, POLL_MS));
+          polls += 1;
+          const s = await slotsApi.getChapterPlanStatus(cstId, book_chapter_id);
+          status = s.status;
+          errorMessage = s.error_message;
+        }
+
+        if (status === "ERROR") {
+          setSyllabusError(
+            errorMessage ?? "chapter plan generation failed; please retry",
+          );
+          // Still refresh the path so the chapter's derived state is accurate.
+          await loadSyllabus();
+          return;
+        }
+        if (status !== "READY") {
+          setSyllabusError(
+            "chapter plan is taking longer than expected; refresh to check again",
+          );
+          return;
+        }
+
         await Promise.all([
           // Re-fetch the path: status + slot_count change after break-down.
           loadSyllabus(),

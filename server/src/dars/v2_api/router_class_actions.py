@@ -8,14 +8,15 @@ import logging
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
+from dars.breakdown.chapter_plan_jobs import run_chapter_plan_job
 from dars.breakdown.chapter_plan_service import (
     _cst_weekday_set,
     generate_chapter_plan,
+    precheck_chapter_plan,
     resolve_cst_syllabus_context,
 )
-from dars.breakdown.planner_llm import PlannerLLMError
 from dars.breakdown.class_chapter_service import (
     list_class_path,
     pick_chapter,
@@ -42,10 +43,11 @@ from dars.v2_api.schemas_class_actions import (
     ClassAssessmentSlotListResponse,
     ClassLessonSlotListItem,
     ClassLessonSlotListResponse,
+    ChapterPlanDispatchResponse,
+    ChapterPlanStatusResponse,
     ClassPathChapter,
     CompleteAssessmentBody,
     CstTimelineResponse,
-    GenerateChapterPlanResponse,
     MarkActionResponse,
     MarkTaughtBody,
     OnboardBody,
@@ -757,47 +759,150 @@ async def remove_class_chapter(
 
 @router.post(
     "/csts/{cst_id}/chapters/{book_chapter_id}/plan",
-    response_model=GenerateChapterPlanResponse,
-    status_code=status.HTTP_201_CREATED,
+    response_model=ChapterPlanDispatchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def break_down_chapter(
     cst_id: UUID,
     book_chapter_id: UUID,
+    background: BackgroundTasks,
     org: OrgContext = Depends(get_current_org),
     conn: asyncpg.Connection = Depends(get_db_conn),
-) -> GenerateChapterPlanResponse:
+) -> ChapterPlanDispatchResponse:
     """F3.3 — "break it down": generate a chapter's Chapter Plan into the class
-    slots, sized by the teacher's real timetable (D-9)."""
+    slots, sized by the teacher's real timetable (D-9).
+
+    async-chapter-plan: the planner is slow (in-process LLM, several seconds), so
+    this no longer runs it inline. It does the CHEAP validation up front (chapter
+    in path, dates set, not already broken down — surfaced as a synchronous 422
+    exactly as before), flips the `class_chapters` row to PENDING, dispatches the
+    background job, and returns 202. The FE polls `GET .../plan-status` until the
+    status is READY or ERROR.
+
+    Returns 409 if a plan for this (cst, chapter) is already PENDING/GENERATING."""
     log.info("break_down_chapter: entry cst=%s chapter=%s", cst_id, book_chapter_id)
     await _ensure_cst_in_org(conn, cst_id, org.id)
+
+    # Cheap synchronous validation (no planner): 422 on the same failures the
+    # sync flow rejected. precheck_chapter_plan requires the class_chapters row
+    # to exist, so after this call the row is guaranteed present for the status
+    # flip below.
     try:
-        result = await generate_chapter_plan(
-            conn, cst_id=cst_id, book_chapter_id=book_chapter_id, org_id=org.id,
-        )
-    except PlannerLLMError as e:
-        # D-5: planner transport failure — surface as 502, no fallback.
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"planner LLM error: {e}",
+        await precheck_chapter_plan(
+            conn, cst_id=cst_id, book_chapter_id=book_chapter_id
         )
     except ValueError as e:
-        # Covers refusals + PlanParseError / PlanValidationError (D-5).
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
         )
+
+    # 409 if a job is already in flight for this (cst, chapter). The row exists
+    # (precheck passed) and is org-scoped (Critical Rule #3).
+    current_status = await conn.fetchval(
+        """
+        SELECT status FROM class_chapters
+        WHERE cst_id = $1 AND book_chapter_id = $2 AND org_id = $3
+        """,
+        cst_id, book_chapter_id, org.id,
+    )
+    if current_status in ("PENDING", "GENERATING"):
+        log.info(
+            "break_down_chapter: conflict cst=%s chapter=%s status=%s",
+            cst_id, book_chapter_id, current_status,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="a chapter plan is already generating; poll plan-status",
+        )
+
+    # Flip to PENDING (clear any prior ERROR message) and dispatch the job, which
+    # opens its own connection — the request conn is released after the response.
+    await conn.execute(
+        """
+        UPDATE class_chapters
+           SET status = 'PENDING', error_message = NULL, updated_at = now()
+         WHERE cst_id = $1 AND book_chapter_id = $2 AND org_id = $3
+        """,
+        cst_id, book_chapter_id, org.id,
+    )
+    background.add_task(run_chapter_plan_job, cst_id, book_chapter_id, org.id)
+
     log.info(
-        "break_down_chapter: exit cst=%s chapter=%s slots=%d",
-        cst_id, book_chapter_id, result.slot_count,
+        "break_down_chapter: dispatched cst=%s chapter=%s status=PENDING",
+        cst_id, book_chapter_id,
     )
-    return GenerateChapterPlanResponse(
-        cst_id=result.cst_id,
-        book_chapter_id=result.book_chapter_id,
-        slot_count=result.slot_count,
-        lesson_slot_count=result.lesson_slot_count,
-        assessment_slot_count=result.assessment_slot_count,
-        flex_slot_count=result.flex_slot_count,
-        warnings=result.warnings,
+    return ChapterPlanDispatchResponse(
+        cst_id=cst_id, book_chapter_id=book_chapter_id, status="PENDING",
     )
+
+
+@router.get(
+    "/csts/{cst_id}/chapters/{book_chapter_id}/plan-status",
+    response_model=ChapterPlanStatusResponse,
+)
+async def get_chapter_plan_status(
+    cst_id: UUID,
+    book_chapter_id: UUID,
+    org: OrgContext = Depends(get_current_org),
+    conn: asyncpg.Connection = Depends(get_db_conn),
+) -> ChapterPlanStatusResponse:
+    """async-chapter-plan: poll target for break-it-down. Returns the live job
+    `status` from the `class_chapters` row; once READY, also returns the slot
+    counts for this chapter (lessons + assessments + flex). Scoped by org_id
+    (Critical Rule #3); 404 if the (cst, chapter) row isn't in this org's plan."""
+    log.info(
+        "get_chapter_plan_status: entry cst=%s chapter=%s", cst_id, book_chapter_id
+    )
+    await _ensure_cst_in_org(conn, cst_id, org.id)
+
+    row = await conn.fetchrow(
+        """
+        SELECT status, error_message FROM class_chapters
+        WHERE cst_id = $1 AND book_chapter_id = $2 AND org_id = $3
+        """,
+        cst_id, book_chapter_id, org.id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="chapter not in this class's plan",
+        )
+
+    resp = ChapterPlanStatusResponse(
+        cst_id=cst_id,
+        book_chapter_id=book_chapter_id,
+        status=row["status"],
+        error_message=row["error_message"],
+    )
+
+    # Only a READY plan has slots to count.
+    if row["status"] == "READY":
+        counts = await conn.fetchrow(
+            """
+            SELECT
+              (SELECT count(*) FROM class_lesson_slots
+                 WHERE cst_id = $1 AND book_chapter_id = $2) AS lesson_count,
+              (SELECT count(*) FROM class_lesson_slots
+                 WHERE cst_id = $1 AND book_chapter_id = $2 AND flex = TRUE)
+                 AS flex_count,
+              (SELECT count(*) FROM class_assessment_slots
+                 WHERE cst_id = $1 AND book_chapter_id = $2) AS assessment_count
+            """,
+            cst_id, book_chapter_id,
+        )
+        lesson_count = counts["lesson_count"]
+        assessment_count = counts["assessment_count"]
+        resp.lesson_slot_count = lesson_count
+        resp.assessment_slot_count = assessment_count
+        resp.flex_slot_count = counts["flex_count"]
+        # 1 slot = 1 teaching day: total slots is lessons + assessments.
+        resp.slot_count = lesson_count + assessment_count
+
+    log.info(
+        "get_chapter_plan_status: exit cst=%s chapter=%s status=%s",
+        cst_id, book_chapter_id, resp.status,
+    )
+    return resp
 
 
 # ---------------------------------------------------------------------------
